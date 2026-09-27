@@ -15,7 +15,7 @@ import { orderTotal, type Order } from '@shared/types/order'
 import { Modal } from '@shared/ui/Modal'
 import { useToast } from '@shared/ui/toast'
 import { usePagination } from '@shared/ui/usePagination'
-import { HorsesDocs, QuoteList, SearchBox, Section, Stepper, TripInfo, cx, matches, managerStyles as s } from '../shared/parts'
+import { HorsesDocs, QuoteList, SearchBox, Section, Stepper, TripInfo, cx, matches, partStyles as s } from '../../../shared/parts'
 import { ManagerAction, optionText } from './ManagerAction'
 import { choiceHoursLeft, intakeStatus, waitingChoice, type IntakeStatus } from './intake-status'
 

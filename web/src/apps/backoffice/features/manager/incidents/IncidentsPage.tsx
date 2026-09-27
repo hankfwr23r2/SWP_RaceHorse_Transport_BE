@@ -9,7 +9,7 @@ import { useLoad } from '@shared/services/useLoad'
 import { Modal } from '@shared/ui/Modal'
 import { useToast } from '@shared/ui/toast'
 import { usePagination } from '@shared/ui/usePagination'
-import { SearchBox, cx, managerStyles as m } from '../shared/parts'
+import { SearchBox, cx, partStyles as m } from '../../../shared/parts'
 
 type Tab = 'proposed' | 'approved' | 'rejected'
 const TABS: [Tab, string][] = [['proposed', 'Chờ xử lý'], ['approved', 'Đã phê duyệt'], ['rejected', 'Từ chối']]

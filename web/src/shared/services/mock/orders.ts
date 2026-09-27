@@ -32,7 +32,7 @@ export function seedOrders(): Order[] {
         ['Bảo hiểm vận chuyển', 'Gói cơ bản', 500_000],
       ],
       status: 'awaiting_payment', approvedAt: now - 43 * HOUR, inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh',
-      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Nguyễn Văn Hùng', grooms: 'Võ Thị Lan' },
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Phan Thanh Hải', grooms: 'Võ Thị Lan' },
     },
     {
       ...base, id: 'EQ-2026-1042', submittedAt: daysFromToday(-2, 9), departAt: daysFromToday(12),
@@ -106,9 +106,9 @@ export function seedOrders(): Order[] {
           { label: 'Giao ngựa', place: 'Trường đua Phnom Penh Royal Turf', time: now + 3 * HOUR, state: 'next' },
         ],
         health: [
-          { time: now - 40 * 60000, temp: '37.8°C', heart: '36 bpm', note: 'Ăn uống bình thường, đứng vững trong khoang' },
-          { time: now - 3 * HOUR, temp: '37.6°C', heart: '38 bpm', note: 'Đã uống 8 lít nước tại trạm dừng' },
-          { time: now - 6 * HOUR, temp: '37.5°C', heart: '34 bpm', note: 'Kiểm tra trước khi lên xe: đạt' },
+          { time: now - 40 * 60000, temp: '37.8°C', heart: '36 bpm', note: 'Ăn uống bình thường, đứng vững trong khoang', horse: 'Kim Lân', status: 'Bình thường', by: 'Võ Thị Lan' },
+          { time: now - 3 * HOUR, temp: '37.6°C', heart: '38 bpm', note: 'Đã uống 8 lít nước tại trạm dừng', horse: 'Kim Lân', status: 'Bình thường', by: 'Võ Thị Lan' },
+          { time: now - 6 * HOUR, temp: '37.5°C', heart: '34 bpm', note: 'Kiểm tra trước khi lên xe: đạt', horse: 'Kim Lân', status: 'Bình thường', by: 'Võ Thị Lan' },
         ],
       },
     },
@@ -196,7 +196,7 @@ export function seedOrders(): Order[] {
         }],
         sentAt: now - 6 * HOUR,
         requoteServices: [
-          ['Vận chuyển đường bộ', 'Xe chuyên dụng 2 ngăn · khoang tiêu chuẩn · 560 km', 15_000_000],
+          ['Vận chuyển đường bộ', 'Xe chuyên dụng 2 ngăn · khoang tiêu chuẩn · 560 km', 18_000_000],
           ['Kiểm dịch & thủ tục xuất cảnh', 'Trọn gói cho 1 ngựa: xét nghiệm, chứng nhận, thông quan Mộc Bài – Bavet', 3_800_000],
           ['Chăm sóc dọc đường', 'NV chăm sóc đi kèm · cỏ khô Timothy · nước điện giải', 1_000_000],
           ['Bảo hiểm vận chuyển', 'Gói cơ bản', 800_000],
@@ -214,7 +214,7 @@ export function seedOrders(): Order[] {
         ['Bảo hiểm vận chuyển', 'Gói cơ bản', 1_000_000],
       ],
       status: 'awaiting_payment', approvedAt: now - 10 * 24 * HOUR, inspector: 'Phạm Văn Hưng', coordinator: 'Phạm Tâm',
-      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Nguyễn Văn Hùng', grooms: 'Võ Thị Lan' },
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Phan Thanh Hải', grooms: 'Võ Thị Lan' },
     },
     {
       // Trang Phê duyệt: đã thanh toán, khách chưa gửi đủ bản gốc → kiểm dịch viên báo cáo Manager (gốc: manager_phe_duyet.js)
@@ -229,7 +229,7 @@ export function seedOrders(): Order[] {
         ['Bảo hiểm vận chuyển', 'Gói cơ bản', 800_000],
       ],
       status: 'paid', approvedAt: atTime(-11, '10:00'), paidAt: atTime(-10, '16:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh',
-      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Nguyễn Văn Hùng', grooms: 'Võ Thị Lan' },
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Phan Thanh Hải', grooms: 'Võ Thị Lan' },
       papers: {
         originals: { 'Kim Lân': { passport: atTime(-7, '15:00'), vaccine: atTime(-7, '15:00'), lab: atTime(-7, '15:00'), import_permit: null, ownership: null } },
         procedures: { quarantine_border: { number: 'KD-XK-2026/0409', agency: 'Cơ quan Thú y vùng VI', issuedAt: daysFromToday(-3), validUntil: daysFromToday(11), file: 'GCN_kiem_dich_XK_EQ-2026-1052.pdf' } },

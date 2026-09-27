@@ -1,4 +1,4 @@
-/* Thành phần dùng chung các trang Manager */
+/* Thành phần dùng chung các trang nội bộ */
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
 .search { position: relative; }
 .search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 0.85rem; }

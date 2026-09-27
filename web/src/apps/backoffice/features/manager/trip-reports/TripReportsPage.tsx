@@ -6,7 +6,7 @@ import { reportsApi, type TripReport } from '@shared/services/reports'
 import { useLoad } from '@shared/services/useLoad'
 import { Modal } from '@shared/ui/Modal'
 import { usePagination } from '@shared/ui/usePagination'
-import { SearchBox, managerStyles as m } from '../shared/parts'
+import { SearchBox, partStyles as m } from '../../../shared/parts'
 import s from './TripReports.module.css'
 
 const toMin = (hhmm: string) => { const [h, mi] = hhmm.split(':').map(Number); return h * 60 + mi }

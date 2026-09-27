@@ -1,7 +1,7 @@
 import type { StaffRole } from '@shared/types/role'
 
 // Menu theo vai trò. Giữ đúng thứ tự và tên mục của các trang HTML cũ
-// (Manager: MANAGER_NAV_ITEMS; Kiểm dịch, Điều phối: thanh bên ops-sidebar).
+// (Manager: MANAGER_NAV_ITEMS; Kiểm dịch, Điều phối: thanh bên ops-sidebar). Kiểm dịch: mục đầu đổi tên theo tiêu đề trang.
 export const STAFF_MENUS: Record<StaffRole, [path: string, label: string][]> = {
   manager: [
     ['/manager', 'Bảng điều khiển'],
@@ -12,7 +12,7 @@ export const STAFF_MENUS: Record<StaffRole, [path: string, label: string][]> = {
     ['/manager/incidents', 'Sự cố & Chi Phí'],
   ],
   specialist: [
-    ['/specialist/document-check', 'Danh mục Kiểm dịch'],
+    ['/specialist/verification', 'Hồ sơ được giao'],
     ['/specialist/trip-papers', 'Chuẩn bị giấy tờ chuyến đi'],
   ],
   coordinator: [
@@ -29,8 +29,8 @@ export const STAFF_MENUS: Record<StaffRole, [path: string, label: string][]> = {
 
 export const HOME_OF: Record<StaffRole, string> = {
   manager: '/manager',
-  specialist: '/specialist/document-check',
-  coordinator: '/coordinator/routing',
+  specialist: '/specialist/verification',
+  coordinator: '/coordinator/assessment',
   driver: '/driver',
   escort: '/escort',
 }

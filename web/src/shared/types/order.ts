@@ -36,7 +36,8 @@ export interface Papers {
 }
 
 export interface Checkpoint { label: string; place: string; time: number; state: 'done' | 'current' | 'next' }
-export interface HealthLog { time: number; temp: string; heart: string; note: string }
+// Nhật ký sức khỏe. horse/status/by: báo cáo của hộ tống (trang Nhật ký sức khỏe ngựa)
+export interface HealthLog { time: number; temp: string; heart: string; note: string; horse?: string; status?: string; by?: string; photo?: string }
 
 export interface Trip {
   plate: string
@@ -96,6 +97,20 @@ export interface TaskTrack {
   reschedule?: { newDate: number; sentAt: number; note: string } // đã đề nghị khách dời ngày, chờ khách phản hồi
 }
 
+// Kết quả xác minh từng giấy của kiểm dịch viên (trang Xác minh hồ sơ). Giấy chưa có trong docs = chưa xác minh.
+export interface DocDecision { decision: 'valid' | 'invalid'; reason: string }
+export interface Verification {
+  docs: Record<string, Partial<Record<DocKey, DocDecision>>> // tên ngựa → giấy → kết luận
+  result?: 'passed' | 'reported'
+  closedAt?: number
+  requestedAt?: number // lúc gửi yêu cầu khách bổ sung
+  requestOriginal?: boolean // yêu cầu nộp bản gốc để đối chiếu
+  customerMessage?: string
+}
+
+// Điều phối đánh giá tuyến không khả thi → trả Manager (trang Phê duyệt)
+export interface Infeasible { note: string; at: number; by: string }
+
 // Kiểm dịch viên báo cáo khi chuẩn bị giấy tờ chuyến đi
 export interface PapersReport { at: number; type: string; items: string[]; note: string }
 
@@ -151,6 +166,9 @@ export interface Order {
   review?: Review
   task?: TaskTrack
   papersReport?: PapersReport
+  verification?: Verification
+  recheckRequest?: { customerReason: string; customerFiles: string[] } // khách chọn phương án D: lý do gửi kèm
+  infeasible?: Infeasible
 }
 
 export const orderTotal = (o: Pick<Order, 'services'>) => o.services.reduce((t, s) => t + s[2], 0)

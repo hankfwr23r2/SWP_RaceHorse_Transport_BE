@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { CHOICE_HOURS, HOUR } from '@shared/config/business-rules'
 import { OPTIONS, type OptionKey } from '@shared/config/documents'
-import { formatDateTime } from '@shared/lib/format'
+import { formatDateTime, formatVND } from '@shared/lib/format'
+import { requoteWithout } from '@shared/lib/pricing'
 import type { StaffMember } from '@shared/services/mock/staff'
 import { suggestStaff } from '@shared/services/staff'
-import type { InspectionReport, Order } from '@shared/types/order'
-import { cx, managerStyles as s } from '../shared/parts'
+import { orderTotal, type InspectionReport, type Order } from '@shared/types/order'
+import { cx, partStyles as s } from '../../../shared/parts'
 
 type Custom = { code: string; label: string; detail: string }
 const customCode = (i: number) => String.fromCharCode('F'.charCodeAt(0) + i) // phương án tự thêm đánh mã sau E
@@ -43,6 +44,7 @@ export function ManagerAction({ order: o, staff, orders, onSave }: { order: Orde
     ? `Hồ sơ của ngựa ${r.horses.join(', ')} có vấn đề không thể khắc phục bằng bổ sung giấy tờ: ${r.type.toLowerCase()}${r.disease ? ` (${r.disease})` : ''}. Vui lòng chọn một trong các phương án dưới đây trong ${CHOICE_HOURS} giờ.`
     : '')
   const [invalid, setInvalid] = useState<string>('')
+  const requote = requoteWithout(o.services, o.horses.length, o.horses.length - r.horses.length)
   const candidates = suggestStaff(staff, 'inspector', orders, [r.inspector])
   const [reviewer, setReviewer] = useState(candidates[0]?.name ?? '')
 
@@ -54,12 +56,17 @@ export function ManagerAction({ order: o, staff, orders, onSave }: { order: Orde
     const customs = custom.map((c, i) => ({ code: customCode(i), label: c.label.trim(), detail: c.detail.trim() }))
     onSave({
       status: 'choose_option',
-      offer: { issue: message.trim(), affected: r.horses, options, custom: customs, sentAt: Date.now(), requoteServices: o.services },
+      offer: { issue: message.trim(), affected: r.horses, options, custom: customs, sentAt: Date.now(), requoteServices: requote },
       report: r, pending: undefined,
     }, `Đã gửi ${options.length + customs.length} phương án cho khách của đơn ${o.id}`)
   }
 
-  const assignRecheck = () => onSave({ status: 'rechecking', stage: 'inspecting', inspector: reviewer, rechecked: true, waitingCustomer: false, pending: undefined },
+  // Người kiểm tra lại xác minh từ đầu: bỏ kết quả xác minh cũ, giữ kết luận cũ và ý kiến của khách để đối chiếu
+  const assignRecheck = () => onSave({
+    status: 'rechecking', stage: 'inspecting', inspector: reviewer, rechecked: true, waitingCustomer: false, pending: undefined,
+    report: r, recheckRequest: { customerReason: p.customerReason ?? '', customerFiles: p.customerFiles ?? [] }, verification: undefined,
+    task: { step: 'inspector', assigneeId: candidates.find(c => c.name === reviewer)!.id, assignedAt: Date.now(), pausedWorkingDays: 0, history: [] },
+  },
     `Đã giao ${o.id} cho ${reviewer} kiểm tra lại`)
 
   const rejectExpired = () => {
@@ -80,7 +87,8 @@ export function ManagerAction({ order: o, staff, orders, onSave }: { order: Orde
             return (
               <label key={k} className={cx(s.optionLine, !!why && s.optionOff)}>
                 <input type="checkbox" disabled={!!why || mandatory} checked={mandatory || (!why && checked[k])} onChange={e => setChecked({ ...checked, [k]: e.target.checked })} />
-                <span><b>{OPTIONS[k].code}.</b> {OPTIONS[k].label}{mandatory && <span className="text-muted"> (luôn có)</span>}{why && <div className={s.optionWhy}><i className="fa-solid fa-lock" /> {why}</div>}</span>
+                <span><b>{OPTIONS[k].code}.</b> {OPTIONS[k].label}{mandatory && <span className="text-muted"> (luôn có)</span>}{why && <div className={s.optionWhy}><i className="fa-solid fa-lock" /> {why}</div>}
+                  {k === 'remove_horse' && !why && <div className="sub-text">Giá mới gửi khách: {formatVND(orderTotal({ services: requote }))} (cũ {formatVND(orderTotal(o))}). Giữ nguyên cước xe, phí tính theo ngựa chia theo số ngựa còn lại.</div>}</span>
               </label>
             )
           })}

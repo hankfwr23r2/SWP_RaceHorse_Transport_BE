@@ -27,7 +27,7 @@ function applySystemRules() {
 }
 
 // Bỏ trường nội bộ trước khi đưa sang app khách (khi có backend, API phía khách tự làm việc này)
-const INTERNAL_KEYS = ['stage', 'inspector', 'coordinator', 'intakeAt', 'hold', 'warning', 'waitingCustomer', 'pending', 'rejectType', 'report', 'rechecked', 'review', 'task', 'papersReport'] as const
+const INTERNAL_KEYS = ['stage', 'inspector', 'coordinator', 'intakeAt', 'hold', 'warning', 'waitingCustomer', 'pending', 'rejectType', 'report', 'rechecked', 'review', 'task', 'papersReport', 'verification', 'recheckRequest', 'infeasible'] as const
 export type CustomerOrderView = Omit<Order, (typeof INTERNAL_KEYS)[number]>
 const toCustomerView = (o: Order): CustomerOrderView => {
   const view = structuredClone(o) as Partial<Order>

@@ -5,6 +5,7 @@ import {
   AVG_SPEED_KMH, BIG_TRUCK_FACTOR, BORDER_HOURS, CARE_FEE_PER_DAY, DRIVE_HOURS_PER_DAY,
   INSURANCE_RATE, KM_TIERS, QUARANTINE_FEE, ROAD_FACTOR, TRIP_OPEN_FEE,
 } from '../config/public-pricing'
+import type { ServiceLine } from '../types/order'
 import { formatVND } from './format'
 
 export function haversineKm(a: GeoPoint, b: GeoPoint) {
@@ -69,4 +70,12 @@ export function estimateFee(from: Place, to: Place, horses: number, value: numbe
   ]
   if (value) rows.push(['Bảo hiểm vận chuyển (gói cơ bản)', `${INSURANCE_RATE.basic * 100}% × giá trị khai báo ${formatVND(value)}`, value * INSURANCE_RATE.basic])
   return { km, gate, hours, days, truckLabel, rows, total: rows.reduce((t, r) => t + r[2], 0) }
+}
+
+// Giá mới khi bỏ ngựa có vấn đề (phương án A, PRD mục 5). Cước xe giữ nguyên vì tính theo xe, không theo ngăn.
+// Các dòng còn lại tính theo ngựa nên chia theo số ngựa còn lại, làm tròn đến nghìn đồng.
+export function requoteWithout(services: ServiceLine[], horses: number, remaining: number): ServiceLine[] {
+  return services.map(([name, detail, amount]) => /vận chuyển đường bộ/i.test(name)
+    ? [name, detail, amount]
+    : [name, detail.replace(/\d+ ngựa/, `${remaining} ngựa`), Math.round(amount * remaining / horses / 1000) * 1000])
 }

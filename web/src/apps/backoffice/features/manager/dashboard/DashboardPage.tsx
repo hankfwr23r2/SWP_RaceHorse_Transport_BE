@@ -5,7 +5,7 @@ import { formatClock, formatDate, formatVND } from '@shared/lib/format'
 import { useStaggerIn } from '@shared/motion/motion'
 import { reportsApi, type TripReport } from '@shared/services/reports'
 import { useLoad } from '@shared/services/useLoad'
-import { managerStyles as m } from '../shared/parts'
+import { partStyles as m } from '../../../shared/parts'
 import { FinanceChart, type MonthPoint } from './FinanceChart'
 import s from './Dashboard.module.css'
 

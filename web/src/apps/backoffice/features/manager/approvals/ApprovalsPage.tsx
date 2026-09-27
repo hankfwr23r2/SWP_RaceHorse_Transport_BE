@@ -11,7 +11,7 @@ import { orderTotal, type Order } from '@shared/types/order'
 import { Modal } from '@shared/ui/Modal'
 import { useToast } from '@shared/ui/toast'
 import { usePagination } from '@shared/ui/usePagination'
-import { InfoItem, SearchBox, Section, Stepper, TripInfo, cx, matches, managerStyles as s } from '../shared/parts'
+import { InfoItem, SearchBox, Section, Stepper, TripInfo, cx, matches, partStyles as s } from '../../../shared/parts'
 
 type ApprovalStatus = 'pending' | 'approved' | 'paid' | 'rejected'
 const TABS: [ApprovalStatus, string][] = [['pending', 'Chờ duyệt'], ['approved', 'Đã duyệt - Chờ thanh toán'], ['paid', 'Đã thanh toán - Giấy tờ'], ['rejected', 'Từ chối']]
@@ -39,6 +39,7 @@ function PapersBadge({ o }: { o: Order }) {
 }
 
 function Banner({ o, st }: { o: Order; st: ApprovalStatus }) {
+  if (st === 'pending' && o.infeasible) return <div className={`alert alert-danger ${s.banner}`}><i className="fa-solid fa-route" /><div><b>Điều phối viên {o.infeasible.by} đánh giá tuyến không khả thi</b> lúc {formatDateTime(o.infeasible.at)}: {o.infeasible.note}<br />Đơn trả về Manager. Chỉ Manager được từ chối đơn.</div></div>
   if (st === 'approved') return <div className={`alert alert-success ${s.banner}`}><i className="fa-solid fa-circle-check" /><div>Đã phê duyệt. Chờ khách hàng thanh toán 100% trước <b>{formatDateTime(paymentDeadline(o.approvedAt!, o.departAt))}</b>.</div></div>
   if (st === 'rejected') return <div className={`alert alert-danger ${s.banner}`}><i className="fa-solid fa-circle-xmark" /><div>Từ chối — <b>{o.rejectType}</b>: {o.reason}</div></div>
   if (st === 'paid') return o.papersReport
@@ -73,8 +74,9 @@ function Papers({ o }: { o: Order }) {
 function ApprovalModal({ order: o, onClose, onSave }: { order: Order; onClose: () => void; onSave: (patch: Partial<Order>, msg: string, type?: 'success' | 'error') => void }) {
   const st = approvalStatus(o)!
   const docs = requiredDocs(!!o.border)
-  const [rejecting, setRejecting] = useState(false)
-  const [rejectType, setRejectType] = useState(REJECT_TYPES[0])
+  // Điều phối đánh giá không khả thi → mở sẵn khung từ chối với lý do tuyến đường
+  const [rejecting, setRejecting] = useState(!!o.infeasible)
+  const [rejectType, setRejectType] = useState(o.infeasible ? REJECT_TYPES[1] : REJECT_TYPES[0])
   const [note, setNote] = useState('')
   const [shake, setShake] = useState(0)
   const r = o.review
@@ -85,7 +87,7 @@ function ApprovalModal({ order: o, onClose, onSave }: { order: Order; onClose: (
     onSave({ status: 'rejected', rejectedStep: 2, rejectedAt: Date.now(), rejectType, reason: note.trim(), stage: undefined }, `Đã từ chối đơn hàng ${o.id}`, 'error')
   }
 
-  const footer = st === 'pending' && !rejecting ? <>
+  const footer = st === 'pending' && !rejecting && !o.infeasible ? <>
     <button className="btn btn-ghost" onClick={() => setRejecting(true)}><i className="fa-solid fa-ban" /> Từ chối</button>
     <button className="btn btn-primary" onClick={approve}><i className="fa-solid fa-check" /> Phê duyệt đơn</button>
   </> : undefined
@@ -177,7 +179,7 @@ export default function ApprovalsPage() {
               <tbody>
                 {page.length ? page.map(o => (
                   <tr key={o.id}>
-                    <td className={s.idCell}>{o.id}{tab === 'paid' && <div style={{ marginTop: 4 }}><PapersBadge o={o} /></div>}</td>
+                    <td className={s.idCell}>{o.id}{tab === 'paid' && <div style={{ marginTop: 4 }}><PapersBadge o={o} /></div>}{tab === 'pending' && o.infeasible && <div style={{ marginTop: 4 }}><span className="badge badge-danger"><i className="fa-solid fa-route" /> Tuyến không khả thi</span></div>}</td>
                     <td className="text-muted">{o.customer}</td>
                     <td>{o.routeShort}{o.border && <div className="sub-text"><i className="fa-solid fa-flag" /> {o.border}</div>}</td>
                     <td className="text-muted">{o.horses.length}</td>

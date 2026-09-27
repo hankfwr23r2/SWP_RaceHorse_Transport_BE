@@ -1,9 +1,9 @@
-// Thành phần dùng chung các trang Manager: thanh bước, mục có số, thông tin chuyến, ngựa & hồ sơ, báo giá.
+// Thành phần dùng chung các trang nội bộ: thanh bước, mục có số, thông tin chuyến, ngựa & hồ sơ, báo giá.
 import type { ReactNode } from 'react'
 import { DOC_LABEL, requiredDocs } from '@shared/config/documents'
 import { formatDate, formatVND } from '@shared/lib/format'
 import { orderTotal, type Order } from '@shared/types/order'
-import s from './Manager.module.css'
+import s from './parts.module.css'
 
 export const cx = (...c: (string | false | undefined | null)[]) => c.filter(Boolean).join(' ')
 
@@ -85,4 +85,4 @@ export function SearchBox({ value, onChange, placeholder }: { value: string; onC
 // Lọc theo chữ trong các trường chính của đơn
 export const matches = (o: Order, q: string) => !q || [o.id, o.customer, o.routeShort, o.border ?? ''].join(' ').toLowerCase().includes(q.toLowerCase())
 
-export { s as managerStyles }
+export { s as partStyles }

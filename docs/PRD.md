@@ -57,6 +57,8 @@ D = ngày khởi hành. "Ngày làm việc" = T2–T6, 08:00–17:00, trừ ngà
    - Yêu cầu khách bổ sung (lỗi sửa được) → đồng hồ hạn xử lý tạm dừng trong lúc chờ khách.
    - Báo cáo vấn đề không khắc phục được → chuyển Manager (xem mục 5).
 4. **Điều phối viên khảo sát và lập lộ trình** (OPS-03 → OPS-05): chia chặng, chọn xe cho từng chặng. Tài xế đi theo xe (mỗi xe một tài xế cố định). Hộ tống được tự gán cho người đang phụ trách ít chặng nhất; có thể đổi tay ở OPS-08.
+   - Khảo sát không khả thi (bắt buộc ghi lý do) → đơn trả về Manager ở trang Phê duyệt; Manager từ chối đơn.
+   - Chốt lộ trình khi mọi chặng đã có xe → đơn chuyển Manager duyệt, kèm xe / tài xế / hộ tống.
 5. **Manager duyệt đơn** (`manager_phe_duyet`) → khách nhận yêu cầu thanh toán.
 6. **Khách thanh toán 100%** trước hạn (xem mục 4). Quá hạn thì đơn tự hủy và chỗ xe được nhả.
 7. **Chuẩn bị giấy tờ** (`thu_tuc`):
@@ -64,8 +66,10 @@ D = ngày khởi hành. "Ngày làm việc" = T2–T6, 08:00–17:00, trừ ngà
    - Kiểm dịch viên xin giấy của cơ quan chức năng (làm ngoài hệ thống), sau đó nhập số giấy, cơ quan cấp, hiệu lực và bản scan.
    - Kiểm dịch viên bàn giao cho Điều phối trước 12:00 D−2. Giấy có thời hạn phải còn hiệu lực đến hết ngày giao dự kiến.
 8. **Vận chuyển:**
-   - Tài xế xác nhận từng mốc.
-   - Hộ tống ghi báo cáo sức khỏe (Bình thường / Mệt nhẹ / Mắc bệnh).
+   - Điều phối xác nhận khởi hành (OPS-08) khi mọi chặng đủ xe, tài xế, hộ tống và khách đã thanh toán. Khách thấy hành trình ngay.
+   - Tài xế xác nhận từng mốc. Mốc cuối (giao ngựa) → đơn Đã giao, bắt đầu 24 giờ nghiệm thu.
+   - Hộ tống ghi báo cáo sức khỏe: thân nhiệt, nhịp tim, tình trạng (Bình thường / Mệt nhẹ / Mắc bệnh). Số đo sớm nhất và mới nhất dùng làm chỉ số lúc nhận / lúc giao trên biên bản nghiệm thu.
+   - Hộ tống báo tình trạng nặng (Mắc bệnh, Căng thẳng nặng, Qua đời) → hệ thống tự tạo sự cố khẩn cấp "Y tế ngựa" cho Điều phối.
    - Điều phối giám sát ở OPS-06.
    - Khi có sự cố, Điều phối ghi nhận ở OPS-04 và đề xuất cách xử lý; Manager duyệt ở `manager_duyet_su_co`.
 9. **Nghiệm thu** (`CUS/acceptance`):
@@ -91,7 +95,7 @@ Nếu mốc theo D rơi vào ngày nghỉ thì lùi về ngày làm việc liề
 ## 5. Ngoại lệ
 
 - **Hồ sơ có vấn đề không khắc phục được:** Manager gửi các phương án, khách chọn trong 48 giờ.
-  - **A.** Bỏ ngựa có vấn đề, báo giá lại (chỉ khi còn ít nhất 1 ngựa không bị ảnh hưởng)
+  - **A.** Bỏ ngựa có vấn đề, báo giá lại (chỉ khi còn ít nhất 1 ngựa không bị ảnh hưởng). Giá mới: **giữ nguyên cước xe** (cước tính theo xe, không theo ngăn); các dòng còn lại (kiểm dịch, chăm sóc, bảo hiểm…) nhân theo tỷ lệ số ngựa còn lại / số ngựa ban đầu, làm tròn đến nghìn đồng. Hệ thống tự tính khi Manager gửi phương án (`requoteWithout` trong `web/src/shared/lib/pricing.ts`).
   - **B.** Thay ngựa khác
   - **C.** Dời ngày khởi hành (chỉ khi bệnh chữa được)
   - **D.** Kiểm tra lại, tối đa 1 lần, do một kiểm dịch viên KHÁC làm lại từ đầu
@@ -143,12 +147,12 @@ Khách chỉ thấy 5 bước: Gửi đơn · Chờ thẩm định · Thanh toá
 
 Prototype HTML/CSS/JS tĩnh, không có backend. Dữ liệu mẫu nằm trong các hằng JS; wizard đặt đơn lưu tạm ở `sessionStorage`. Hằng số thời hạn đang được lặp lại ở nhiều file (`don_cua_toi.js`, `manager_tiep_nhan.js`, `manager_phan_cong.js`, `kiem_dich.js`, `thu_tuc.js`): khi sửa một chỗ thì phải sửa đồng bộ các chỗ còn lại.
 
-**Đang chuyển sang React + TypeScript** trong thư mục `web/` (nhánh `refactor/khiet/code-structure`, thiết kế ở `docs/superpowers/specs/2026-09-26-react-migration-design.md`):
+**Đã chuyển sang React + TypeScript** trong thư mục `web/` (nhánh `refactor/khiet/code-structure`):
 - Có 2 app: `customer` (URL `/`) và `backoffice` (URL `/backoffice`).
-- Hằng số nghiệp vụ gom về `web/src/shared/config/`, hàm tính hạn và tính giá ở `web/src/shared/lib/` (có test đối chiếu với code cũ).
-- Bộ đơn mẫu chung của mọi vai trò nằm ở `web/src/shared/services/mock/orders.ts`.
-- Đã chuyển xong 12 trang khách và 8 trang Manager (gồm đăng nhập nội bộ). Kiểm dịch, Điều phối, Tài xế, Hộ tống vẫn dùng bản HTML.
-- Dữ liệu mẫu đã gộp: đơn của mọi khách, nhân sự, sự cố, lịch sử chuyến dùng chung một kho. Manager thao tác thì khách thấy ngay, ví dụ Manager từ chối đơn thì khách thấy "Bị từ chối". Mã đơn trùng nhau giữa các trang cũ được đánh số lại (1076, 1077, 1078, 1079, 1080).
+- Hằng số nghiệp vụ gom về `web/src/shared/config/`, hàm tính hạn, tính giá, chia chặng ở `web/src/shared/lib/` (có test đối chiếu với code cũ).
+- Đã chuyển xong cả 33 trang: 12 trang khách, 8 trang Manager (gồm đăng nhập nội bộ), 4 trang Kiểm dịch, 7 trang Điều phối, Tài xế, Hộ tống. Bản HTML cũ giữ lại để đối chiếu.
+- Dữ liệu mẫu gộp về một kho dùng chung: đơn (`mock/orders*.ts`), nhân sự xử lý đơn, sự cố, lịch sử chuyến, chuyến của Điều phối (`mock/trips.ts`, mã TR nối sang đơn qua `orderId`), đội xe và người đi theo chuyến (`mock/fleet.ts`). Thao tác của vai trò này thì vai trò khác thấy ngay, ví dụ Tài xế check-in mốc giao ngựa thì khách thấy trang Nghiệm thu.
+- Mã đơn trùng nhau giữa các trang cũ được đánh số lại: 1076–1080 (Manager, Điều phối), 1081–1083 (giấy tờ chuyến đi của Kiểm dịch, gốc 1060, 1057, 1055).
 
 ## 11. Code đang lệch với PRD (cần sửa)
 
@@ -157,7 +161,9 @@ Prototype HTML/CSS/JS tĩnh, không có backend. Dữ liệu mẫu nằm trong c
 3. **Chữ trên trang Cổng khách hàng (`CUS/home_auth.html`) trái quy tắc:** ghi "thẩm định hồ sơ < 24h" và "báo giá trong vòng 24h" (quy tắc: 5 ngày làm việc); ghi "hủy trước 72 giờ để hoàn 100% phí cọc" (quy tắc: bảng hoàn tiền ở mục 7).
 4. **Tuyến KH↔LA:** trang chủ (`home.js`) chặn tuyến không đi qua VN, còn trang đặt chuyến (`create_request.js`) vẫn cho chọn.
 5. **Nút gửi ở bước 4 đặt chuyến** của bản HTML chuyển sang trang Nghiệm thu. Bản React chuyển về "Đơn của tôi" cho khớp luồng ở mục 3.
-6. **Báo giá lại khi khách chọn phương án A (bỏ ngựa):** trang Tiếp nhận của Manager chỉ gửi phương án, không có bước lập giá mới. Nên bảng "giá mới" khách thấy đang bằng giá cũ. Chưa có quy tắc tính lại giá.
+6. **Khách chưa có chỗ nộp lại giấy tờ khi được yêu cầu bổ sung:** Kiểm dịch gửi yêu cầu thì đơn nằm ở "Chờ khách bổ sung", nhưng trang khách (cả bản cũ) không có nút nộp lại, nên đơn không tự quay về Kiểm dịch được.
+7. **Báo cáo giấy tờ chuyến đi chưa có bước Manager xử lý:** Kiểm dịch báo cáo (khách chưa gửi bản gốc, cơ quan chậm cấp giấy…) thì Manager chỉ xem được ở trang Phê duyệt, chưa có thao tác quyết định.
+8. **Tình trạng sức khỏe hộ tống ghi:** code (cả bản cũ) có 6 lựa chọn: Bình thường, Mệt nhẹ, Mắc bệnh, Căng thẳng nặng, Qua đời, Khác. Mục 3 chỉ ghi 3.
 
 ## 12. Câu hỏi mở (chưa chốt)
 
@@ -167,3 +173,4 @@ Prototype HTML/CSS/JS tĩnh, không có backend. Dữ liệu mẫu nằm trong c
    - (3) Giá trọn gói có cộng sẵn khoản dự phòng
 2. **Tuyến ngoài VN:** có nhận nội địa KH→KH, LA→LA và tuyến KH↔LA không? Code hiện cho phép chọn các tuyến này và xếp tất cả vào loại "quốc tế".
 3. **Công thức giá chuẩn:** tính theo km, theo loại xe, hay theo bảng tuyến cố định?
+4. **Khởi hành khi Điều phối chưa nhận giấy tờ:** trang Phân công hiện đang chỉ cảnh báo "Chưa nhận giấy tờ từ kiểm dịch viên", vẫn cho khởi hành nếu khách đã thanh toán. Có chặn khởi hành cho tới khi Kiểm dịch bàn giao giấy không?

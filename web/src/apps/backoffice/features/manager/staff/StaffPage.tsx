@@ -11,7 +11,7 @@ import { staffApi } from '@shared/services/staff'
 import type { Order } from '@shared/types/order'
 import { Modal } from '@shared/ui/Modal'
 import { useToast } from '@shared/ui/toast'
-import { cx, managerStyles as m } from '../shared/parts'
+import { cx, partStyles as m } from '../../../shared/parts'
 import { ROLE_LABEL, STEP_LABEL, autoTransfer, deadlineOf, specialExtensionOption, stateOf, tasksOf, type Task } from './assignment'
 import s from './Staff.module.css'
 

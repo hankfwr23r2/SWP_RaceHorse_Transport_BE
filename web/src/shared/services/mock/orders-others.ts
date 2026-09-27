@@ -4,7 +4,8 @@
 // Ngày tính tương đối theo ngày soạn dữ liệu cũ (24/09/2026 = hôm nay).
 import { DAY, HOUR } from '../../config/business-rules'
 import { atTime, daysFromToday, workdaysAgo } from '../../lib/dates'
-import type { Horse, Order, ServiceLine } from '../../types/order'
+import { DOCS_CROSS_BORDER, DOCS_DOMESTIC, type DocKey } from '../../config/documents'
+import type { DocDecision, Horse, Order, ServiceLine } from '../../types/order'
 
 const H = (name: string, breed: string, sex: string, chip: string): Horse => ({ name, breed, sex, chip })
 // Giá ở trang Tiếp nhận chỉ có [hạng mục, số tiền]
@@ -34,6 +35,14 @@ const loiDien = H('Lôi Điện', 'Anglo-Arab', 'Thiến', 'VN-503356')
 const kimO = H('Kim Ô', 'Anglo-Arab', 'Thiến', 'VN-771089')
 const cuuLong = H('Cửu Long', 'Thoroughbred', 'Đực', 'VN-812004')
 const ngocHoang = H('Ngọc Hoàng', 'Arabian', 'Đực', 'VN-902214')
+const tanVien = H('Tản Viên', 'Thoroughbred', 'Đực', 'VN-330145')
+const sonTinh = H('Sơn Tinh', 'Thoroughbred', 'Thiến', 'VN-330152')
+const myNuong = H('Mỵ Nương', 'Arabian', 'Cái', 'VN-330168')
+const mekongWind = H('Mekong Wind', 'Arabian', 'Cái', 'LA-118903')
+
+const valid: DocDecision = { decision: 'valid', reason: '' }
+// Đã nhận bản gốc mọi giấy khách nộp
+const received = (keys: DocKey[], at: number) => Object.fromEntries(keys.map(k => [k, at]))
 
 export function seedOtherOrders(): Order[] {
   const now = Date.now()
@@ -193,7 +202,7 @@ export function seedOtherOrders(): Order[] {
       routeShort: 'Hà Nội → Đà Nẵng', border: null, distance: '770 km', duration: '2 ngày', horses: [thangLong, hoGuom], customerNote: '', hold: '1 xe chuyên dụng 2 ngăn',
       services: items([['Cước vận chuyển đường bộ', 18_000_000], ['Phí kiểm dịch nội địa', 1_800_000], ['Chăm sóc ngựa dọc đường', 2_600_000], ['Bảo hiểm vận chuyển', 1_800_000]]),
       status: 'choose_option', stage: 'inspecting', intakeAt: atTime(-5, '09:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Phạm Tâm',
-      offer: { issue: 'Đã yêu cầu bổ sung 2 lần, giấy tiêm phòng của Thăng Long vẫn thiếu mũi cúm ngựa bắt buộc.', affected: ['Thăng Long'], options: ['remove_horse', 'replace_horse', 'recheck', 'cancel'], sentAt: now - 50 * HOUR, requoteServices: [] },
+      offer: { issue: 'Đã yêu cầu bổ sung 2 lần, giấy tiêm phòng của Thăng Long vẫn thiếu mũi cúm ngựa bắt buộc.', affected: ['Thăng Long'], options: ['remove_horse', 'replace_horse', 'recheck', 'cancel'], sentAt: now - 50 * HOUR, requoteServices: items([['Cước vận chuyển đường bộ', 18_000_000], ['Phí kiểm dịch nội địa', 900_000], ['Chăm sóc ngựa dọc đường', 1_300_000], ['Bảo hiểm vận chuyển', 900_000]]) },
       pending: { kind: 'expired', at: now - 50 * HOUR + 48 * HOUR, report: { inspector: 'Phạm Văn Hưng', horses: ['Thăng Long'], type: 'Đã yêu cầu bổ sung nhưng giấy tờ vẫn không đạt', disease: '', curable: null, note: 'Đã yêu cầu bổ sung 2 lần, giấy tiêm phòng của Thăng Long vẫn thiếu mũi cúm ngựa bắt buộc.', evidence: ['Thăng Long · Giấy chứng nhận tiêm phòng'] } },
     },
 
@@ -215,7 +224,7 @@ export function seedOtherOrders(): Order[] {
       services: items([['Cước vận chuyển đường bộ', 6_500_000], ['Phí kiểm dịch nội địa', 900_000], ['Chăm sóc ngựa dọc đường', 500_000], ['Bảo hiểm vận chuyển', 500_000]]),
       status: 'rejected', rejectedStep: 1, inspector: 'Phạm Văn Hưng', rejectedAt: now - 3 * DAY,
       rejectType: 'Khách không chọn phương án trong 48 giờ', reason: 'Đã gửi phương án thay ngựa / kiểm tra lại / hủy đơn, khách không phản hồi.',
-      report: { inspector: 'Phạm Văn Hưng', horses: ['Ngựa kéo số 3'], type: 'Đã yêu cầu bổ sung nhưng giấy tờ vẫn không đạt', note: 'Khách không cung cấp được giấy tờ chứng minh là ngựa đua; hộ chiếu ghi ngựa kéo xe du lịch.' },
+      report: { inspector: 'Phạm Văn Hưng', horses: ['Ngựa kéo số 3'], type: 'Đã yêu cầu bổ sung nhưng giấy tờ vẫn không đạt', note: 'Khách không cung cấp được giấy tờ chứng minh là ngựa đua; hộ chiếu ghi ngựa kéo xe du lịch.', evidence: ['Ngựa kéo số 3 · Hộ chiếu ngựa / Microchip'] },
     },
 
     // ===== Trang Phê duyệt: chờ duyệt =====
@@ -270,7 +279,7 @@ export function seedOtherOrders(): Order[] {
       ...ok('Trang trại Ba Vì'), id: 'EQ-2026-1036', submittedAt: atTime(-8, '09:00'), departAt: daysFromToday(8),
       from: 'Trang trại Ba Vì (Hà Nội, VN)', to: 'Trường đua Thiên Mã (Sóc Sơn, Hà Nội, VN)',
       routeShort: 'Ba Vì → Sóc Sơn (Hà Nội)', border: null, distance: '80 km', duration: '~2 giờ',
-      horses: [H('Tản Viên', 'Thoroughbred', 'Đực', 'VN-330145'), H('Sơn Tinh', 'Thoroughbred', 'Thiến', 'VN-330152'), H('Mỵ Nương', 'Arabian', 'Cái', 'VN-330168')],
+      horses: [tanVien, sonTinh, myNuong],
       stops: ['Trang trại Ba Vì — nhận ngựa', 'Trường đua Thiên Mã (Sóc Sơn) — giao ngựa'],
       services: withFreight(std('4 ngăn', '80 km', ['Kiểm dịch vận chuyển nội địa', 'Cấp giấy chứng nhận kiểm dịch cho 3 ngựa', 1_200_000], [CARE_FULL, 600_000], 700_000), 5_000_000),
       status: 'processing', stage: 'approval', inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh', vehicle: 'Xe chuyên dụng 4 ngăn',
@@ -321,6 +330,22 @@ export function seedOtherOrders(): Order[] {
       services: withFreight(std('4 ngăn', '960 km', ['Kiểm dịch vận chuyển nội địa', 'Cấp giấy chứng nhận kiểm dịch cho 4 ngựa', 3_000_000], [CARE_FULL, 5_000_000], 3_000_000), 33_000_000),
       status: 'in_transit', approvedAt: atTime(-10, '09:00'), paidAt: atTime(-9, '10:00'), inspector: 'Nguyễn Thị Thu', coordinator: 'Trần Minh', vehicle: 'Xe chuyên dụng 4 ngăn',
       review: { inspectNote: 'Vận chuyển nội địa, giấy tờ đầy đủ.', vehicle: '30A-55678 (xe chuyên dụng 4 ngăn)', driver: 'Lê Văn C', grooms: 'Võ Thị Lan' },
+
+      trip: {
+        plate: '30A-55678', eta: atTime(0, '17:00'), updatedAt: atTime(0, '07:10'),
+        contacts: [['Tài xế', 'Lê Văn C', '0901 555 666'], ['NV chăm sóc', 'Võ Thị Lan', '0908 333 444']],
+        checkpoints: [
+          { label: 'Nhận ngựa lên xe, khởi hành', place: 'Trường đua Phú Thọ (TP.HCM)', time: atTime(-1, '05:30'), state: 'done' },
+          { label: 'Nghỉ đêm', place: 'Trạm nghỉ Tuy Hòa (Phú Yên)', time: atTime(-1, '18:40'), state: 'done' },
+          { label: 'Rời trạm nghỉ, đi tiếp', place: 'Trạm nghỉ Tuy Hòa (Phú Yên)', time: atTime(0, '07:10'), state: 'current' },
+          { label: 'Giao ngựa', place: 'Trường đua Sông Hàn (Đà Nẵng)', time: atTime(0, '17:00'), state: 'next' },
+        ],
+        health: [
+          { time: atTime(0, '06:30'), temp: '38.7°C', heart: '46 bpm', note: 'Tuyết Sơn có dấu hiệu stress nhiệt, đã cho uống điện giải', horse: 'Tuyết Sơn', status: 'Mệt nhẹ', by: 'Võ Thị Lan' },
+          { time: atTime(-1, '19:00'), temp: '37.8°C', heart: '38 bpm', note: 'Cả 4 con ăn uống bình thường tại trạm nghỉ', status: 'Bình thường', by: 'Võ Thị Lan' },
+          { time: atTime(-1, '05:00'), temp: '37.6°C', heart: '36 bpm', note: 'Kiểm tra trước khi lên xe: đạt', status: 'Bình thường', by: 'Võ Thị Lan' },
+        ],
+      },
     },
     {
       ...ok('CLB Ngựa Đức Hòa'), id: 'EQ-2026-1080', submittedAt: atTime(-18, '09:00'), departAt: daysFromToday(0),
@@ -331,6 +356,20 @@ export function seedOtherOrders(): Order[] {
       services: withFreight(std('2 ngăn', '730 km', ['Kiểm dịch & thủ tục xuất cảnh', 'Trọn gói: xét nghiệm, chứng nhận, thông quan Cầu Treo – Nam Phao', 7_600_000], [CARE_FULL, 2_600_000], 1_800_000), 21_000_000),
       status: 'in_transit', approvedAt: atTime(-8, '09:00'), paidAt: atTime(-7, '10:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Phạm Tâm', vehicle: 'Xe chuyên dụng 2 ngăn',
       review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '29H-12345 (xe chuyên dụng 2 ngăn)', driver: 'Nguyễn Văn A', grooms: 'Lê Thị C' },
+
+      trip: {
+        plate: '29H-12345', eta: atTime(1, '16:00'), updatedAt: atTime(0, '06:00'),
+        contacts: [['Tài xế', 'Nguyễn Văn A', '0901 111 222'], ['NV chăm sóc', 'Lê Thị C', '0902 111 222']],
+        checkpoints: [
+          { label: 'Nhận ngựa lên xe, khởi hành', place: 'Hà Nội (Trang trại CLB)', time: atTime(0, '06:00'), state: 'done' },
+          { label: 'Thông quan', place: 'Cửa khẩu Cầu Treo (Hà Tĩnh)', time: atTime(0, '15:00'), state: 'current' },
+          { label: 'Kiểm tra thú y', place: 'Cửa khẩu Nam Phao (Bolikhamxay)', time: atTime(1, '08:00'), state: 'next' },
+          { label: 'Giao ngựa', place: 'Vientiane Turf Club', time: atTime(1, '16:00'), state: 'next' },
+        ],
+        health: [
+          { time: atTime(0, '05:30'), temp: '37.7°C', heart: '37 bpm', note: 'Kiểm tra trước khi lên xe: đạt', status: 'Bình thường', by: 'Lê Thị C' },
+        ],
+      },
     },
 
     // ===== Trang Phê duyệt: đã thanh toán, kiểm dịch viên chuẩn bị giấy tờ =====
@@ -371,6 +410,123 @@ export function seedOtherOrders(): Order[] {
         },
         handedAt: atTime(-1, '10:00'),
       },
+    },
+    // ===== Kiểm dịch viên Phạm Văn Hưng: xác minh hồ sơ (gốc: Specialist/kiem_dich.js) =====
+    {
+      ...ok('Trang trại Tây Ninh Stud'), id: 'EQ-2026-1065', submittedAt: atTime(-1, '10:00'), departAt: daysFromToday(12),
+      from: 'Trang trại Tây Ninh Stud (Tây Ninh, VN)', to: 'Trường đua Phnom Penh Royal Turf (Phnom Penh, KH)',
+      routeShort: 'Tây Ninh → Phnom Penh (KH)', border: 'Mộc Bài – Bavet', distance: '230 km', duration: '~6 giờ', horses: [baDen, vamCo],
+      customerNote: 'Ngựa Vàm Cỏ nhạy cảm tiếng ồn.', hold: '1 xe chuyên dụng 2 ngăn',
+      services: withFreight(std('2 ngăn', '230 km', ['Kiểm dịch & thủ tục xuất cảnh', 'Trọn gói cho 2 ngựa: xét nghiệm, chứng nhận, thông quan Mộc Bài – Bavet', 7_000_000], [CARE_FULL, 1_600_000], 1_600_000), 12_500_000),
+      status: 'processing', stage: 'inspecting', intakeAt: workdaysAgo(0, 9), inspector: 'Phạm Văn Hưng', coordinator: 'Phạm Tâm',
+      task: { step: 'inspector', assigneeId: 'KD-01', assignedAt: workdaysAgo(0, 9), pausedWorkingDays: 0, history: [] },
+    },
+    {
+      ...ok('CLB Ngựa Phú Thọ'), id: 'EQ-2026-1066', submittedAt: atTime(-2, '11:00'), departAt: daysFromToday(9),
+      from: 'Trường đua Phú Thọ (TP.HCM, VN)', to: 'Trường đua Angkor (Siem Reap, KH)',
+      routeShort: 'TP.HCM → Siem Reap (KH)', border: 'Mộc Bài – Bavet', distance: '550 km', duration: '2 ngày', horses: [xichTho], hold: '1 xe chuyên dụng 2 ngăn',
+      services: withFreight(std('2 ngăn', '550 km', ['Kiểm dịch & thủ tục xuất cảnh', 'Trọn gói: xét nghiệm, chứng nhận, thông quan Mộc Bài – Bavet', 4_800_000], [CARE_FULL, 1_200_000], 1_000_000), 15_000_000),
+      status: 'processing', stage: 'inspecting', intakeAt: workdaysAgo(1, 14), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh',
+      task: { step: 'inspector', assigneeId: 'KD-01', assignedAt: workdaysAgo(1, 14), pausedWorkingDays: 0, history: [] },
+    },
+    {
+      ...ok('Trang trại Ba Vì'), id: 'EQ-2026-1067', submittedAt: atTime(-2, '08:30'), departAt: daysFromToday(11),
+      from: 'Trang trại Ba Vì (Hà Nội, VN)', to: 'Trường đua Thiên Mã (Sóc Sơn, Hà Nội, VN)',
+      routeShort: 'Ba Vì → Sóc Sơn (Hà Nội)', border: null, distance: '80 km', duration: '~2 giờ', horses: [tanVien, sonTinh, myNuong], hold: '1 xe chuyên dụng 4 ngăn',
+      services: withFreight(std('4 ngăn', '80 km', ['Kiểm dịch vận chuyển nội địa', 'Cấp giấy chứng nhận kiểm dịch cho 3 ngựa', 1_200_000], [CARE_FULL, 600_000], 700_000), 5_000_000),
+      status: 'processing', stage: 'inspecting', intakeAt: workdaysAgo(1, 10), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh',
+      task: { step: 'inspector', assigneeId: 'KD-01', assignedAt: workdaysAgo(1, 10), pausedWorkingDays: 0, history: [] },
+      verification: { docs: {
+        'Tản Viên': { passport: valid, vaccine: valid, ownership: valid },
+        'Sơn Tinh': { passport: { decision: 'invalid', reason: 'Microchip trên hộ chiếu là VN-330125, không trùng microchip khai báo VN-330152' } },
+      } },
+    },
+    {
+      ...ok('Savan Horse Club'), id: 'EQ-2026-1068', submittedAt: atTime(-4, '09:00'), departAt: daysFromToday(14),
+      from: 'Trường đua Savannakhet (Savannakhet, LA)', to: 'Trường đua Sông Hàn (Đà Nẵng, VN)',
+      routeShort: 'Savannakhet (LA) → Đà Nẵng', border: 'Densavanh – Lao Bảo', distance: '500 km', duration: '~11 giờ', horses: [mekongWind], hold: '1 xe chuyên dụng 2 ngăn',
+      services: withFreight(std('2 ngăn', '500 km', ['Kiểm dịch & thủ tục nhập cảnh', 'Trọn gói: xét nghiệm, chứng nhận, thông quan Densavanh – Lao Bảo', 4_800_000], [CARE_FULL, 1_800_000], 1_200_000), 14_000_000),
+      status: 'processing', stage: 'inspecting', intakeAt: workdaysAgo(2, 9), inspector: 'Phạm Văn Hưng', coordinator: 'Phạm Tâm', waitingCustomer: true,
+      task: { step: 'inspector', assigneeId: 'KD-01', assignedAt: workdaysAgo(2, 9), pausedSince: workdaysAgo(1, 15), pausedWorkingDays: 0, history: [] },
+      verification: {
+        docs: { 'Mekong Wind': { passport: valid, vaccine: { decision: 'invalid', reason: 'Ảnh chụp mờ, không đọc được ngày tiêm' }, lab: valid, import_permit: valid, ownership: valid } },
+        requestedAt: workdaysAgo(1, 15), customerMessage: 'Vui lòng chụp lại rõ trang có dấu và ngày tiêm.',
+      },
+    },
+    {
+      // Hồ sơ hợp lệ, đã chuyển Điều phối → trang Đánh giá khả thi
+      ...ok('Đại Nam Racing'), id: 'EQ-2026-1062', submittedAt: atTime(-5, '10:00'), departAt: daysFromToday(10),
+      from: 'Trường đua Đại Nam (Bình Dương, VN)', to: 'Trang trại Mekong (Cần Thơ, VN)',
+      routeShort: 'Bình Dương → Cần Thơ', border: null, distance: '190 km', duration: '~4.5 giờ', horses: [hoaTien], hold: '1 xe chuyên dụng 2 ngăn',
+      services: withFreight(std('2 ngăn', '190 km', ['Kiểm dịch vận chuyển nội địa', 'Cấp giấy chứng nhận kiểm dịch cho 1 ngựa', 900_000], [CARE_FULL, 400_000], 500_000), 6_000_000),
+      status: 'processing', stage: 'routing', intakeAt: workdaysAgo(3, 9), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh',
+      verification: { docs: { 'Hỏa Tiễn': { passport: valid, vaccine: valid, ownership: valid } }, result: 'passed', closedAt: workdaysAgo(1, 16) },
+      task: { step: 'coordinator', assigneeId: 'DP-01', assignedAt: workdaysAgo(1, 16), pausedWorkingDays: 0, history: [] },
+    },
+    {
+      // Khách chọn kiểm tra lại (phương án D), Manager giao cho Hưng xác minh lại từ đầu
+      ...ok('Hoàng Gia Stud'), id: 'EQ-2026-1073', submittedAt: atTime(-6, '09:00'), departAt: daysFromToday(13),
+      from: 'Trường đua Thiên Mã (Sóc Sơn, Hà Nội, VN)', to: 'Trường đua Luang Prabang (Luang Prabang, LA)',
+      routeShort: 'Hà Nội → Luang Prabang (LA)', border: 'Tây Trang – Sop Hun', distance: '620 km', duration: '2 ngày', horses: [ngocHoang], hold: '1 xe chuyên dụng 2 ngăn',
+      services: withFreight(std('2 ngăn', '620 km', ['Kiểm dịch & thủ tục xuất cảnh', 'Trọn gói: xét nghiệm, chứng nhận, thông quan Tây Trang – Sop Hun', 4_200_000], [CARE_FULL, 1_800_000], 1_100_000), 19_000_000),
+      status: 'rechecking', recheckAt: atTime(0, '09:30'), stage: 'inspecting', intakeAt: workdaysAgo(4, 9), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh', rechecked: true,
+      task: { step: 'inspector', assigneeId: 'KD-01', assignedAt: workdaysAgo(0, 10), pausedWorkingDays: 0, history: [] },
+      report: { inspector: 'Nguyễn Thị Thu', horses: ['Ngọc Hoàng'], type: 'Xét nghiệm dương tính bệnh truyền nhiễm', disease: 'EIA', curable: false, note: 'Phiếu xét nghiệm ghi EIA dương tính.', evidence: ['Ngọc Hoàng · Kết quả xét nghiệm EIA & cúm ngựa'] },
+      recheckRequest: { customerReason: 'Phiếu xét nghiệm cũ bị nhầm mẫu. Trại đã xét nghiệm lại tại phòng xét nghiệm khác, kết quả âm tính (đính kèm).', customerFiles: ['Xet_nghiem_lai_Ngoc_Hoang.pdf'] },
+    },
+
+    // ===== Kiểm dịch viên Phạm Văn Hưng: chuẩn bị giấy tờ chuyến đi (gốc: Specialist/thu_tuc.js; đánh số lại mã trùng: 1060 → 1081, 1057 → 1082, 1055 → 1083) =====
+    {
+      ...ok('Trang trại Ba Vì'), id: 'EQ-2026-1081', submittedAt: atTime(-12, '09:00'), departAt: daysFromToday(5),
+      from: 'Trang trại Ba Vì (Hà Nội, VN)', to: 'Trường đua Sông Hàn (Đà Nẵng, VN)',
+      routeShort: 'Ba Vì → Đà Nẵng', border: null, distance: '800 km', duration: '~16 giờ', horses: [tanVien],
+      stops: ['Trang trại Ba Vì — nhận ngựa', 'Trạm nghỉ Vinh (Nghệ An) — dừng nghỉ', 'Trường đua Sông Hàn (Đà Nẵng) — giao ngựa'],
+      services: withFreight(std('2 ngăn', '800 km', ['Kiểm dịch vận chuyển nội địa', 'Cấp giấy chứng nhận kiểm dịch cho 1 ngựa', 900_000], [CARE_FULL, 1_300_000], 900_000), 17_000_000),
+      status: 'paid', approvedAt: atTime(-3, '09:00'), paidAt: atTime(-2, '15:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh', vehicle: 'Xe chuyên dụng 2 ngăn',
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '60C-222.10 (xe chuyên dụng 2 ngăn)', driver: 'Phan Thanh Hải', grooms: 'Huỳnh Thị Mai' },
+      papers: { originals: { 'Tản Viên': received(DOCS_DOMESTIC, atTime(-1, '09:00')) }, procedures: {} },
+    },
+    {
+      ...ok('Savan Horse Club'), id: 'EQ-2026-1082', submittedAt: atTime(-15, '09:00'), departAt: daysFromToday(7),
+      from: 'Trường đua Savannakhet (Savannakhet, LA)', to: 'Trường đua Sông Hàn (Đà Nẵng, VN)',
+      routeShort: 'Savannakhet (LA) → Đà Nẵng', border: 'Densavanh – Lao Bảo', distance: '500 km', duration: '2 ngày', horses: [mekongWind],
+      stops: ['Trường đua Savannakhet — nhận ngựa', 'Cửa khẩu Densavanh (Savannakhet) — thông quan', 'Cửa khẩu Lao Bảo (Quảng Trị) — kiểm tra thú y', 'Trường đua Sông Hàn (Đà Nẵng) — giao ngựa'],
+      services: withFreight(std('2 ngăn', '500 km', ['Kiểm dịch & thủ tục nhập cảnh', 'Trọn gói: xét nghiệm, chứng nhận, thông quan Densavanh – Lao Bảo', 4_800_000], [CARE_FULL, 1_800_000], 1_200_000), 14_000_000),
+      status: 'paid', approvedAt: atTime(-6, '09:00'), paidAt: atTime(-5, '09:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Phạm Tâm', vehicle: 'Xe chuyên dụng 2 ngăn',
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '43C-222.11 (xe chuyên dụng 2 ngăn)', driver: 'Lê Minh Tuấn', grooms: 'Huỳnh Thị Mai' },
+      papers: {
+        originals: { 'Mekong Wind': received(DOCS_CROSS_BORDER, atTime(-4, '09:00')) },
+        procedures: {
+          quarantine_border: { number: 'KD-NK-2026/0388', agency: 'Cơ quan Thú y vùng III', issuedAt: daysFromToday(-1), validUntil: daysFromToday(8), file: 'GCN_kiem_dich_NK_EQ-2026-1082.pdf' },
+          customs: { number: '305112448720', agency: 'Chi cục Hải quan cửa khẩu Lao Bảo', issuedAt: daysFromToday(-1), file: 'To_khai_HQ_EQ-2026-1082.pdf' },
+        },
+      },
+    },
+    {
+      ...ok('CLB Ngựa Phú Thọ'), id: 'EQ-2026-1083', submittedAt: atTime(-16, '09:00'), departAt: daysFromToday(4),
+      from: 'Trường đua Phú Thọ (TP.HCM, VN)', to: 'Trường đua Angkor (Siem Reap, KH)',
+      routeShort: 'TP.HCM → Siem Reap (KH)', border: 'Mộc Bài – Bavet', distance: '550 km', duration: '~12 giờ', horses: [xichTho],
+      stops: ['Trường đua Phú Thọ (TP.HCM) — nhận ngựa', 'Cửa khẩu Mộc Bài (Tây Ninh) — thông quan', 'Cửa khẩu Bavet (Svay Rieng) — kiểm tra thú y', 'Trường đua Angkor — giao ngựa'],
+      services: withFreight(std('2 ngăn', '550 km', ['Kiểm dịch & thủ tục xuất cảnh', 'Trọn gói: xét nghiệm, chứng nhận, thông quan Mộc Bài – Bavet', 4_800_000], [CARE_FULL, 1_200_000], 1_000_000), 15_000_000),
+      status: 'paid', approvedAt: atTime(-7, '09:00'), paidAt: atTime(-6, '11:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh', vehicle: 'Xe chuyên dụng 2 ngăn',
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '61C-345.67 (xe chuyên dụng 2 ngăn)', driver: 'Võ Thanh Sơn', grooms: 'Đỗ Văn Nam' },
+      papers: {
+        originals: { 'Xích Thố': received(DOCS_CROSS_BORDER, atTime(-5, '09:00')) },
+        procedures: {
+          quarantine_border: { number: 'KD-XK-2026/0405', agency: 'Cơ quan Thú y vùng VI', issuedAt: daysFromToday(-2), validUntil: daysFromToday(10), file: 'GCN_kiem_dich_XK_EQ-2026-1083.pdf' },
+          customs: { number: '305112431150', agency: 'Chi cục Hải quan cửa khẩu Mộc Bài', issuedAt: daysFromToday(-1), file: 'To_khai_HQ_EQ-2026-1083.pdf' },
+        },
+      },
+    },
+    {
+      ...ok('Đại Nam Racing'), id: 'EQ-2026-1054', submittedAt: atTime(-17, '09:00'), departAt: daysFromToday(1),
+      from: 'Trường đua Đại Nam (Bình Dương, VN)', to: 'Trang trại Mekong (Cần Thơ, VN)',
+      routeShort: 'Bình Dương → Cần Thơ', border: null, distance: '190 km', duration: '~4.5 giờ', horses: [hoaTien],
+      stops: ['Trường đua Đại Nam (Bình Dương) — nhận ngựa', 'Trang trại Mekong (Cần Thơ) — giao ngựa'],
+      services: withFreight(std('2 ngăn', '190 km', ['Kiểm dịch vận chuyển nội địa', 'Cấp giấy chứng nhận kiểm dịch cho 1 ngựa', 900_000], [CARE_FULL, 400_000], 500_000), 6_000_000),
+      status: 'paid', approvedAt: atTime(-8, '09:00'), paidAt: atTime(-7, '09:00'), inspector: 'Phạm Văn Hưng', coordinator: 'Trần Minh', vehicle: 'Xe chuyên dụng 2 ngăn',
+      review: { inspectNote: 'Giấy tờ hợp lệ.', vehicle: '51C-98765 (xe thùng tiêu chuẩn)', driver: 'Trần Văn B', grooms: 'Lê Thị C' },
+      papers: { originals: { 'Hỏa Tiễn': received(DOCS_DOMESTIC, atTime(-6, '09:00')) }, procedures: {} },
     },
   ]
 }
