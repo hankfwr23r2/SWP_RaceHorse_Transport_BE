@@ -70,7 +70,7 @@ export default function Step1RoutePage() {
             <CountrySelect id="origin_country" value={originCountry} onChange={c => { setOriginCountry(c); setOriginLocation('') }} />
           </div>
           <div className="form-group">
-            <label htmlFor="origin_location" className="required">Điểm đón / Kho xuất phát</label>
+            <label htmlFor="origin_location" className="required">Điểm đón</label>
             <LocationSelect id="origin_location" country={originCountry} value={originLocation} onChange={setOriginLocation} />
           </div>
           <div className="form-group">
@@ -78,7 +78,7 @@ export default function Step1RoutePage() {
             <CountrySelect id="dest_country" value={destCountry} onChange={c => { setDestCountry(c); setDestLocation('') }} />
           </div>
           <div className="form-group">
-            <label htmlFor="dest_location" className="required">Điểm đến / Kho đích</label>
+            <label htmlFor="dest_location" className="required">Điểm đến</label>
             <LocationSelect id="dest_location" country={destCountry} value={destLocation} onChange={setDestLocation} />
           </div>
         </div>

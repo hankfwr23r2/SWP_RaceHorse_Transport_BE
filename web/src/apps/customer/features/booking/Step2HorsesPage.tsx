@@ -7,8 +7,6 @@ import s from './Booking.module.css'
 
 const BREEDS: [string, string][] = [['thoroughbred', 'Thoroughbred (Anh)'], ['arabian', 'Arabian (Ả Rập)'], ['quarter', 'Quarter Horse'], ['warmblood', 'Warmblood'], ['appaloosa', 'Appaloosa'], ['other', 'Khác']]
 const GENDERS: [string, string][] = [['stallion', 'Đực (Stallion)'], ['mare', 'Cái (Mare)'], ['gelding', 'Thiến (Gelding)']]
-const COLORS: [string, string][] = [['bay', 'Nâu đỏ (Bay)'], ['chestnut', 'Hạt dẻ (Chestnut)'], ['black', 'Đen tuyền (Black)'], ['grey', 'Xám tro (Grey)'], ['white', 'Bạch mã (White)'], ['palomino', 'Vàng kim (Palomino)'], ['pinto', 'Loang đốm (Pinto)']]
-
 const blankHorse = (id: number): DraftHorse => ({ id, name: '', microchip: '', breed: '', breedValue: '', gender: '', genderValue: '', age: '', weight: '', color: '', colorValue: '', marks: '', completed: false })
 const isComplete = (h: DraftHorse) => !!(h.name && h.microchip && h.breedValue && h.genderValue && h.weight && h.colorValue)
 
@@ -74,7 +72,7 @@ export default function Step2HorsesPage() {
             <div className="form-group"><label>Tuổi (Năm)</label><input className="form-control" type="number" min={1} max={30} placeholder="Tuổi" value={horse.age} onChange={e => edit({ age: e.target.value })} /></div>
             <div className="form-group"><label className="required">Trọng lượng (kg)</label><input className="form-control" type="number" placeholder="kg" value={horse.weight} onChange={e => edit({ weight: e.target.value })} /></div>
             <div className="form-group"><label className="required">Màu sắc lông chính</label>
-              <select className="form-control" value={horse.colorValue} onChange={e => pick(COLORS, 'color')(e.target.value)}><option value="">— Chọn —</option>{COLORS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+              <input className="form-control" placeholder="VD: Nâu đỏ (Bay)" value={horse.color} onChange={e => edit({ color: e.target.value, colorValue: e.target.value })} /></div>
             <div className="form-group"><label>Đặc điểm dị biệt nhận dạng (nếu có)</label><input className="form-control" placeholder="VD: Vệt trắng chữ sao ở trán, đốm chân sau bên phải" value={horse.marks} onChange={e => edit({ marks: e.target.value })} /></div>
           </div>
           <div className="form-group">
