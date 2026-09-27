@@ -22,11 +22,13 @@ function pointsOf(o: Order): Point[] {
 
 function vitalsOf(o: Order) {
   if (o.trip) {
-    const last = o.trip.health[0]
-    return { heart: last.heart.replace(' bpm', ''), temp: last.temp.replace('°C', ''), carer: o.trip.contacts.find(c => c[0] === 'NV chăm sóc')?.[1] }
+    // Số đo mới nhất có giá trị (hộ tống không đo nhịp tim; nhật ký có thể trống)
+    const latest = (k: 'temp' | 'heart') => o.trip!.health.find(h => !Number.isNaN(parseFloat(h[k])))?.[k]
+    return { heart: latest('heart')?.replace(' bpm', '') ?? '—', temp: latest('temp')?.replace('°C', '') ?? '—', carer: o.trip.contacts.find(c => c[0] === 'NV chăm sóc')?.[1] }
   }
   const d = o.handover!.delivery
-  return { heart: String(d.heart), temp: String(d.temp), carer: o.handover!.groom }
+  const shown = (v: number | null) => (v == null || Number.isNaN(v) ? '—' : String(v))
+  return { heart: shown(d.heart), temp: shown(d.temp), carer: o.handover!.groom }
 }
 
 export default function TrackingPage() {

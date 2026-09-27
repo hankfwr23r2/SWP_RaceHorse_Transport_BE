@@ -7,7 +7,6 @@ import { ROLE_LABEL, type StaffRole } from '@shared/types/role'
 import { AppHeader, appHeaderStyles as h } from '@shared/ui/AppHeader'
 import { TranslateToggle } from '@shared/ui/TranslateToggle'
 import { HOME_OF, STAFF_MENUS } from './staffMenus'
-import s from './StaffLayout.module.css'
 
 function Header() {
   const { session, logout } = useAuth()
@@ -28,16 +27,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
       <Header />
       <main><PageTransition>{children}</PageTransition></main>
       <footer className={h.footer}>© 2026 Vận chuyển Ngựa đua. SWP Project.</footer>
-      <TranslateToggle />
-    </>
-  )
-}
-
-export function MobileStaffLayout({ children }: { children: ReactNode }) {
-  return (
-    <>
-      <Header />
-      <main className={s.mobileMain}><PageTransition>{children}</PageTransition></main>
       <TranslateToggle />
     </>
   )

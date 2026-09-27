@@ -36,8 +36,8 @@ export interface Papers {
 }
 
 export interface Checkpoint { label: string; place: string; time: number; state: 'done' | 'current' | 'next' }
-// Nhật ký sức khỏe. horse/status/by: báo cáo của hộ tống (trang Nhật ký sức khỏe ngựa)
-export interface HealthLog { time: number; temp: string; heart: string; note: string; horse?: string; status?: string; by?: string; photo?: string }
+// Nhật ký sức khỏe. horse/status/other/by/photo: báo cáo của hộ tống (trang Nhật ký sức khỏe ngựa; hộ tống không đo nhịp tim → heart = '—')
+export interface HealthLog { time: number; temp: string; heart: string; note: string; horse?: string; status?: string; other?: string; by?: string; photo?: string }
 
 export interface Trip {
   plate: string

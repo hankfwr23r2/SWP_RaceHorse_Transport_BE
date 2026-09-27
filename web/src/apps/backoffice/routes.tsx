@@ -50,8 +50,8 @@ export const routes: AppRoute[] = [
   { path: '/coordinator/fleet', page: FleetPage, roles: CO, title: 'Quản lý đội xe', legacy: 'Fleet And Route/OPS-07.html', layout: 'staff' },
   { path: '/coordinator/staff/:id', page: CrewDetailPage, roles: CO, title: 'Chi tiết nhân sự', legacy: 'Fleet And Route/chi-tiet-nhan-su.html', layout: 'staff' },
 
-  { path: '/driver', page: DriverPage, roles: ['driver'], title: 'Chuyến của tôi', legacy: 'Driver/index.html', layout: 'mobile' },
-  { path: '/escort', page: EscortPage, roles: ['escort'], title: 'Nhật ký sức khỏe ngựa', legacy: 'Escort/escort_page.html', layout: 'mobile' },
+  { path: '/driver', page: DriverPage, roles: ['driver'], title: 'Chuyến của tôi', legacy: 'Driver/index.html', layout: 'bare' },
+  { path: '/escort', page: EscortPage, roles: ['escort'], title: 'Nhật ký sức khỏe ngựa', legacy: 'Escort/escort_page.html', layout: 'bare' },
 ]
 
 routes.push({ path: '/sitemap', page: () => <SitemapPage routes={routes} appName="App nội bộ" />, roles: [], title: 'Sitemap', layout: 'staff' })

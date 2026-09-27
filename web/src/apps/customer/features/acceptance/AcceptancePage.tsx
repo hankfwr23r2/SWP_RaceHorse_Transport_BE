@@ -17,6 +17,9 @@ import a from './Acceptance.module.css'
 
 const Row = ({ label, children }: { label: ReactNode; children: ReactNode }) => <div className="info-row"><span className="label">{label}</span><span className="value">{children}</span></div>
 const inRange = (v: number, [min, max]: readonly number[]) => v >= min && v <= max
+// Chưa có số đo (hộ tống chỉ đo thân nhiệt, hoặc đã xóa báo cáo) thì hiện "—". NaN lưu qua JSON thành null.
+const missing = (v: number | null) => v == null || Number.isNaN(v)
+const unit = (v: number | null, u: string) => (missing(v) ? '—' : `${v}${u}`)
 const Verdict = ({ ok }: { ok: boolean }) => ok ? <span className="badge badge-success">Bình thường</span> : <span className="badge badge-danger">Bất thường</span>
 
 export default function AcceptancePage() {
@@ -116,8 +119,8 @@ export default function AcceptancePage() {
                     <th>Đánh giá lúc giao</th>
                   </tr></thead>
                   <tbody>
-                    <tr><td>Thân nhiệt <div className="sub-text">Tham khảo {NORMAL_RANGE.temp[0]}–{NORMAL_RANGE.temp[1]}°C</div></td><td>{h.pickup.temp}°C</td><td className="font-semibold">{h.delivery.temp}°C</td><td><Verdict ok={inRange(h.delivery.temp, NORMAL_RANGE.temp)} /></td></tr>
-                    <tr><td>Nhịp tim <div className="sub-text">Tham khảo {NORMAL_RANGE.heart[0]}–{NORMAL_RANGE.heart[1]} bpm</div></td><td>{h.pickup.heart} bpm</td><td className="font-semibold">{h.delivery.heart} bpm</td><td><Verdict ok={inRange(h.delivery.heart, NORMAL_RANGE.heart)} /></td></tr>
+                    <tr><td>Thân nhiệt <div className="sub-text">Tham khảo {NORMAL_RANGE.temp[0]}–{NORMAL_RANGE.temp[1]}°C</div></td><td>{unit(h.pickup.temp, '°C')}</td><td className="font-semibold">{unit(h.delivery.temp, '°C')}</td><td>{missing(h.delivery.temp) ? '—' : <Verdict ok={inRange(h.delivery.temp, NORMAL_RANGE.temp)} />}</td></tr>
+                    <tr><td>Nhịp tim <div className="sub-text">Tham khảo {NORMAL_RANGE.heart[0]}–{NORMAL_RANGE.heart[1]} bpm</div></td><td>{unit(h.pickup.heart, ' bpm')}</td><td className="font-semibold">{unit(h.delivery.heart, ' bpm')}</td><td>{missing(h.delivery.heart) ? '—' : <Verdict ok={inRange(h.delivery.heart, NORMAL_RANGE.heart)} />}</td></tr>
                     <tr><td>Ăn uống</td><td>{h.pickup.eat}</td><td className="font-semibold">{h.delivery.eat}</td><td><Verdict ok={h.delivery.eat === 'Bình thường'} /></td></tr>
                     <tr><td>Thể trạng</td><td>{h.pickup.body}</td><td className="font-semibold">{h.delivery.body}</td><td><Verdict ok={h.delivery.body === 'Không chấn thương'} /></td></tr>
                   </tbody>

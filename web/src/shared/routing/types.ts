@@ -8,5 +8,5 @@ export interface AppRoute {
   roles: Role[]
   title: string
   legacy?: string
-  layout?: 'public' | 'customer' | 'staff' | 'mobile' | 'bare'
+  layout?: 'public' | 'customer' | 'staff' | 'bare'
 }

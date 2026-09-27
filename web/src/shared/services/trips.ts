@@ -193,7 +193,7 @@ export const tripsApi = {
     const t = store.all().find(x => x.orderId === orderId)!
     const [vehicles, crew] = await Promise.all([vehiclesApi.list(), crewApi.list()])
     const v = vehicles.find(x => x.id === t.legs[t.legs.length - 1].vehicleId)!
-    const measured = trip.health.filter(h => !Number.isNaN(parseFloat(h.temp)) && !Number.isNaN(parseFloat(h.heart)))
+    const measured = trip.health.filter(h => !Number.isNaN(parseFloat(h.temp)))
     return ordersApi.update(orderId, {
       status: 'delivered', deliveredAt: now,
       trip: { ...trip, checkpoints, updatedAt: now },
@@ -204,6 +204,13 @@ export const tripsApi = {
         delivery: vitalsOf(measured[0], now),
       },
     })
+  },
+
+  // Hộ tống xóa toàn bộ báo cáo của mình (nút "Delete All Reports" của bản cũ); giữ dòng hệ thống ghi lúc khởi hành
+  async deleteHealthLogs(by: string) {
+    const orders = await ordersApi.list()
+    await Promise.all(orders.filter(o => o.trip?.health.some(h => h.by === by && h.temp !== '—')).map(o =>
+      ordersApi.update(o.id, { trip: { ...o.trip!, health: o.trip!.health.filter(h => h.by !== by || h.temp === '—') } })))
   },
 
   // Hộ tống ghi báo cáo sức khỏe. Tình trạng nặng → tự tạo sự cố "Y tế ngựa" cho Điều phối xử lý (OPS-04).
