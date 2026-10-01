@@ -14,7 +14,7 @@ export const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 
 // ===== Đặt đơn =====
 export const MIN_LEAD_DAYS = 10
-export const MAX_HORSES = 8
+export const MAX_HORSES = 10
 
 // ===== Thẩm định (cam kết với khách) =====
 // Hạn = mốc SỚM HƠN của (1) 17:00 ngày làm việc thứ APPRAISAL_WORKING_DAYS sau ngày gửi đơn

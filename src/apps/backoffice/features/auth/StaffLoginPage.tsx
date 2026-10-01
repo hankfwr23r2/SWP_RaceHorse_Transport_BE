@@ -42,18 +42,16 @@ function LoginForm({ managerOnly }: { managerOnly: boolean }) {
 
 export function StaffLoginPage() {
   return (
-    <AuthShell title="Đăng nhập Nội bộ" subtitle="Vui lòng đăng nhập bằng email được cấp" heading="Hệ thống Nội bộ" tagline="Cổng đăng nhập dành cho nhân viên. Quản lý, tài xế, hộ tống và vận hành." homeHref="/" homeExternal>
+    <AuthShell title="Đăng nhập Nội bộ" subtitle="Vui lòng đăng nhập bằng email được cấp" heading="Hệ thống Nội bộ" tagline="Cổng đăng nhập dành cho nhân viên. Quản lý, tài xế, hộ tống và vận hành." homeHref="/" homeExternal back={<a href="/"><i className="fa-solid fa-arrow-left" /> Về Trang chủ</a>}>
       <LoginForm managerOnly={false} />
-      <div className={s.extra}><a href="/">← Quay lại Trang chủ</a></div>
     </AuthShell>
   )
 }
 
 export function ManagerLoginPage() {
   return (
-    <AuthShell title="Cổng Quản lý" subtitle="Vui lòng đăng nhập với tài khoản cấp quản lý" heading="Hệ thống Quản lý Vận hành" tagline="Nền tảng kiểm soát và điều phối toàn diện lộ trình vận chuyển ngựa đua an toàn, tiêu chuẩn." homeHref="/" homeExternal>
+    <AuthShell title="Cổng Quản lý" subtitle="Vui lòng đăng nhập với tài khoản cấp quản lý" heading="Hệ thống Quản lý Vận hành" tagline="Nền tảng kiểm soát và điều phối toàn diện lộ trình vận chuyển ngựa đua an toàn, tiêu chuẩn." homeHref="/" homeExternal back={<a href="/"><i className="fa-solid fa-arrow-left" /> Về Trang chủ</a>}>
       <LoginForm managerOnly />
-      <div className={s.extra}><a href="/">← Quay lại Trang chủ</a></div>
     </AuthShell>
   )
 }

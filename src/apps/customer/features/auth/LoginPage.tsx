@@ -18,7 +18,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell title="Đăng nhập vào tài khoản" subtitle="Đăng nhập để tiếp tục sử dụng dịch vụ vận chuyển chuyên nghiệp">
+    <AuthShell title="Đăng nhập vào tài khoản" subtitle="Đăng nhập để tiếp tục sử dụng dịch vụ vận chuyển chuyên nghiệp" back={<Link to="/"><i className="fa-solid fa-arrow-left" /> Về Trang chủ</Link>}>
       <form onSubmit={submit}>
         <div className="form-group">
           <label htmlFor="email">Email</label>
