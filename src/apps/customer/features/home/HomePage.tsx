@@ -6,7 +6,8 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { CountUp, reducedMotion, useScrollReveal } from '@shared/motion/motion'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { CUSTOMER_STEPS, MAX_HORSES, MIN_LEAD_DAYS } from '@shared/config/business-rules'
+import { PUBLIC_STEPS } from '@shared/config/booking-rules'
+import { MAX_HORSES, MIN_LEAD_DAYS } from '@shared/config/business-rules'
 import { COUNTRIES, GATES, PLACES, type CountryCode } from '@shared/config/network'
 import { BIG_TRUCK_FACTOR, CARE_FEE_PER_DAY, DRIVE_HOURS_PER_DAY, INSURANCE_RATE, KM_TIERS, QUARANTINE_FEE, TRIP_OPEN_FEE } from '@shared/config/public-pricing'
 import { formatDate, formatVND } from '@shared/lib/format'
@@ -21,7 +22,7 @@ gsap.registerPlugin(MotionPathPlugin)
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ')
 const MAX_TRACK_CODES = 5
-const STEPS = CUSTOMER_STEPS.map(x => (x === 'Chờ thẩm định' ? 'Thẩm định' : x))
+const STEPS = PUBLIC_STEPS
 
 // ===== Banner trượt =====
 const SLIDES = [
@@ -94,7 +95,7 @@ function OrderLookup() {
       <form className={s.lookupRow} noValidate onSubmit={submit}>
         <div className={cx(s.field, s.fieldGrow)}>
           <i className="fa-solid fa-magnifying-glass" />
-          <input className={cx(error?.field === 'codes' && s.inputError)} value={codesText} onChange={e => { setCodesText(e.target.value); setError(null) }} placeholder="Nhập mã đơn (cách nhau bởi dấu phẩy), tối đa 5 đơn. VD: EQ-2026-1028" />
+          <input className={cx(error?.field === 'codes' && s.inputError)} value={codesText} onChange={e => { setCodesText(e.target.value); setError(null) }} placeholder="Nhập mã đơn (cách nhau bởi dấu phẩy), tối đa 5 đơn. VD: ORD-2026-0116" />
         </div>
         <div className={cx(s.field, s.fieldPhone)}>
           <i className="fa-solid fa-phone" />
@@ -102,7 +103,7 @@ function OrderLookup() {
         </div>
         <button className="btn btn-solid" type="submit">Tìm kiếm</button>
       </form>
-      <p className={s.lookupHint}>Dữ liệu mẫu: EQ-2026-1028, EQ-2026-1030, EQ-2026-1074, EQ-2026-1021 · 4 số cuối <strong>3456</strong></p>
+      <p className={s.lookupHint}>Dữ liệu mẫu: ORD-2026-0116, ORD-2026-0117, ORD-2026-0105, ORD-2026-0101 · 4 số cuối <strong>6789</strong></p>
       {error && <p className={s.formError}><i className="fa-solid fa-circle-exclamation" /> {error.message}</p>}
       {!error && rows.length > 0 && (
         <div className={s.trackList}>

@@ -1,89 +1,79 @@
-// Bản nháp đơn đặt chuyến qua 4 bước, lưu sessionStorage (giữ đúng key của create_request.js cũ).
-import { useState } from 'react'
-import type { CountryCode } from '@shared/config/network'
+// Bản nháp đơn đặt chuyến qua 4 bước, lưu sessionStorage (PRD mục 2.2).
+import { useSyncExternalStore } from 'react'
+import { TARGET_TEMP } from '@shared/config/booking-rules'
+import type { HorseDoc, Party, StallType, TransportType } from '@shared/types/booking'
 
-export interface DraftHorse {
-  id: number
-  name: string
-  microchip: string
-  breed: string
-  breedValue: string
-  gender: string
-  genderValue: string
-  age: string
-  weight: string
-  color: string
-  colorValue: string
-  marks: string
-  completed: boolean
+export interface HorseConfig {
+  stall: StallType
+  targetTemp: number
+  feeding: string
+  water: string
+  careNote: string
+  insurance: 'buy' | 'decline' | '' // phải chọn rõ cho từng ngựa
 }
 
 export interface BookingDraft {
-  originCountry: CountryCode | ''
-  originLocation: string
-  originLocationName: string
-  destCountry: CountryCode | ''
-  destLocation: string
-  destLocationName: string
-  isInternational: boolean
-  departureDate: string
-  quantity: number | ''
-  urgency: string
-  horses: DraftHorse[]
-  hasDisease: string
-  hasMedication: string
-  diseaseDetail: string
-  needIsolation: string
-  feeding: string
-  foodType: string
-  foodTypeName: string
-  stallType: string
-  stallTypeName: string
-  waterSupplement: string
-  waterSupplementName: string
-  insurance: string
-  insuranceName: string
-  horseValue: number | ''
-  specialCare: string
+  type: TransportType | ''
+  partner: 'KH' | 'LA' | '' // nước bạn (quốc tế)
+  direction: 'out' | 'in' // out: Việt Nam → nước bạn
+  originId: string
+  destId: string
+  gate: string
+  departDate: string // YYYY-MM-DD
+  consignor: Party
+  consignee: Party
+  horseIds: string[]
+  config: Record<string, HorseConfig>
+  importPermit?: HorseDoc
 }
 
 export const STORAGE_KEY = 'SWP_RACEHORSE_TRANSPORT_REQUEST'
 
+const blankParty = (): Party => ({ name: '', phone: '', idNumber: '', address: '' })
+
 export const emptyDraft = (): BookingDraft => ({
-  originCountry: '', originLocation: '', originLocationName: '',
-  destCountry: '', destLocation: '', destLocationName: '',
-  isInternational: false, departureDate: '', quantity: '', urgency: '',
-  horses: [],
-  hasDisease: '', hasMedication: '', diseaseDetail: '', needIsolation: '',
-  feeding: '', foodType: '', foodTypeName: '', stallType: '', stallTypeName: '',
-  waterSupplement: '', waterSupplementName: '', insurance: '', insuranceName: '', horseValue: '', specialCare: '',
+  type: '', partner: '', direction: 'out', originId: '', destId: '', gate: '', departDate: '',
+  consignor: blankParty(), consignee: blankParty(), horseIds: [], config: {},
 })
 
-function read(): BookingDraft {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
-    return raw ? { ...emptyDraft(), ...JSON.parse(raw) } : emptyDraft()
-  } catch {
-    return emptyDraft()
+export const defaultConfig = (): HorseConfig => ({
+  stall: 'standard', targetTemp: TARGET_TEMP.default, feeding: '', water: '', careNote: '', insurance: '',
+})
+
+// Bản nháp là một kho dùng chung: cột tóm tắt và các bước cùng đọc, nên khách gõ tới đâu tóm tắt cập nhật tới đó.
+const listeners = new Set<() => void>()
+let lastRaw: string | null = null
+let cache: BookingDraft = emptyDraft()
+
+function readRaw() {
+  try { return sessionStorage.getItem(STORAGE_KEY) } catch { return null }
+}
+function getSnapshot(): BookingDraft {
+  const raw = readRaw()
+  if (raw !== lastRaw) {
+    lastRaw = raw
+    try { cache = raw ? { ...emptyDraft(), ...JSON.parse(raw) } : emptyDraft() } catch { cache = emptyDraft() }
   }
+  return cache
+}
+const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } }
+const write = (next: BookingDraft | null) => {
+  try { if (next) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next)); else sessionStorage.removeItem(STORAGE_KEY) } catch { /* bỏ qua khi bị chặn lưu trữ */ }
+  cache = next ?? emptyDraft()
+  lastRaw = readRaw() // nếu bị chặn lưu trữ thì giữ bản nháp trong bộ nhớ
+  listeners.forEach(fn => fn())
 }
 
 export function useBookingDraft() {
-  const [draft, setDraft] = useState<BookingDraft>(read)
-  const save = (patch: Partial<BookingDraft>) => {
-    const next = { ...read(), ...patch }
-    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* bỏ qua */ }
-    setDraft(next)
-    return next
-  }
-  return { draft, save }
+  const draft = useSyncExternalStore(subscribe, getSnapshot)
+  const save = (patch: Partial<BookingDraft>) => { const next = { ...getSnapshot(), ...patch }; write(next); return next }
+  const clear = () => write(null)
+  return { draft, save, clear }
 }
 
-// DEMO_MODE của create_request.js: bước 2 luôn khai sẵn 3 ngựa mẫu, bỏ qua số lượng ở bước 1.
-// Ngựa mẫu đã đổi sang ngựa của khách mẫu (Trang trại Long Thành) cho khớp bộ dữ liệu chung.
-export const DEMO_MODE = true
-export const DEMO_HORSES: DraftHorse[] = [
-  { id: 1, name: 'Storm Runner', microchip: '#VN-985211', breed: 'Thoroughbred (Anh)', breedValue: 'thoroughbred', gender: 'Thiến (Gelding)', genderValue: 'gelding', age: '5', weight: '520', color: 'Nâu đỏ (Bay)', colorValue: 'bay', marks: 'Sao trắng trán, tất trắng chân sau', completed: true },
-  { id: 2, name: 'Bạch Phong', microchip: '#VN-985212', breed: 'Arabian (Ả Rập)', breedValue: 'arabian', gender: 'Cái (Mare)', genderValue: 'mare', age: '7', weight: '480', color: 'Bạch mã (White)', colorValue: 'white', marks: 'Đốm trắng nhỏ trên mũi', completed: true },
-  { id: 3, name: 'Kim Lân', microchip: '#VN-985213', breed: 'Thoroughbred (Anh)', breedValue: 'thoroughbred', gender: 'Đực (Stallion)', genderValue: 'stallion', age: '6', weight: '550', color: 'Hạt dẻ (Chestnut)', colorValue: 'chestnut', marks: 'Vệt trắng dài giữa trán', completed: true },
-]
+// Nước của điểm đi / điểm đến theo loại chuyến
+export const countriesOf = (d: Pick<BookingDraft, 'type' | 'partner' | 'direction'>) => {
+  if (d.type === 'domestic') return { origin: 'VN' as const, dest: 'VN' as const }
+  if (d.type === 'international' && d.partner) return d.direction === 'out' ? { origin: 'VN' as const, dest: d.partner } : { origin: d.partner, dest: 'VN' as const }
+  return null
+}

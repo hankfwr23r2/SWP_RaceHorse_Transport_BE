@@ -12,11 +12,14 @@ export interface Vehicle {
   status: VehicleStatus
   maintenance: string // ngày bảo trì gần nhất (YYYY-MM-DD)
   driverId: string
+  vin?: string // số khung
+  inspectionNo?: string // số giấy đăng kiểm
+  transitPermit?: string // giấy phép liên vận CLV
 }
 
-export interface CrewMember { id: string; name: string; role: 'driver' | 'escort'; phone: string; note?: string }
+export interface CrewMember { id: string; name: string; role: 'driver' | 'escort'; phone: string; note?: string; idNumber?: string; license?: string }
 
-export const seedVehicles = (): Vehicle[] => [
+const rawVehicles = (): Vehicle[] => [
   { id: 'VH-001', name: 'Xe Thùng VIP', type: 'Xe tải chuyên dụng', capacity: 2, plate: '29H-12345', status: 'in_use', maintenance: '2026-09-15', driverId: 'TX-01' },
   { id: 'VH-002', name: 'Xe Thùng Tiêu chuẩn', type: 'Xe tải chuyên dụng', capacity: 4, plate: '51C-98765', status: 'available', maintenance: '2026-09-10', driverId: 'TX-02' },
   { id: 'VH-003', name: 'Xe Thùng Lạnh', type: 'Xe tải chuyên dụng', capacity: 4, plate: '30A-55678', status: 'in_use', maintenance: '2026-09-01', driverId: 'TX-03' },
@@ -30,9 +33,10 @@ export const seedVehicles = (): Vehicle[] => [
   { id: 'VH-011', name: 'Xe chuyên dụng 2 ngăn', type: 'Xe tải chuyên dụng', capacity: 2, plate: '61C-345.67', status: 'available', maintenance: '2026-09-16', driverId: 'TX-11' },
   { id: 'VH-012', name: 'Xe chuyên dụng 2 ngăn', type: 'Xe tải chuyên dụng', capacity: 2, plate: '70C-045.18', status: 'available', maintenance: '2026-09-09', driverId: 'TX-12' },
   { id: 'VH-013', name: 'Xe chuyên dụng 2 ngăn', type: 'Xe tải chuyên dụng', capacity: 2, plate: '29C-310.77', status: 'available', maintenance: '2026-09-14', driverId: 'TX-13' },
+  { id: 'VH-014', name: 'Xe tải nặng 9 ngăn', type: 'Xe tải chuyên dụng', capacity: 9, plate: '51D-909.09', status: 'available', maintenance: '2026-09-17', driverId: 'TX-14' },
 ]
 
-export const seedCrew = (): CrewMember[] => [
+const rawCrew = (): CrewMember[] => [
   { id: 'TX-01', name: 'Nguyễn Văn A', role: 'driver', phone: '0901 111 222' },
   { id: 'TX-02', name: 'Trần Văn B', role: 'driver', phone: '0901 333 444' },
   { id: 'TX-03', name: 'Lê Văn C', role: 'driver', phone: '0901 555 666' },
@@ -46,9 +50,27 @@ export const seedCrew = (): CrewMember[] => [
   { id: 'TX-11', name: 'Võ Thanh Sơn', role: 'driver', phone: '0904 404 505' },
   { id: 'TX-12', name: 'Lê Văn Tài', role: 'driver', phone: '0904 606 707' },
   { id: 'TX-13', name: 'Trịnh Văn Long', role: 'driver', phone: '0904 808 909' },
+  { id: 'TX-14', name: 'Hoàng Văn Tâm', role: 'driver', phone: '0905 121 212' },
   { id: 'NV-01', name: 'Lê Thị C', role: 'escort', phone: '0902 111 222', note: 'NVCS 5 năm KN' },
   { id: 'NV-02', name: 'Võ Thị Lan', role: 'escort', phone: '0908 333 444', note: 'NVCS 3 năm KN' },
   { id: 'NV-03', name: 'Huỳnh Thị Mai', role: 'escort', phone: '0902 555 666', note: 'NVCS 2 năm KN' },
   { id: 'NV-04', name: 'Đỗ Văn Nam', role: 'escort', phone: '0902 777 888', note: 'NVCS 4 năm KN' },
   { id: 'NV-05', name: 'Đỗ Thị Hạnh', role: 'escort', phone: '0902 999 000', note: 'NVCS 1 năm KN' },
 ]
+
+// Giấy tờ xe và định danh nhân sự là số mẫu sinh theo mã, để Carrier Info Sheet có đủ trường (PRD mục 2.7). Thay bằng dữ liệu thật khi có backend.
+const num = (id: string) => id.replace(/\D/g, '').padStart(3, '0')
+export const seedVehicles = (): Vehicle[] => rawVehicles().map(v => ({
+  ...v,
+  vin: `RHT${num(v.id)}EQ2026${String(Number(num(v.id)) * 7919).padStart(6, '0')}`,
+  inspectionNo: `KD-${v.maintenance.slice(0, 4)}-${num(v.id)}${v.plate.replace(/\D/g, '').slice(0, 3)}`,
+  transitPermit: `CLV-26-${num(v.id)}`,
+}))
+export const seedCrew = (): CrewMember[] => rawCrew().map(c => {
+  const n = Number(num(c.id)) + (c.role === 'escort' ? 500 : 0) // tài xế và hộ tống cùng số thứ tự vẫn có CCCD khác nhau
+  return {
+    ...c,
+    idNumber: `0${String(n).padStart(3, '0')}2${String(n * 104729).padStart(7, '0').slice(0, 7)}`,
+    license: c.role === 'driver' ? `FC-${num(c.id)}-${String(n * 3571).padStart(5, '0')}` : undefined,
+  }
+})

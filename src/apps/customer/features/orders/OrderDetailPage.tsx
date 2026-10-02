@@ -1,390 +1,312 @@
-// Đơn của tôi: chi tiết đơn. Chuyển từ showDetail(), sidePanel(), papersHtml(), openPay(), cancelOverdue() (don_cua_toi.js).
-import { useState, type ReactNode } from 'react'
+// Chi tiết đơn phía khách (Flow 1): tiến độ, bước tiếp theo, bổ sung hồ sơ, báo giá, đặt cọc, Carrier Info Sheet.
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { BANK, CUSTOMER_STEPS, HOTLINE, OFFICE_ADDRESS, PAYMENT_HOURS, REFUND_POLICY } from '@shared/config/business-rules'
-import { DOC_LABEL, FILE_PREFIX, PROCEDURES, proceduresFor, type DocKey } from '@shared/config/documents'
-import { appraisalDeadline, choiceDeadline, originalsDue, paymentDeadline, priorityDeadline } from '@shared/lib/deadlines'
-import { formatDate, formatDateTime, formatVND } from '@shared/lib/format'
-import { choiceExpired, currentStep, isAppraisalOverdue } from '@shared/lib/order-status'
 import { useAuth } from '@shared/auth/AuthContext'
-import { customerOrdersApi } from '@shared/services/orders'
+import { BOOKING_STEPS, HORSE_DOC, stepOf, VEHICLE_CLASS } from '@shared/config/booking-rules'
+import { BANK, HOTLINE, REFUND_POLICY } from '@shared/config/business-rules'
+import { COUNTRIES } from '@shared/config/network'
+import { CANCELLABLE, insuranceFee, refundOf, vehicleClassOf } from '@shared/lib/booking'
+import { formatClock, formatDate, formatDateTime, formatVND } from '@shared/lib/format'
+import { customerBookingsApi, type CustomerBookingView, type TeamInfo } from '@shared/services/bookings'
+import { horsesApi } from '@shared/services/horses'
 import { useLoad } from '@shared/services/useLoad'
-import { useStaggerIn } from '@shared/motion/motion'
-import { horseLabel, orderTotal, type Order } from '@shared/types/order'
+import { SEX_LABEL, type HorseProfile } from '@shared/types/booking'
+import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { Modal } from '@shared/ui/Modal'
+import { QuoteSheet } from '@shared/ui/QuoteSheet'
+import { TripTimeline } from '@shared/ui/TripTimeline'
 import { useToast } from '@shared/ui/toast'
-import { ChoicePanel } from './ChoicePanel'
-import { StatusBadge, paymentLeft } from './StatusBadge'
-import s from './Orders.module.css'
+import { useNow } from '@shared/ui/useNow'
+import { HorseFormModal } from '../horses/HorseFormModal'
+import { ClearanceCard } from './ClearanceCard'
+import { POST_PAYMENT, ROUTE_STAGE, ROUTE_VISIBLE, nextStep } from './nextStep'
+import s from './OrderDetail.module.css'
 
-const Row = ({ label, children }: { label: ReactNode; children: ReactNode }) => <div className="info-row"><span className="label">{label}</span><span className="value">{children}</span></div>
-const tel = (p: string) => `tel:${p.replace(/\s/g, '')}`
+const TONE: Record<string, string> = { info: s.nextInfo, orange: s.nextOrange, warning: s.nextWarning, danger: s.nextDanger, success: s.nextSuccess, muted: s.nextMuted }
+const placeName = (n: string) => n.split(' — ')[0]
 
-const missingOriginals = (o: Order) => Object.entries(o.papers!.originals).flatMap(([horse, docs]) =>
-  Object.entries(docs).filter(([, at]) => !at).map(([k]) => `${DOC_LABEL[k as DocKey]} (${horse})`))
-
-function Stepper({ order }: { order: Order }) {
-  const step = currentStep(order)
-  const failed = order.status === 'rejected' || order.status === 'cancelled'
+function Progress({ b }: { b: CustomerBookingView }) {
+  const at = stepOf(b.status)
+  const expired = b.status === 'quote_expired'
   return (
-    <div className={s.stepper}>
-      {CUSTOMER_STEPS.map((label, i) => {
-        const cls = failed && i === step ? s.failed : i < step ? s.completed : i === step ? s.active : ''
-        const icon = failed && i === step ? <i className="fa-solid fa-xmark" /> : i < step ? <i className="fa-solid fa-check" /> : i + 1
-        return <div key={label} className={`${s.step} ${cls}`}><div className={s.stepNum}>{icon}</div><div>{label}</div></div>
+    <ol className={s.progress} aria-label="Tiến độ đơn">
+      {BOOKING_STEPS.map((label, i) => {
+        const done = i < at
+        const state = done ? s.stepDone : i === at ? (expired ? s.stepStop : s.stepNow) : ''
+        return (
+          <li key={label} className={`${s.stepItem} ${state}`} aria-current={i === at ? 'step' : undefined}>
+            <span className={s.stepNum}>{done ? <i className="fa-solid fa-check" aria-hidden="true" /> : expired && i === at ? <i className="fa-solid fa-xmark" aria-hidden="true" /> : i + 1}</span>
+            <div>{label}</div>
+          </li>
+        )
       })}
-    </div>
+    </ol>
   )
 }
 
-function Banner({ order: o }: { order: Order }) {
-  const box = (cls: string, icon: string, body: ReactNode) => <div className={`alert ${cls}`} style={{ marginBottom: 16 }}><i className={`fa-solid ${icon}`} /><div>{body}</div></div>
-  switch (o.status) {
-    case 'processing':
-      return isAppraisalOverdue(o)
-        ? box('alert-warning', 'fa-bolt', <>
-          <strong>Đơn đang được Quản lý xử lý ưu tiên</strong> vì chưa kịp thẩm định trong hạn {formatDateTime(appraisalDeadline(o.submittedAt, o.departAt))}.
-          <ul className={s.priorityList}>
-            <li><i className="fa-solid fa-truck" /> Chỗ xe cho ngày khởi hành <strong>{formatDate(o.departAt)}</strong> vẫn được giữ, ngày khởi hành không đổi.</li>
-            <li><i className="fa-regular fa-clock" /> Cam kết có kết quả trước <strong>{formatDateTime(priorityDeadline(o.submittedAt, o.departAt))}</strong>{Date.now() > priorityDeadline(o.submittedAt, o.departAt) && ' — Quản lý phụ trách sẽ gọi trực tiếp cho bạn'}.</li>
-            <li><i className="fa-solid fa-headset" /> Nếu có thắc mắc hoặc cần hỗ trợ về đơn, vui lòng liên hệ hotline <strong>{HOTLINE}</strong>.</li>
-          </ul></>)
-        : box('alert-info', 'fa-hourglass-half', <>Đơn đang được thẩm định: xác minh hồ sơ thú y và lập kế hoạch vận chuyển. Kết quả trước <strong>{formatDateTime(appraisalDeadline(o.submittedAt, o.departAt))}</strong>. Khi đơn được duyệt, bạn có {PAYMENT_HOURS} giờ để thanh toán.{o.note && <><br />{o.note}</>}</>)
-    case 'rejected':
-      return box('alert-danger', 'fa-circle-xmark', <><strong>Đơn bị từ chối ở {o.rejectedStep === 0 ? 'bước Tiếp nhận' : 'bước Thẩm định hồ sơ'}</strong> lúc {formatDateTime(o.rejectedAt!)}. {o.reason} Bạn chưa thanh toán nên không phát sinh chi phí.</>)
-    case 'choose_option':
-      if (!o.offer) return null
-      return choiceExpired(o)
-        ? box('alert-warning', 'fa-clock', <><strong>Đã quá hạn phản hồi</strong> (hạn {formatDateTime(choiceDeadline(o.offer.sentAt))}). Quản lý sẽ xem xét và liên hệ với bạn. Cần hỗ trợ, gọi hotline <strong>{HOTLINE}</strong>.</>)
-        : box('alert-warning', 'fa-circle-exclamation', <><strong>Cần phản hồi của bạn.</strong> Hồ sơ có vấn đề không thể khắc phục bằng bổ sung giấy tờ. Vui lòng chọn phương án xử lý bên dưới trước <strong>{formatDateTime(choiceDeadline(o.offer.sentAt))}</strong>. Quá hạn không phản hồi, Quản lý có thể từ chối đơn.</>)
-    case 'rechecking':
-      return box('alert-info', 'fa-magnifying-glass', <><strong>Bạn đã yêu cầu kiểm tra lại lúc {formatDateTime(o.recheckAt ?? Date.now())}.</strong> Một kiểm dịch viên khác đang xem lại hồ sơ từ đầu. Ngày khởi hành {formatDate(o.departAt)} vẫn giữ nguyên.</>)
-    case 'cancelled':
-      return box('alert-danger', 'fa-ban', <><strong>Đơn đã hủy.</strong> {o.reason}</>)
-    case 'paid': {
-      const missing = o.papers ? missingOriginals(o) : []
-      return missing.length ? box('alert-warning', 'fa-envelope-open-text', <>
-        <strong>Vui lòng gửi bản gốc {missing.length} giấy tờ trước {formatDateTime(originalsDue(o.departAt))}</strong>: {missing.join('; ')}.<br />
-        Gửi chuyển phát hoặc mang trực tiếp đến {OFFICE_ADDRESS}. Qua cửa khẩu và trạm kiểm dịch chỉ chấp nhận bản gốc. Chưa có đủ bản gốc, chuyến đi có thể không khởi hành được.</>) : null
-    }
-    default: return null
+function Resubmit({ b, owner, onDone }: { b: CustomerBookingView; owner: string; onDone: () => void }) {
+  const toast = useToast()
+  const { data: horses, reload } = useLoad(() => horsesApi.list(owner), [owner])
+  const [edit, setEdit] = useState<HorseProfile | null>(null)
+  const [busy, setBusy] = useState(false)
+  const items = b.medical?.resubmit?.items ?? []
+  const send = async () => {
+    setBusy(true)
+    try { await customerBookingsApi.resubmit(owner, b.id); toast('Đã gửi lại cho Kiểm dịch viên'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không gửi được', 'error'); setBusy(false) }
   }
-}
-
-function Papers({ order: o, onOpen }: { order: Order; onOpen: (file: string, title: string) => void }) {
-  const { originals, procedures } = o.papers!
-  const scan = (file: string, title: string) => <button className={s.scan} onClick={() => onOpen(file, title)}><i className="fa-regular fa-file-pdf" /> Bản scan</button>
-  return (
-    <>
-      <table className="data-table">
-        <thead><tr><th colSpan={3}>Giấy do cơ quan chức năng cấp · công ty làm thủ tục</th></tr></thead>
-        <tbody>
-          {proceduresFor(!!o.border).map(k => {
-            const p = procedures[k]
-            return (
-              <tr key={k}>
-                <td className="font-semibold">{PROCEDURES[k].label}</td>
-                <td>{p ? <>{PROCEDURES[k].numberLabel} <strong>{p.number}</strong><div className="sub-text">{p.agency} · cấp {formatDate(p.issuedAt)}{p.validUntil ? ` · hiệu lực đến ${formatDate(p.validUntil)}` : ''}</div></> : <span className="badge badge-muted">Đang làm thủ tục</span>}</td>
-                <td className="text-right">{p && scan(p.file, PROCEDURES[k].label)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-        <thead><tr><th colSpan={3}>Giấy tờ của bạn · cần gửi bản gốc</th></tr></thead>
-        <tbody>
-          {Object.entries(originals).flatMap(([horse, docs]) => [
-            <tr key={horse} className={s.groupRow}><td colSpan={3}>{horse}</td></tr>,
-            ...Object.entries(docs).map(([k, at]) => (
-              <tr key={`${horse}-${k}`}>
-                <td>{DOC_LABEL[k as DocKey]}</td>
-                <td>{at ? <><span className="badge badge-success">Đã nhận bản gốc</span><div className="sub-text">{formatDateTime(at)}</div></> : <span className="badge badge-warning">Chưa nhận bản gốc</span>}</td>
-                <td className="text-right">{scan(`${FILE_PREFIX[k as DocKey]}_${horse.replace(/\s+/g, '_')}.pdf`, `${DOC_LABEL[k as DocKey]} · ${horse}`)}</td>
-              </tr>
-            )),
-          ])}
-        </tbody>
-      </table>
-      <p className={s.hint}>Bản gốc đi cùng ngựa trên xe và được trả lại khi giao ngựa.</p>
-    </>
-  )
-}
-
-function PolicyCard() {
   return (
     <div className="card">
-      <div className="card-header"><h3><i className="fa-solid fa-shield-halved" /> Cam kết &amp; hoàn tiền</h3></div>
-      <ul className={s.checks}>
-        <li><i className="fa-solid fa-file-signature" /> Hợp đồng điện tử và hóa đơn gửi qua email ngay sau khi thanh toán</li>
-        <li><i className="fa-solid fa-umbrella" /> Ngựa được bảo hiểm theo gói đã chọn trong suốt hành trình</li>
-        <li><i className="fa-solid fa-location-dot" /> Theo dõi hành trình và sức khỏe ngựa ngay trong mục Đơn của tôi</li>
-      </ul>
-      <table className={s.policy}>
-        <thead><tr><th>Trường hợp</th><th className="text-right">Hoàn tiền</th></tr></thead>
-        <tbody>{REFUND_POLICY.map(([c, r]) => <tr key={c}><td>{c}</td><td className="text-right font-semibold">{r}</td></tr>)}</tbody>
-      </table>
+      <div className="card-header"><h3><i className="fa-solid fa-file-circle-exclamation" /> Hồ sơ cần bổ sung</h3></div>
+      <div className={s.fix}>
+        {items.map(it => {
+          const h = horses?.find(x => x.id === it.horseId)
+          return (
+            <div key={it.horseId + it.doc} className={s.fixItem}>
+              <span><b>{h?.name ?? it.horseId}</b>: {HORSE_DOC[it.doc].label}</span>
+              {h && <button className="btn btn-primary btn-sm" onClick={() => setEdit(h)}>Cập nhật giấy</button>}
+            </div>
+          )
+        })}
+      </div>
+      <p className="form-hint" style={{ margin: '12px 0' }}>Cập nhật xong các giấy trên, bấm gửi lại để Kiểm dịch viên kiểm tra tiếp.</p>
+      <button className="btn btn-primary" disabled={busy} onClick={send}><i className="fa-solid fa-paper-plane" /> {busy ? 'Đang gửi…' : 'Đã bổ sung, gửi lại'}</button>
+      {edit && <HorseFormModal owner={owner} horse={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); toast('Đã cập nhật giấy') }} />}
     </div>
   )
 }
 
-function SidePanel({ order: o, onPay, onCancel }: { order: Order; onPay: () => void; onCancel: () => void }) {
-  const total = formatVND(orderTotal(o))
-  switch (o.status) {
-    case 'awaiting_payment': {
-      const left = paymentLeft(o)
-      return <>
-        <div className="card">
-          <div className="card-header"><h3><i className="fa-solid fa-credit-card" /> Thanh toán</h3></div>
-          <Row label="Tổng giá trị đơn">{total}</Row>
-          <div className={s.payTotal}>Cần thanh toán: <span className="text-orange">{total}</span></div>
-          <div className={`${s.deadline} ${left.urgent ? s.urgent : ''}`}>
-            <div><i className="fa-regular fa-clock" /> Còn <strong>{left.text}</strong></div>
-            <div className={s.deadlineSub}>Hạn thanh toán: {formatDateTime(paymentDeadline(o.approvedAt!, o.departAt))}</div>
-          </div>
-          <button className="btn btn-primary btn-full" onClick={onPay}><i className="fa-solid fa-credit-card" /> Thanh toán ngay</button>
-          <p className={s.hint}>Quá hạn chưa thanh toán, đơn sẽ tự hủy.</p>
-        </div>
-        <PolicyCard />
-      </>
-    }
-    case 'paid': return <>
-      <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-circle-check" style={{ color: 'var(--green)' }} /> Đã thanh toán</h3></div>
-        <Row label="Số tiền">{total}</Row>
-        <Row label="Thanh toán lúc">{formatDateTime(o.paidAt!)}</Row>
-        <div className={s.subTitle}>Bước tiếp theo</div>
-        <ol className={s.stops}>
-          <li>Hợp đồng điện tử và hóa đơn đã gửi qua email</li>
-          {o.papers && <li>Gửi bản gốc giấy tờ của ngựa trước {formatDateTime(originalsDue(o.departAt))} (xem mục Giấy tờ chuyến đi)</li>}
-          <li>Ngày {formatDate(o.departAt)}: kiểm dịch viên kiểm tra sức khỏe ngựa tại chỗ trước khi lên xe</li>
-          <li>Khởi hành; theo dõi hành trình ngay trên trang này</li>
-        </ol>
-      </div>
-      <PolicyCard />
-    </>
-    case 'delivered': case 'disputed': return (
-      <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-clipboard-check" /> Chờ nghiệm thu</h3></div>
-        <Row label="Giao ngựa lúc">{formatDateTime(o.deliveredAt!)}</Row>
-        <Row label="Đã thanh toán">{total}</Row>
-        <Link to={`/acceptance?id=${o.id}`} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><i className="fa-solid fa-clipboard-check" /> Nghiệm thu ngay</Link>
-      </div>)
-    case 'completed': return (
-      <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-flag-checkered" style={{ color: 'var(--green)' }} /> Hoàn thành</h3></div>
-        <Row label="Đã thanh toán">{total}</Row>
-        <Row label="Thanh toán lúc">{formatDateTime(o.paidAt!)}</Row>
-        <Link to={`/acceptance?id=${o.id}`} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><i className="fa-solid fa-clipboard-check" /> Xem biên bản nghiệm thu</Link>
-      </div>)
-    case 'in_transit': {
-      const trip = o.trip!
-      const current = trip.checkpoints.find(c => c.state === 'current')!
-      const done = trip.checkpoints.filter(c => c.state === 'done').length
-      const percent = Math.round(done / (trip.checkpoints.length - 1) * 100)
-      return <>
-        <div className="card">
-          <div className="card-header"><h3><i className="fa-solid fa-truck-moving" /> Vị trí hiện tại</h3></div>
-          <div className={s.tripNow}>{current.place}</div>
-          <div className="sub-text">{current.label}</div>
-          <div className={s.progress}><div style={{ width: `${percent}%` }} /></div>
-          <Row label="Đã qua">{done}/{trip.checkpoints.length - 1} điểm</Row>
-          <Row label="Dự kiến giao ngựa">{formatDateTime(trip.eta)}</Row>
-          <Row label="Xe">{o.vehicle} · {trip.plate}</Row>
-          <div className={s.subTitle}>Liên hệ trên xe</div>
-          {trip.contacts.map(([role, name, phone]) => <Row key={name} label={`${role}: ${name}`}><a href={tel(phone)} className="text-orange"><i className="fa-solid fa-phone" /> {phone}</a></Row>)}
-          <Row label="Hotline công ty"><span className="text-orange">{HOTLINE}</span></Row>
-        </div>
-        <PolicyCard />
-      </>
-    }
-    case 'processing': {
-      const overdue = isAppraisalOverdue(o)
-      return <>
-        <div className="card">
-          <div className="card-header"><h3><i className="fa-solid fa-circle-info" /> Thanh toán</h3></div>
-          <Row label="Tổng giá trị đơn">{total}</Row>
-          <Row label={overdue ? 'Cam kết kết quả (ưu tiên)' : 'Hạn thẩm định'}>{formatDateTime(overdue ? priorityDeadline(o.submittedAt, o.departAt) : appraisalDeadline(o.submittedAt, o.departAt))}</Row>
-          <p className={s.hint}>Chưa cần thanh toán. Bạn sẽ nhận yêu cầu thanh toán 100% khi đơn được duyệt.</p>
-          {overdue && <>
-            <a href={tel(HOTLINE)} className="btn btn-ghost btn-full" style={{ marginTop: 12 }}><i className="fa-solid fa-headset" /> Liên hệ hỗ trợ: {HOTLINE}</a>
-            <button className={s.linkMuted} onClick={onCancel}>Không muốn chờ? Hủy đơn miễn phí</button>
-          </>}
-        </div>
-        <PolicyCard />
-      </>
-    }
-    case 'rechecking': case 'choose_option': return (
-      <div className="card">
-        <Row label="Tổng giá trị đơn">{total}</Row>
-        <p className={s.hint}>Chưa cần thanh toán. Bạn sẽ nhận yêu cầu thanh toán 100% khi đơn được duyệt.</p>
-        <a href={tel(HOTLINE)} className="btn btn-ghost btn-full" style={{ marginTop: 12 }}><i className="fa-solid fa-headset" /> Liên hệ hỗ trợ: {HOTLINE}</a>
-      </div>)
-    default: return (
-      <div className="card">
-        <Row label="Tổng giá trị đơn">{total}</Row>
-        <p className={s.hint}>Đơn đã đóng, không phát sinh thanh toán.</p>
-        <Link to="/booking/route" className="btn btn-primary btn-full" style={{ marginTop: 12 }}><i className="fa-solid fa-paper-plane" /> Đặt chuyến mới</Link>
-      </div>)
+function PayCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; onDone: () => void }) {
+  const toast = useToast()
+  const [ok, setOk] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const pay = async () => {
+    setBusy(true)
+    try { await customerBookingsApi.payDeposit(owner, b.id); toast('Đã đặt cọc và ký hợp đồng vận tải'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không thanh toán được', 'error'); setBusy(false); onDone() }
   }
+  return (
+    <div className={`card ${s.pay}`}>
+      <div className="card-header"><h3><i className="fa-solid fa-credit-card" /> Đặt cọc giữ xe</h3></div>
+      <div className={s.payAmount}><span>Số tiền cần đặt cọc (50%)</span><strong>{formatVND(b.quote!.deposit)}</strong></div>
+      <div className={s.bank} aria-label="Thông tin chuyển khoản">
+        <div><span>Ngân hàng</span><b>{BANK.name}</b></div>
+        <div><span>Số tài khoản</span><b>{BANK.account}</b></div>
+        <div><span>Chủ tài khoản</span><b>{BANK.owner}</b></div>
+        <div><span>Nội dung</span><b>{b.id} COC</b></div>
+      </div>
+      <details className={s.contract}>
+        <summary>Xem điều khoản Hợp đồng vận tải</summary>
+        <ul>
+          <li>Nhà xe chỉ vận chuyển. Bạn tự chuẩn bị và khai báo hồ sơ pháp lý, kiểm dịch, hải quan.</li>
+          <li>Một đơn đi riêng một xe, không ghép ngựa của đơn khác.</li>
+          <li>Nhiên liệu và phí cầu đường quyết toán theo hóa đơn thực tế sau chuyến.</li>
+          <li>Phí lưu xe chờ {formatVND(b.quote!.demurragePerHour)} mỗi giờ khi chậm do giấy tờ của bạn.</li>
+          <li>Hủy đơn sau khi đặt cọc theo bảng hoàn cọc ở cột bên phải.</li>
+        </ul>
+      </details>
+      <label className={s.ack}><input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} /><span>Tôi đã đọc và chấp thuận Hợp đồng vận tải, đồng ý đặt cọc {formatVND(b.quote!.deposit)}.</span></label>
+      <button className="btn btn-primary btn-lg btn-full" disabled={!ok || busy} onClick={pay}>{busy ? 'Đang xử lý…' : 'Thanh toán cọc và ký hợp đồng'}</button>
+      <p className="form-hint" style={{ textAlign: 'center' }}>Bản thử nghiệm: bấm thanh toán là ghi nhận đã nhận cọc.</p>
+    </div>
+  )
 }
 
-function PayModal({ order: o, onClose, onPaid }: { order: Order; onClose: () => void; onPaid: () => void }) {
-  const [method, setMethod] = useState<'bank' | 'qr'>('bank')
-  const total = formatVND(orderTotal(o))
+function CarrierSheet({ b, team }: { b: CustomerBookingView; team?: TeamInfo }) {
+  if (!team || !b.fleet) return null
+  const cls = VEHICLE_CLASS[vehicleClassOf(team.vehicle.stalls)]
+  const row = (k: string, v: string) => <div><span>{k}</span><b>{v || '—'}</b></div>
   return (
-    <Modal title={<>Thanh toán đơn <span className="text-orange">{o.id}</span></>} onClose={onClose}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Để sau</button><button className="btn btn-primary" onClick={onPaid}>Tôi đã thanh toán</button></>}>
-      <div className={s.payAmount}>
-        <span>Số tiền cần thanh toán</span>
-        <strong>{total}</strong>
-        <span className={s.deadlineSub}>Hạn: {formatDateTime(paymentDeadline(o.approvedAt!, o.departAt))}</span>
-      </div>
-      <div className={s.methods}>
-        <label className={s.method}><input type="radio" checked={method === 'bank'} onChange={() => setMethod('bank')} /> <i className="fa-solid fa-building-columns" /> Chuyển khoản ngân hàng</label>
-        <label className={s.method}><input type="radio" checked={method === 'qr'} onChange={() => setMethod('qr')} /> <i className="fa-solid fa-qrcode" /> Quét mã QR</label>
-      </div>
-      {method === 'bank' ? <>
-        <Row label="Ngân hàng">{BANK.name}</Row>
-        <Row label="Số tài khoản">{BANK.account}</Row>
-        <Row label="Chủ tài khoản">{BANK.owner}</Row>
-        <Row label="Số tiền">{total}</Row>
-        <Row label="Nội dung chuyển khoản"><span className="text-orange">{o.id}</span></Row>
-        <p className={s.hint}>Ghi đúng nội dung chuyển khoản là mã đơn để hệ thống tự đối soát.</p>
-      </> : (
-        <div className={s.qr}>
-          <div className={s.qrBox}><i className="fa-solid fa-qrcode" /></div>
-          <p className={s.hint}>Mở ứng dụng ngân hàng và quét mã. Số tiền và nội dung <strong>{o.id}</strong> đã được điền sẵn.</p>
+    <div className="card">
+      <div className="card-header"><h3><i className="fa-solid fa-id-card" /> Carrier Info Sheet</h3><span className="badge badge-success">Chính thức</span></div>
+      <p className="form-hint" style={{ marginBottom: 12 }}>Dùng thông tin này để xin Giấy kiểm dịch và mở Tờ khai hải quan. Biển số và cửa khẩu phải khớp từng chữ trên giấy tờ.</p>
+      <div className={s.sheet}>
+        <div className={s.sheetGrid}>
+          <div className={s.sheetBox}>
+            <h4>Phương tiện</h4>
+            {row('Biển kiểm soát', team.vehicle.plate)}{row('Hạng xe', `${cls.label} · ${team.vehicle.stalls} ngăn`)}{row('Loại thùng', 'Thùng điều hòa chuyên dụng')}
+            {row('Số khung (VIN)', team.vehicle.vin)}{row('Số đăng kiểm', team.vehicle.inspectionNo)}{b.type === 'international' && row('Giấy phép liên vận', team.vehicle.transitPermit)}
+          </div>
+          <div className={s.sheetBox}>
+            <h4>Tuyến</h4>
+            {row('Mã đơn', b.id)}{row('Khởi hành', formatDateTime(b.fleet.etd))}
+            {b.type === 'international' && <>{row('Cửa khẩu', b.gate ?? '')}{row('Trạm hải quan dự kiến', `Chi cục Hải quan cửa khẩu ${(b.gate ?? '').split(' – ')[0]}`)}{row('ETA cửa khẩu', b.fleet.etaBorder ? formatDateTime(b.fleet.etaBorder) : '')}</>}
+          </div>
+          <div className={s.sheetBox}>
+            <h4>Tài xế (Driver)</h4>
+            {row('Họ tên', team.driver.name)}{row('CCCD / Hộ chiếu', team.driver.idNumber)}{row('Số GPLX', team.driver.license)}{row('Điện thoại', team.driver.phone)}
+          </div>
+          <div className={s.sheetBox}>
+            <h4>Chăm sóc (Escort)</h4>
+            {row('Họ tên', team.escort.name)}{row('CCCD / Hộ chiếu', team.escort.idNumber)}{row('Điện thoại', team.escort.phone)}
+          </div>
         </div>
-      )}
+      </div>
+    </div>
+  )
+}
+
+// Hủy đơn: hiện số tiền hoàn theo mốc thời gian ngay lúc bấm (PRD mục 8.3)
+function CancelModal({ b, owner, onClose, onDone }: { b: CustomerBookingView; owner: string; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const now = useNow()
+  const [reason, setReason] = useState('')
+  const [fm, setFm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const paid = b.payment?.amount ?? 0
+  const r = refundOf(b.departAt, paid, now, fm)
+  const send = async () => {
+    setBusy(true)
+    try { await customerBookingsApi.cancel(owner, b.id, reason, fm); toast('Đã hủy đơn'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không hủy được', 'error'); setBusy(false) }
+  }
+  return (
+    <Modal onClose={onClose} title={`Hủy đơn ${b.id}`} subtitle="Số tiền hoàn được tính theo thời điểm bạn bấm xác nhận."
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Giữ đơn</button><button className="btn btn-danger" disabled={busy || !reason.trim()} onClick={send}>Xác nhận hủy đơn</button></>}>
+      {paid > 0 ? (
+        <div className={s.refundBox}>
+          <div><span>Tiền cọc đã đặt</span><b>{formatVND(paid)}</b></div>
+          <div><span>Hoàn lại ({Math.round(r.rate * 100)}%)</span><b className="text-green">{formatVND(r.refund)}</b></div>
+          <div><span>Không hoàn</span><b className="text-red">{formatVND(r.lost)}</b></div>
+        </div>
+      ) : <div className="alert alert-info"><i className="fa-solid fa-circle-info" /><div>Bạn chưa đặt cọc nên hủy đơn không mất phí.</div></div>}
+      {paid > 0 && <label className={s.ack} style={{ margin: '14px 0' }}><input type="checkbox" checked={fm} onChange={e => setFm(e.target.checked)} /><span>Hủy vì bất khả kháng (dịch bệnh, thiên tai, ngựa ốm có giấy chứng nhận). Nhân viên sẽ đối chiếu giấy tờ.</span></label>}
+      <div className="form-group" style={{ margin: 0 }}><label htmlFor="cr" className="required">Lý do hủy</label><textarea id="cr" className="form-control" rows={3} value={reason} onChange={e => setReason(e.target.value)} /></div>
     </Modal>
+  )
+}
+
+// Lộ trình đã được Manager duyệt (Flow 3): các chặng, trạm nghỉ, cửa khẩu và nhắc chuẩn bị bản gốc
+function RouteCard({ b }: { b: CustomerBookingView }) {
+  const r = b.route!
+  return (
+    <div className="card">
+      <div className="card-header"><h3><i className="fa-solid fa-map-location-dot" /> Lộ trình đã duyệt</h3>{b.manifest && <span className="badge badge-success">{b.manifest.tripId}</span>}</div>
+      <ol className={s.legList}>
+        {r.legs.map((l, i) => (
+          <li key={l.no}>
+            <div><b>Chặng {l.no}:</b> {l.from} → {l.to}</div>
+            <div className="sub-text">Khởi hành {formatDateTime(l.departAt)} · đến khoảng {formatClock(l.arriveAt)}</div>
+            {r.rests[i] && <div className="sub-text"><i className="fa-solid fa-mug-hot" /> Nghỉ {r.rests[i].minutes} phút tại {r.rests[i].name}</div>}
+          </li>
+        ))}
+      </ol>
+      {r.borderEta && <p className="form-hint" style={{ marginTop: 10 }}><i className="fa-solid fa-flag" /> Dự kiến tới cửa khẩu {b.gate} lúc {formatDateTime(r.borderEta)}.</p>}
+      <div className="alert alert-info" style={{ marginTop: 14 }}><i className="fa-solid fa-folder-open" /><div><b>Nhắc bàn giao:</b> chuẩn bị sẵn các bản gốc hồ sơ (Hộ chiếu ngựa, Giấy kiểm dịch, PoA{b.type === 'international' ? ', Import Permit' : ''}…) để giao cho tài xế tại điểm đón.</div></div>
+    </div>
   )
 }
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams()
-  const toast = useToast()
   const { session } = useAuth()
-  const { data: order, reload } = useLoad(() => customerOrdersApi.get(session!.name, id), [id, session?.name])
-  const [modal, setModal] = useState<'pay' | 'cancel' | null>(null)
-  const [doc, setDoc] = useState<{ file: string; title: string } | null>(null)
-  const cardsRef = useStaggerIn('.card', [id, order?.status])
+  const owner = session!.name
+  const now = useNow()
+  const { data: b, reload } = useLoad(() => customerBookingsApi.get(owner, id), [owner, id])
+  const [cancelling, setCancelling] = useState(false)
+  const { data: team } = useLoad(() => customerBookingsApi.team(owner, id), [owner, id, b?.status])
+  const reloadAll = () => reload()
+  // Đang chạy: cập nhật định kỳ để thấy mốc check-in mới
+  const running = b?.status === 'en_route_to_pickup' || b?.status === 'in_transit'
+  useEffect(() => { if (running) reload() }, [now, running, reload])
 
-  if (!order) return <div className="page"><div className="wrap"><p className="text-muted">Không tìm thấy đơn {id}.</p></div></div>
-
-  const update = async (patch: Partial<Order>, message: string) => {
-    await customerOrdersApi.update(session!.name, order.id, patch)
-    setModal(null)
-    toast(message)
-    reload()
-    window.scrollTo(0, 0)
-  }
-  const approved = ['awaiting_payment', 'paid', 'in_transit', 'delivered', 'completed'].includes(order.status) || (order.status === 'cancelled' && !!order.approvedAt)
-  const inTransit = order.status === 'in_transit'
-  const choosing = order.status === 'choose_option' && !choiceExpired(order)
+  if (b === undefined) return <div className="page"><div className="wrap"><p className="text-muted">Đang tải…</p></div></div>
+  const next = nextStep(b, now)
+  const cls = VEHICLE_CLASS[vehicleClassOf(team?.vehicle.stalls ?? Math.max(b.horses.length, 1))] // xe thật khi đã chốt, chưa chốt thì theo số ngựa
+  const events = [
+    { time: b.createdAt, text: 'Bạn đã gửi đơn' },
+    ...(b.medical?.status === 'approved' && b.medical.at ? [{ time: b.medical.at, text: 'Thẩm định y tế đạt' }] : []),
+    ...(b.fleet && ['awaiting_payment', 'quote_expired', 'awaiting_clearance_docs'].includes(b.status) ? [{ time: b.fleet.confirmedAt, text: 'Phương án xe và lộ trình đã chốt' }] : []),
+    ...(b.quote ? [{ time: b.quote.sentAt, text: 'Báo giá được gửi cho bạn' }] : []),
+    ...(b.payment ? [{ time: b.payment.paidAt, text: `Đặt cọc ${formatVND(b.payment.amount)}, ký hợp đồng` }] : []),
+  ].sort((x, y) => x.time - y.time)
 
   return (
     <div className="page">
       <div className="wrap">
-        <div className="breadcrumb"><Link to="/portal">Cổng Khách hàng</Link> / <Link to="/orders">Đơn của tôi</Link> / <span className="text-orange font-semibold">{order.id}</span></div>
-        <div className={`page-header ${s.titleRow}`}><h1>Đơn {order.id}</h1><StatusBadge order={order} /></div>
-        <Stepper order={order} />
-        <Banner order={order} />
+        <div className="breadcrumb"><Link to="/portal">Tổng quan</Link> / <Link to="/orders">Đơn của tôi</Link> / <span className="text-orange font-semibold">{b.id}</span></div>
+        <div className={`page-header ${s.titleRow}`}><h1>Đơn {b.id}</h1><BookingStatusBadge status={b.status} /></div>
 
-        <div ref={cardsRef} className={s.layout}>
-          <div>
-            {choosing && <ChoicePanel order={order} onApply={update} />}
-
-            {inTransit && (
-              <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-route" /> Hành trình</h3><span className="sub-text">Cập nhật lúc {formatDateTime(order.trip!.updatedAt)}</span></div>
-                <ol className={s.timeline}>
-                  {order.trip!.checkpoints.map(c => (
-                    <li key={c.label} className={`${s.point} ${s[c.state]}`}>
-                      <div className={s.dot}>{c.state === 'done' ? <i className="fa-solid fa-check" /> : c.state === 'current' ? <i className="fa-solid fa-truck-moving" /> : null}</div>
-                      <div>
-                        <div className={s.pointLabel}>{c.label}{c.state === 'current' && <> <span className="badge badge-info">Đang ở đây</span></>}</div>
-                        <div className="sub-text">{c.place} · {c.state === 'next' ? 'dự kiến ' : ''}{formatDateTime(c.time)}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-            {inTransit && (
-              <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-heart-pulse" /> Sức khỏe ngựa trên đường</h3></div>
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead><tr><th>Thời điểm</th><th>Thân nhiệt</th><th>Nhịp tim</th><th>Ghi chú của NV chăm sóc</th></tr></thead>
-                    <tbody>{order.trip!.health.map(h => <tr key={h.time}><td className="nowrap">{formatDateTime(h.time)}</td><td>{h.temp}</td><td>{h.heart}</td><td className="text-muted">{h.note}</td></tr>)}</tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <div className="card">
-              <div className="card-header"><h3><i className="fa-solid fa-file-lines" /> Thông tin đơn</h3></div>
-              <Row label="Gửi đơn lúc">{formatDateTime(order.submittedAt)}</Row>
-              <Row label="Điểm đi">{order.from}</Row>
-              <Row label="Điểm đến">{order.to}</Row>
-              <Row label="Loại tuyến">{order.border ? `Xuyên quốc gia · cửa khẩu ${order.border}` : 'Nội địa'}</Row>
-              <Row label="Quãng đường / Thời gian">{order.distance} · {order.duration}</Row>
-              <Row label="Ngày khởi hành"><span className="text-orange">{formatDate(order.departAt)}</span></Row>
-              <Row label={`Ngựa (${order.horses.length})`}>{order.horses.map(h => <div key={h.name}>{horseLabel(h)}</div>)}</Row>
+        <div className={s.layout}>
+          <div className={s.main}>
+            <Progress b={b} />
+            <div className={`${s.next} ${TONE[next.tone]}`} role="status">
+              <i className={`fa-solid ${next.icon}`} aria-hidden="true" />
+              <div><h2>{next.title}</h2><p>{next.text}</p></div>
             </div>
 
-            {approved && (
+            {b.status === 'under_review' && b.medical?.status === 'resubmit' && <Resubmit b={b} owner={owner} onDone={reloadAll} />}
+
+            {/* Từ khi lộ trình được lập: hành trình và lộ trình lên trước, giấy tờ thu gọn */}
+            {ROUTE_STAGE.includes(b.status) && b.trip && (
               <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-clipboard-check" /> Kết quả thẩm định</h3></div>
-                <ul className={s.checks}>
-                  <li><i className="fa-solid fa-circle-check" /> Hồ sơ ngựa hợp lệ — đã được kiểm dịch viên xác nhận</li>
-                  <li><i className="fa-solid fa-circle-check" /> Đã lập kế hoạch vận chuyển — {order.vehicle}</li>
-                  <li><i className="fa-solid fa-circle-check" /> Đơn được duyệt lúc {formatDateTime(order.approvedAt!)}</li>
-                </ul>
-                <div className={s.subTitle}>Lộ trình dự kiến</div>
-                <ol className={s.stops}>{order.stops?.map(st => <li key={st}>{st}</li>)}</ol>
+                <div className="card-header"><h3><i className="fa-solid fa-location-dot" /> Hành trình</h3>{b.status === 'in_transit' && <span className="badge badge-info">Đang chạy</span>}</div>
+                <TripTimeline b={b} now={now} />
+              </div>
+            )}
+            {ROUTE_VISIBLE.includes(b.status) && b.route && <RouteCard b={b} />}
+            {POST_PAYMENT.includes(b.status) && (ROUTE_STAGE.includes(b.status)
+              ? (
+                <details className={`card ${s.fold}`}>
+                  <summary><i className="fa-solid fa-file-circle-check" /> Giấy tờ pháp lý và Carrier Info Sheet</summary>
+                  <div className={s.foldBody}><ClearanceCard b={b} team={team} owner={owner} onDone={reloadAll} /><CarrierSheet b={b} team={team} /></div>
+                </details>
+              ) : (
+                <>
+                  <ClearanceCard b={b} team={team} owner={owner} onDone={reloadAll} />
+                  <CarrierSheet b={b} team={team} />
+                </>
+              ))}
+
+            {b.quote && (
+              <div className="card">
+                <div className="card-header"><h3><i className="fa-solid fa-file-invoice-dollar" /> Báo giá</h3></div>
+                {team && b.fleet && <p className="form-hint" style={{ marginBottom: 12 }}>Xe {team.vehicle.plate} · tài xế {team.driver.name} · hộ tống {team.escort.name}</p>}
+                <QuoteSheet {...b.quote} expiresAt={b.status === 'awaiting_payment' ? b.quote.expiresAt : undefined} />
               </div>
             )}
 
-            {order.papers && (
-              <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-folder-open" /> Giấy tờ chuyến đi</h3><span className="sub-text">{order.papers.handedAt ? `Đã bàn giao cho đội vận chuyển lúc ${formatDateTime(order.papers.handedAt)}` : `Hạn gửi bản gốc: ${formatDateTime(originalsDue(order.departAt))}`}</span></div>
-                <div className="table-wrap"><Papers order={order} onOpen={(file, title) => setDoc({ file, title })} /></div>
-              </div>
-            )}
+            {b.status === 'awaiting_payment' && b.quote && <PayCard b={b} owner={owner} onDone={reloadAll} />}
 
             <div className="card">
-              <div className="card-header"><h3><i className="fa-solid fa-list-check" /> Dịch vụ đã chọn</h3></div>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>Dịch vụ</th><th>Lựa chọn</th><th className="text-right">Thành tiền</th></tr></thead>
-                  <tbody>{order.services.map(svc => <tr key={svc[0]}><td className="font-semibold">{svc[0]}</td><td className="text-muted">{svc[1]}</td><td className="text-right nowrap">{formatVND(svc[2])}</td></tr>)}</tbody>
-                  <tfoot><tr><td colSpan={2}>TỔNG GIÁ TRỊ ĐƠN</td><td className="text-right nowrap">{formatVND(orderTotal(order))}</td></tr></tfoot>
-                </table>
-              </div>
+              <div className="card-header"><h3><i className="fa-solid fa-route" /> Chuyến đi</h3></div>
+              <dl className={s.grid}>
+                <div><dt>Loại chuyến</dt><dd>{b.type === 'international' ? `Quốc tế (${COUNTRIES[b.origin.country].name} → ${COUNTRIES[b.dest.country].name})` : 'Trong nước'}</dd></div>
+                <div><dt>Ngày khởi hành</dt><dd>{formatDate(b.departAt)}</dd></div>
+                <div><dt>Điểm đón</dt><dd>{placeName(b.origin.name)}</dd></div>
+                <div><dt>Điểm giao</dt><dd>{placeName(b.dest.name)}</dd></div>
+                {b.gate && <div><dt>Cửa khẩu (đã khóa)</dt><dd>{b.gate}</dd></div>}
+                <div><dt>Người gửi</dt><dd>{b.consignor.name}</dd></div>
+                <div><dt>Người nhận</dt><dd>{b.consignee.name}</dd></div>
+              </dl>
+            </div>
+
+            <div className="card">
+              <div className="card-header"><h3><i className="fa-solid fa-horse-head" /> {b.horses.length} ngựa · xe {cls.label}</h3></div>
+              {b.horses.map(h => (
+                <div key={h.horseId} className={s.horseRow}>
+                  <div><b>{h.name}</b> <small>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</small></div>
+                  <div style={{ textAlign: 'right' }}>{h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {h.targetTemp}°C</div>
+                  <small>{h.insurance.opted ? `Mua bảo hiểm, phí ${formatVND(insuranceFee(h.breed))}` : 'Từ chối bảo hiểm (trách nhiệm hạn chế)'}</small>
+                </div>
+              ))}
             </div>
           </div>
 
-          <aside className={s.side}><SidePanel order={order} onPay={() => setModal('pay')} onCancel={() => setModal('cancel')} /></aside>
+          <aside className={s.side}>
+            <div className="card">
+              <div className="card-header"><h3><i className="fa-solid fa-clock-rotate-left" /> Diễn biến</h3></div>
+              <ol className={s.timeline}>
+                {events.map(e => <li key={e.time + e.text} className={s.tl}><span className={s.tlDot}><i className="fa-solid fa-check" aria-hidden="true" /></span><div>{e.text}<div className={s.tlTime}>{formatDateTime(e.time)}</div></div></li>)}
+              </ol>
+            </div>
+            <div className="card">
+              <div className="card-header"><h3><i className="fa-solid fa-rotate-left" /> Hủy đơn và hoàn cọc</h3></div>
+              <table className={s.policy}><tbody>{REFUND_POLICY.map(([c, r]) => <tr key={c}><td>{c}</td><td>{r}</td></tr>)}</tbody></table>
+              {CANCELLABLE.includes(b.status) && <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setCancelling(true)}><i className="fa-solid fa-ban" /> Hủy đơn này</button>}
+              <p className="form-hint" style={{ marginTop: 10 }}>Cần hỗ trợ? Gọi <a href={`tel:${HOTLINE.replace(/\s/g, '')}`} className="text-orange font-semibold">{HOTLINE}</a>.</p>
+            </div>
+          </aside>
         </div>
       </div>
-
-      {modal === 'pay' && <PayModal order={order} onClose={() => setModal(null)} onPaid={() => update({ status: 'paid', paidAt: Date.now() }, `Đã ghi nhận thanh toán đơn ${order.id}. Hợp đồng điện tử đã gửi qua email.`)} />}
-      {modal === 'cancel' && (
-        <Modal title={<>Hủy đơn <span className="text-orange">{order.id}</span>?</>} onClose={() => setModal(null)}
-          footer={<><button className="btn btn-ghost" onClick={() => setModal(null)}>Tiếp tục chờ</button><button className="btn btn-danger" onClick={() => update({ status: 'cancelled', reason: `Bạn đã hủy đơn lúc ${formatDateTime(Date.now())} do quá hạn thẩm định (hạn ${formatDateTime(appraisalDeadline(order.submittedAt, order.departAt))}). Không phát sinh chi phí.` }, `Đã hủy đơn ${order.id}. Không phát sinh chi phí.`)}>Xác nhận hủy đơn</button></>}>
-          <p>Đơn đang được xử lý ưu tiên, cam kết có kết quả trước <strong>{formatDateTime(priorityDeadline(order.submittedAt, order.departAt))}</strong>. Nếu hủy:</p>
-          <ul className={s.effects}>
-            <li><i className="fa-solid fa-circle-check" style={{ color: 'var(--green)' }} /> <span><strong>Không mất phí</strong> — bạn chưa thanh toán cho đơn này.</span></li>
-            <li><i className="fa-solid fa-circle-xmark" style={{ color: 'var(--red)' }} /> <span>Đơn chuyển sang <strong>Đã hủy</strong>, chuyến ngày <strong>{formatDate(order.departAt)}</strong> sẽ không được thực hiện.</span></li>
-            <li><i className="fa-solid fa-circle-xmark" style={{ color: 'var(--red)' }} /> <span>Không thể khôi phục. Muốn vận chuyển lại, bạn cần đặt đơn mới.</span></li>
-          </ul>
-        </Modal>
-      )}
-      {doc && (
-        <Modal title={doc.title} onClose={() => setDoc(null)} footer={<button className="btn btn-ghost" onClick={() => setDoc(null)}>Đóng</button>}>
-          <div className={s.docPreview}><i className="fa-regular fa-file-pdf" /><div>{doc.file}</div><div className="sub-text">Bản xem trước tài liệu</div></div>
-        </Modal>
-      )}
+      {cancelling && <CancelModal b={b} owner={owner} onClose={() => setCancelling(false)} onDone={() => { setCancelling(false); reloadAll() }} />}
     </div>
   )
 }

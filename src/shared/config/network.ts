@@ -42,24 +42,36 @@ export const GATES: Gate[] = [
 ]
 
 // Kho / điểm nhận giao dùng khi đặt đơn (trang Tạo yêu cầu, bước 1)
-export interface BookingLocation { id: string; name: string; type: 'farm' | 'club' }
+export interface BookingLocation extends GeoPoint { id: string; name: string; type: 'farm' | 'club' }
 export const COUNTRY_LOCATIONS: Record<CountryCode, BookingLocation[]> = {
   VN: [
-    { id: 'KHO-DN', name: 'Kho Đồng Nai — Trang trại Đua ngựa Long Thành', type: 'farm' },
-    { id: 'KHO-LA', name: 'Kho Long An — Trang trại Huấn luyện Mỹ Quỳnh (Đức Hòa)', type: 'farm' },
-    { id: 'KHO-BD', name: 'Kho Bình Dương — Trung tâm Cưỡi ngựa Đức Hòa', type: 'farm' },
-    { id: 'CLB-SG', name: 'CLB Cưỡi ngựa Sài Gòn (Saigon Pony Club - Q.2, TP.HCM)', type: 'club' },
+    { id: 'KHO-DN', lat: 10.78, lng: 107.0, name: 'Kho Đồng Nai — Trang trại Đua ngựa Long Thành', type: 'farm' },
+    { id: 'KHO-LA', lat: 10.88, lng: 106.4, name: 'Kho Long An — Trang trại Huấn luyện Mỹ Quỳnh (Đức Hòa)', type: 'farm' },
+    { id: 'KHO-BD', lat: 11.0, lng: 106.65, name: 'Kho Bình Dương — Trung tâm Cưỡi ngựa Đức Hòa', type: 'farm' },
+    { id: 'CLB-SG', lat: 10.79, lng: 106.74, name: 'CLB Cưỡi ngựa Sài Gòn (Saigon Pony Club - Q.2, TP.HCM)', type: 'club' },
   ],
   KH: [
-    { id: 'KHO-PNH', name: 'Kho Phnom Penh — Trung tâm Kiểm dịch Động vật Phnom Penh', type: 'farm' },
-    { id: 'KHO-SR', name: 'Kho Siem Reap — Trại Ngựa & Vật nuôi Angkor', type: 'farm' },
-    { id: 'SAI-PNH', name: 'CLB Cưỡi ngựa Hoàng gia Phnom Penh (Phnom Penh Equestrian Club)', type: 'club' },
+    { id: 'KHO-PNH', lat: 11.56, lng: 104.92, name: 'Kho Phnom Penh — Trung tâm Kiểm dịch Động vật Phnom Penh', type: 'farm' },
+    { id: 'KHO-SR', lat: 13.36, lng: 103.86, name: 'Kho Siem Reap — Trại Ngựa & Vật nuôi Angkor', type: 'farm' },
+    { id: 'SAI-PNH', lat: 11.55, lng: 104.9, name: 'CLB Cưỡi ngựa Hoàng gia Phnom Penh (Phnom Penh Equestrian Club)', type: 'club' },
   ],
   LA: [
-    { id: 'KHO-VTE', name: 'Kho Viêng Chăn — Trang trại Chăn nuôi & Kiểm dịch Vientiane', type: 'farm' },
-    { id: 'CLB-VTE', name: 'CLB Mã cầu & Cưỡi ngựa Viêng Chăn (Vientiane Equestrian Club)', type: 'club' },
+    { id: 'KHO-VTE', lat: 17.97, lng: 102.6, name: 'Kho Viêng Chăn — Trang trại Chăn nuôi & Kiểm dịch Vientiane', type: 'farm' },
+    { id: 'CLB-VTE', lat: 17.98, lng: 102.62, name: 'CLB Mã cầu & Cưỡi ngựa Viêng Chăn (Vientiane Equestrian Club)', type: 'club' },
   ],
 }
 
 // Trạm trung chuyển của công ty (nghỉ đêm trên tuyến dài)
 export const STATIONS = ['Trạm nghỉ Vinh (Nghệ An)', 'Trạm nghỉ Quy Nhơn (Bình Định)', 'Trạm nghỉ Tuy Hòa (Phú Yên)', 'Trạm nghỉ Điện Biên']
+
+// Trạm Thú y khẩn cấp dọc tuyến (số mẫu để chạy thử; thay bằng danh bạ thật khi có)
+export interface VetPointInfo { name: string; phone: string; area: string }
+export const VET_POINTS: VetPointInfo[] = [
+  { name: 'Phòng khám Thú y Long Thành', phone: '0251 3 840 115', area: 'Đồng Nai' },
+  { name: 'Phòng khám Thú y Đức Hòa', phone: '0272 3 765 220', area: 'Long An' },
+  { name: 'Trạm Thú y Trảng Bàng', phone: '0276 3 881 342', area: 'Tây Ninh' },
+  { name: 'Trạm Thú y cửa khẩu Mộc Bài', phone: '0276 3 782 019', area: 'Tây Ninh' },
+  { name: 'Phnom Penh Veterinary Clinic', phone: '+855 23 880 410', area: 'Phnom Penh' },
+  { name: 'Vientiane Equine Clinic', phone: '+856 21 412 366', area: 'Viêng Chăn' },
+  { name: 'Trạm Thú y Lao Bảo', phone: '0233 3 877 120', area: 'Quảng Trị' },
+]

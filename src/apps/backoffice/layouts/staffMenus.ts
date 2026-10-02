@@ -1,24 +1,25 @@
 import type { StaffRole } from '@shared/types/role'
 
-// Menu theo vai trò. Giữ đúng thứ tự và tên mục của các trang HTML cũ
-// (Manager: MANAGER_NAV_ITEMS; Kiểm dịch, Điều phối: thanh bên ops-sidebar). Kiểm dịch: mục đầu đổi tên theo tiêu đề trang.
+// Menu theo vai trò. Các mục của Flow 1 (tiếp nhận, duyệt báo giá, thẩm định y tế, phương án xe) theo quy trình mới.
 export const STAFF_MENUS: Record<StaffRole, [path: string, label: string][]> = {
   manager: [
     ['/manager', 'Bảng điều khiển'],
-    ['/manager/intake', 'Tiếp nhận Đơn hàng'],
-    ['/manager/approvals', 'Phê duyệt Đơn hàng'],
+    ['/manager/intake', 'Tiếp nhận đơn'],
+    ['/manager/approvals', 'Duyệt báo giá'],
+    ['/manager/documents', 'Hồ sơ pháp lý'],
+    ['/manager/manifests', 'Duyệt Manifest'],
     ['/manager/staff', 'Nhân sự'],
     ['/manager/trip-reports', 'Báo cáo Chuyến đi'],
     ['/manager/incidents', 'Sự cố & Chi Phí'],
   ],
   specialist: [
-    ['/specialist/verification', 'Hồ sơ được giao'],
-    ['/specialist/trip-papers', 'Chuẩn bị giấy tờ chuyến đi'],
+    ['/specialist/verification', 'Thẩm định y tế'],
+    ['/specialist/legal', 'Hồ sơ pháp lý'],
   ],
   coordinator: [
-    ['/coordinator/assessment', 'Khả thi'],
-    ['/coordinator/routing', 'Lộ trình'],
-    ['/coordinator/assignment', 'Phân công'],
+    ['/coordinator/fleet-plan', 'Phương án xe'],
+    ['/coordinator/dispatch', 'Lệnh xuất bến'],
+    ['/coordinator/routes', 'Lộ trình chi tiết'],
     ['/coordinator/monitoring', 'Giám sát'],
     ['/coordinator/incidents', 'Sự cố'],
     ['/coordinator/fleet', 'Đội xe'],
@@ -30,7 +31,7 @@ export const STAFF_MENUS: Record<StaffRole, [path: string, label: string][]> = {
 export const HOME_OF: Record<StaffRole, string> = {
   manager: '/manager',
   specialist: '/specialist/verification',
-  coordinator: '/coordinator/assessment',
+  coordinator: '/coordinator/fleet-plan',
   driver: '/driver',
   escort: '/escort',
 }

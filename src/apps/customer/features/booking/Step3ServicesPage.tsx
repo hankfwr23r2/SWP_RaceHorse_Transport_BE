@@ -1,100 +1,131 @@
-// Bước 3: Dịch vụ & Y tế. Chuyển từ CUS/create_request_step3.html + initStep3(), calculateInsurance().
-import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+// Bước 3: cấu hình từng ngựa: khoang, nhiệt độ, dinh dưỡng, bảo hiểm mua hoặc từ chối (PRD mục 2.2).
+import { useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router'
+import { useAuth } from '@shared/auth/AuthContext'
+import { HORSE_BREEDS, TARGET_TEMP } from '@shared/config/booking-rules'
+import { insuranceFee } from '@shared/lib/booking'
+import { formatVND } from '@shared/lib/format'
+import { horsesApi } from '@shared/services/horses'
+import { useLoad } from '@shared/services/useLoad'
+import { SEX_LABEL } from '@shared/types/booking'
 import { BookingShell } from './BookingShell'
-import { useBookingDraft } from './draft'
+import { defaultConfig, useBookingDraft, type HorseConfig } from './draft'
 import s from './Booking.module.css'
 
-type Opts = [string, string][]
-const FEEDING: Opts = [['yes', 'Đội ngũ hậu cần chuẩn bị (Đã bao gồm trong giá)'], ['custom', 'Thực đơn đặc biệt theo yêu cầu (Phụ phí thức ăn)'], ['self', 'Chủ trang trại tự chuẩn bị khẩu phần đóng gói']]
-const FOOD: Opts = [['hay', 'Cỏ khô Timothy Hay nhập khẩu — Tiêu chuẩn thi đấu'], ['alfalfa', 'Cỏ Alfalfa — Giàu đạm & khoáng chất'], ['mixed', 'Thức ăn hỗn hợp cao cấp (Pellets + Timothy)'], ['fresh', 'Cỏ tươi tự nhiên + Táo/Cà rốt bổ sung']]
-const STALL: Opts = [['standard', 'Khoang Tiêu chuẩn (1.2m × 2.4m) — Khuyên dùng'], ['vip', 'Khoang VIP Royal (1.5m × 3.0m) — Rộng hơn 25%, sàn đệm cao su'], ['isolation', 'Khoang Cách ly Độc lập — Có vách ngăn kín và lọc khí HEPA']]
-const WATER: Opts = [['normal', 'Nước khoáng tinh khiết tiêu chuẩn — Uống tự do'], ['electrolyte', 'Bổ sung dung dịch điện giải chống mất nước & giảm stress']]
-const INSURANCE: Opts = [['none', 'Không đăng ký bảo hiểm bổ sung (Trách nhiệm dân sự tối thiểu)'], ['basic', 'Gói Cơ bản — Bồi thường tối đa 500 triệu VND (2% giá trị khai báo)'], ['premium', 'Gói Nâng cao — Bồi thường tối đa 2 tỷ VND (3.5% giá trị khai báo)'], ['full', 'Gói Toàn diện — Bồi thường 100% giá trị khai báo (5.0% giá trị)']]
-const RATE: Record<string, number> = { basic: 0.02, premium: 0.035, full: 0.05 }
-
-const label = (opts: Opts, v: string) => opts.find(o => o[0] === v)?.[1] ?? ''
-
-function Select({ id, title, opts, value, onChange }: { id: string; title: string; opts: Opts; value: string; onChange: (v: string) => void }) {
+// Icon dấu chấm than: rê chuột (hoặc focus bằng bàn phím) thì xổ ra bảng phí bảo hiểm theo giống. Chỉ hiện phí, không hiện giá trị ngựa.
+function InsuranceNote({ id, breed }: { id: string; breed: string }) {
   return (
-    <div className="form-group">
-      <label htmlFor={id} className="required">{title}</label>
-      <select id={id} className="form-control" value={value} onChange={e => onChange(e.target.value)}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-    </div>
+    <span className={s.note}>
+      <button type="button" className={s.noteBtn} aria-label="Lưu ý: phí bảo hiểm theo giống ngựa" aria-describedby={id}>
+        <i className="fa-solid fa-circle-exclamation" aria-hidden="true" />
+      </button>
+      <div id={id} role="tooltip" className={s.noteBox}>
+        <b>Phí bảo hiểm chuyến đi theo giống ngựa</b>
+        <table className={s.noteTable}>
+          <tbody>
+            {HORSE_BREEDS.map(b => (
+              <tr key={b} className={b === breed ? s.noteCurrent : undefined}><td>{b}</td><td>{formatVND(insuranceFee(b))}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </span>
   )
 }
 
 export default function Step3ServicesPage() {
   const navigate = useNavigate()
+  const { session } = useAuth()
+  const owner = session!.name
   const { draft, save } = useBookingDraft()
-  const [f, setF] = useState({
-    feeding: draft.feeding || 'yes', foodType: draft.foodType || 'hay', stallType: draft.stallType || 'standard',
-    waterSupplement: draft.waterSupplement || 'normal', insurance: draft.insurance || 'basic',
-    horseValue: draft.horseValue ? Number(draft.horseValue).toLocaleString('en-US') : '2,000,000,000', specialCare: draft.specialCare,
+  const { data: horses } = useLoad(() => horsesApi.list(owner), [owner])
+  const [config, setConfig] = useState<Record<string, HorseConfig>>(() => Object.fromEntries(draft.horseIds.map(id => [id, draft.config[id] ?? defaultConfig()])))
+  const [ack, setAck] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  if (!draft.type || !draft.departDate) return <Navigate to="/booking/route" replace />
+  if (!draft.horseIds.length) return <Navigate to="/booking/horses" replace />
+
+  const rows = draft.horseIds.map(id => horses?.find(h => h.id === id)).filter(Boolean) as NonNullable<typeof horses>
+  const set = (id: string, patch: Partial<HorseConfig>) => setConfig(c => ({ ...c, [id]: { ...c[id], ...patch } }))
+  const declined = rows.filter(h => config[h.id].insurance === 'decline')
+  const problems = rows.flatMap(h => {
+    const c = config[h.id]
+    return !c.insurance ? [`${h.name}: chọn mua hoặc từ chối bảo hiểm`] : []
   })
-  const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v })
+  if (declined.length && !ack) problems.push('Xác nhận Điều khoản Trách nhiệm Hạn chế')
 
-  const value = parseFloat(f.horseValue.replace(/\D/g, '')) || 0
-  const rate = RATE[f.insurance] ?? 0
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    save({
-      hasDisease: draft.hasDisease || 'no', hasMedication: draft.hasMedication || 'no', diseaseDetail: draft.diseaseDetail, needIsolation: draft.needIsolation || 'no',
-      feeding: f.feeding,
-      foodType: f.foodType, foodTypeName: label(FOOD, f.foodType),
-      stallType: f.stallType, stallTypeName: label(STALL, f.stallType),
-      waterSupplement: f.waterSupplement, waterSupplementName: label(WATER, f.waterSupplement),
-      insurance: f.insurance, insuranceName: label(INSURANCE, f.insurance),
-      horseValue: parseInt(f.horseValue.replace(/\D/g, '') || '2000000000', 10),
-      specialCare: f.specialCare,
-    })
+  const next = () => {
+    setSubmitted(true)
+    if (problems.length) { document.querySelector('[data-problem]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); return }
+    save({ config })
     navigate('/booking/review')
   }
 
   return (
-    <BookingShell step={3} crumb="Bước 3: Dịch vụ & Y tế" title="Hồ sơ Y tế & Tùy chọn Dịch vụ Chăm sóc" subtitle="Đính kèm giấy tờ kiểm dịch và lựa chọn tiêu chuẩn chăm sóc tối ưu sức khỏe của ngựa đua trong suốt chuyến đi.">
-      <form onSubmit={submit}>
-        <div className="card">
-          <div className="card-header"><h2><i className="fa-solid fa-wheat-awn" /> 1. Chăm sóc Dinh dưỡng & Khoang Vận chuyển (Stalls)</h2></div>
-          <div className={s.grid2}>
-            <Select id="feeding" title="Chế độ dinh dưỡng trên đường" opts={FEEDING} value={f.feeding} onChange={set('feeding')} />
-            <Select id="food_type" title="Loại thức ăn chính" opts={FOOD} value={f.foodType} onChange={set('foodType')} />
-            <Select id="stall_type" title="Quy cách khoang vận chuyển (Stalls)" opts={STALL} value={f.stallType} onChange={set('stallType')} />
-            <Select id="water_supplement" title="Chế độ nước uống & Điện giải" opts={WATER} value={f.waterSupplement} onChange={set('waterSupplement')} />
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header"><h2><i className="fa-solid fa-shield-halved" /> 2. Gói Bảo hiểm Vận chuyển Chuyên biệt</h2><span className="badge badge-success">Bảo lãnh bồi thường</span></div>
-          <div className={s.grid2}>
-            <Select id="insurance" title="Lựa chọn gói bảo hiểm rủi ro" opts={INSURANCE} value={f.insurance} onChange={set('insurance')} />
-            <div className="form-group">
-              <label htmlFor="horse_value" className="required">Giá trị cá thể ngựa khai báo (VND)</label>
-              <input id="horse_value" className="form-control" placeholder="VD: 2,000,000,000" value={f.horseValue} onChange={e => set('horseValue')(e.target.value)} />
+    <BookingShell step={3} title="Dịch vụ và bảo hiểm" subtitle="Thiết lập chăm sóc riêng cho từng con. Bảo hiểm chuyến đi chọn riêng cho từng ngựa.">
+      {rows.map(h => {
+        const c = config[h.id]
+        return (
+          <section key={h.id} className={`card ${s.horseCard}`} data-card aria-labelledby={`h-${h.id}`}>
+            <div className={s.horseHead}>
+              <i className="fa-solid fa-horse" style={{ fontSize: '1.4rem', color: 'var(--orange)' }} aria-hidden="true" />
+              <div><div id={`h-${h.id}`} className={s.horseName}>{h.name}</div><div className={s.horseChip}>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</div></div>
             </div>
-          </div>
-          <div className="form-group">
-            <label>Phí bảo hiểm dự toán</label>
-            {rate === 0
-              ? <div className={`${s.insurance} ${s.insuranceOff}`}><i className="fa-solid fa-info-circle" /> 0 VND (Không đăng ký gói bảo hiểm)</div>
-              : <div className={`${s.insurance} ${s.insuranceOn}`}><i className="fa-solid fa-calculator" /> {(value * rate).toLocaleString('vi-VN')} VND ({(rate * 100).toFixed(1)}% × {value.toLocaleString('vi-VN')} VND)</div>}
-          </div>
-        </div>
 
-        <div className="card">
-          <div className="card-header"><h2><i className="fa-solid fa-user-nurse" /> 3. Ghi chú Hướng dẫn cho Đội ngũ Hộ tống (Escort / Groom)</h2></div>
-          <div className="form-group">
-            <label htmlFor="special_care">Yêu cầu tâm lý, thói quen sinh hoạt hoặc dặn dò đặc biệt</label>
-            <textarea id="special_care" className="form-control" rows={4} placeholder="VD: Ngựa nhạy cảm với tiếng còi xe lớn, thích được chải lông trước khi ngủ, cho uống nước ấm khi trời lạnh..." value={f.specialCare} onChange={e => set('specialCare')(e.target.value)} />
-          </div>
-        </div>
+            <div>
+              <div className={s.fieldLabel} id={`stall-${h.id}`}>Khoang trên xe</div>
+              <div className={s.optRow} role="radiogroup" aria-labelledby={`stall-${h.id}`}>
+                {([['standard', 'Khoang tiêu chuẩn', 'Đã gồm trong cước vận chuyển.'], ['single', 'Khoang đơn mở rộng', 'Rộng hơn, phụ thu theo từng ngựa.']] as const).map(([v, t, d]) => (
+                  <label key={v} className={s.opt}><input type="radio" name={`stall-${h.id}`} checked={c.stall === v} onChange={() => set(h.id, { stall: v })} /><b>{t}</b><span>{d}</span></label>
+                ))}
+              </div>
+            </div>
 
-        <div className={s.actions}>
-          <Link to="/booking/horses" className="btn btn-ghost"><i className="fa-solid fa-arrow-left" /> Bước 2: Thông tin ngựa</Link>
-          <button type="submit" className="btn btn-primary">Tiếp tục: Xác nhận & Dự toán <i className="fa-solid fa-arrow-right" /></button>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor={`temp-${h.id}`} className={s.fieldLabel}>Nhiệt độ khoang điều hòa</label>
+              <div className={s.tempRow}>
+                <input id={`temp-${h.id}`} type="range" min={TARGET_TEMP.min} max={TARGET_TEMP.max} step={0.5} value={c.targetTemp} onChange={e => set(h.id, { targetTemp: Number(e.target.value) })} />
+                <span className={s.tempVal}>{c.targetTemp}°C</span>
+              </div>
+              <div className="form-hint">Khoảng khuyến nghị {TARGET_TEMP.min}–{TARGET_TEMP.max}°C. Kiểm dịch viên có thể điều chỉnh khi thẩm định.</div>
+            </div>
+
+            <div className={s.grid2}>
+              <div className="form-group"><label htmlFor={`feed-${h.id}`}>Chế độ dinh dưỡng</label><input id={`feed-${h.id}`} className="form-control" value={c.feeding} onChange={e => set(h.id, { feeding: e.target.value })} placeholder="VD: Cỏ khô Timothy, yến mạch" /></div>
+              <div className="form-group"><label htmlFor={`water-${h.id}`}>Cữ nước</label><input id={`water-${h.id}`} className="form-control" value={c.water} onChange={e => set(h.id, { water: e.target.value })} placeholder="VD: Mỗi 3 giờ" /></div>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}><label htmlFor={`note-${h.id}`}>Ghi chú chăm sóc</label><input id={`note-${h.id}`} className="form-control" value={c.careNote} onChange={e => set(h.id, { careNote: e.target.value })} placeholder="VD: Dễ căng thẳng khi nghe tiếng động lớn" /></div>
+
+            <div>
+              <div className={s.labelRow}>
+                <div className={`${s.fieldLabel} required`} id={`ins-${h.id}`}>Bảo hiểm chuyến đi</div>
+                <InsuranceNote id={`ins-note-${h.id}`} breed={h.breed} />
+              </div>
+              <div className={s.optRow} role="radiogroup" aria-labelledby={`ins-${h.id}`} {...(submitted && !c.insurance ? { 'data-problem': true } : {})}>
+                <label className={s.opt}><input type="radio" name={`ins-${h.id}`} checked={c.insurance === 'buy'} onChange={() => set(h.id, { insurance: 'buy' })} /><b>Mua bảo hiểm</b><span>Phí {formatVND(insuranceFee(h.breed))} cho giống {h.breed}.</span></label>
+                <label className={s.opt}><input type="radio" name={`ins-${h.id}`} checked={c.insurance === 'decline'} onChange={() => set(h.id, { insurance: 'decline' })} /><b>Từ chối</b><span>Áp dụng trách nhiệm hạn chế của nhà xe.</span></label>
+              </div>
+              {submitted && !c.insurance && <div className="form-error">Chọn mua hoặc từ chối bảo hiểm cho {h.name}.</div>}
+            </div>
+          </section>
+        )
+      })}
+
+      {declined.length > 0 && (
+        <div className="card" data-card {...(submitted && !ack ? { 'data-problem': true } : {})}>
+          <label className={s.ack}>
+            <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} />
+            <span>Tôi hiểu và đồng ý <b>Điều khoản Trách nhiệm Hạn chế</b> của nhà xe cho {declined.map(h => h.name).join(', ')}, những ngựa tôi không mua bảo hiểm.</span>
+          </label>
+          {submitted && !ack && <div className="form-error">Cần xác nhận để tiếp tục.</div>}
         </div>
-      </form>
+      )}
+
+      <div className={s.actions}>
+        <Link to="/booking/horses" className="btn btn-ghost"><i className="fa-solid fa-arrow-left" /> Chọn ngựa</Link>
+        <button type="button" className="btn btn-primary" onClick={next}>Tiếp tục: Xác nhận <i className="fa-solid fa-arrow-right" /></button>
+      </div>
     </BookingShell>
   )
 }

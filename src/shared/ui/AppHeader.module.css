@@ -5,12 +5,12 @@
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--navy); white-space: nowrap; }
 .brandMark { background: var(--orange); color: white; font-weight: 800; font-size: 0.8rem; padding: 4px 7px; border-radius: 6px; }
 .badge { font-size: 0.72rem; font-weight: 700; color: var(--orange); background: var(--orange-soft); padding: 2px 8px; border-radius: 999px; }
-.nav { display: flex; gap: 20px; flex: 1; overflow-x: auto; scrollbar-width: none; font-size: 0.88rem; font-weight: 500; position: relative; }
+.nav { display: flex; gap: 20px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; font-size: 0.88rem; font-weight: 500; position: relative; }
 .nav::-webkit-scrollbar { display: none; }
 .link { position: relative; padding: 6px 0; white-space: nowrap; color: var(--text); transition: color 0.2s; }
 .link:hover, .active { color: var(--orange); }
 .indicator { position: absolute; bottom: 0; height: 2px; background: var(--orange); border-radius: 2px; pointer-events: none; }
-.right { display: flex; align-items: center; gap: 14px; font-size: 0.85rem; white-space: nowrap; }
+.right { display: flex; align-items: center; flex-shrink: 0; gap: 14px; font-size: 0.85rem; white-space: nowrap; }
 .hotline { color: var(--muted); }
 .hotline strong { color: var(--navy); }
 .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--orange-soft); color: var(--orange); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }

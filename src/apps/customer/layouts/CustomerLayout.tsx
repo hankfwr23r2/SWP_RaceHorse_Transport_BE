@@ -9,11 +9,10 @@ import { AppHeader, appHeaderStyles as h } from '@shared/ui/AppHeader'
 import { TranslateToggle } from '@shared/ui/TranslateToggle'
 
 const MENU: [string, string][] = [
-  ['/portal', 'Trang chủ'],
-  ['/booking/route', 'Đặt chuyến ngay'],
+  ['/portal', 'Tổng quan'],
+  ['/horses', 'Hồ sơ ngựa'],
+  ['/booking/route', 'Đặt chuyến mới'],
   ['/orders', 'Đơn của tôi'],
-  ['/quotes', 'Báo giá của tôi'],
-  ['/tracking', 'Tra cứu lộ trình'],
   ['/acceptance', 'Nghiệm thu'],
 ]
 

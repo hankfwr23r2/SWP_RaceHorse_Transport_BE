@@ -1,111 +1,129 @@
-// Bước 4: Rà soát & dự toán. Chuyển từ CUS/create_request_step4.html + initStep4().
-// Khác bản cũ: mục 3 hiện đúng lựa chọn ở bước 3 (bản cũ là chữ viết cứng); gửi xong về "Đơn của tôi" (bản cũ sang trang Nghiệm thu).
-import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+// Bước 4: xác nhận, tải Import Permit (quốc tế) và gửi đơn. Đơn gửi đi ở trạng thái "Chờ Manager tiếp nhận".
+import { useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router'
+import { useAuth } from '@shared/auth/AuthContext'
+import { VEHICLE_CLASS } from '@shared/config/booking-rules'
 import { COUNTRIES } from '@shared/config/network'
-import { Flag } from '@shared/ui/Flag'
+import { classForHorses, findLocation, fromIsoDay, insuranceFee } from '@shared/lib/booking'
+import { formatDate, formatVND } from '@shared/lib/format'
+import { customerBookingsApi } from '@shared/services/bookings'
+import { horsesApi } from '@shared/services/horses'
+import { useLoad } from '@shared/services/useLoad'
+import { SEX_LABEL, type PlaceRef } from '@shared/types/booking'
+import { FileField } from '@shared/ui/FileField'
 import { useToast } from '@shared/ui/toast'
 import { BookingShell } from './BookingShell'
-import { useBookingDraft } from './draft'
-import { legacyQuote } from './legacy-quote'
+import { countriesOf, useBookingDraft } from './draft'
 import s from './Booking.module.css'
 
-const formatDateVN = (d: string) => { const p = (d || '2026-11-15').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d }
-
-function Item({ label, children, strong }: { label: string; children: React.ReactNode; strong?: boolean }) {
-  return <div><div className={s.reviewLabel}>{label}</div><div className={`${s.reviewValue} ${strong ? 'font-semibold' : ''}`}>{children}</div></div>
-}
 
 export default function Step4ReviewPage() {
   const navigate = useNavigate()
   const toast = useToast()
-  const { draft: d } = useBookingDraft()
-  const [agreed, setAgreed] = useState(false)
-  const { isDomestic, rows, totalCost } = legacyQuote(d)
-  const country = (c: string) => c ? <span className={s.inlineFlag}><Flag code={c as keyof typeof COUNTRIES} /> {COUNTRIES[c as keyof typeof COUNTRIES].name}</span> : null
+  const { session } = useAuth()
+  const owner = session!.name
+  const { draft, save, clear } = useBookingDraft()
+  const { data: horses } = useLoad(() => horsesApi.list(owner), [owner])
+  const [agree, setAgree] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false) // đã gửi: bản nháp bị xóa, không chuyển ngược về bước 1
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    toast('Đã gửi yêu cầu vận chuyển. Quản lý sẽ tiếp nhận và thẩm định.')
-    navigate('/orders')
+  if (sent) return null
+  const countries = countriesOf(draft)
+  if (!countries || !draft.departDate) return <Navigate to="/booking/route" replace />
+  if (!draft.horseIds.length) return <Navigate to="/booking/horses" replace />
+  if (draft.horseIds.some(id => !draft.config[id]?.insurance)) return <Navigate to="/booking/services" replace />
+
+  const international = draft.type === 'international'
+  const rows = draft.horseIds.map(id => horses?.find(h => h.id === id)).filter(Boolean) as NonNullable<typeof horses>
+  const place = (id: string, country: PlaceRef['country']): PlaceRef => ({ id, name: findLocation(id)?.name ?? id, country })
+  const origin = place(draft.originId, countries.origin)
+  const dest = place(draft.destId, countries.dest)
+  const permitMissing = international && !draft.importPermit
+  const cls = VEHICLE_CLASS[classForHorses(rows.length)]
+
+  const submit = async () => {
+    setSubmitted(true)
+    if (permitMissing || !agree || busy) return
+    setBusy(true)
+    try {
+      const order = await customerBookingsApi.create(owner, {
+        type: draft.type as 'domestic' | 'international', origin, dest, gate: international ? draft.gate : undefined,
+        departAt: fromIsoDay(draft.departDate), consignor: draft.consignor, consignee: draft.consignee, importPermit: international ? draft.importPermit : undefined,
+        horses: rows.map(h => {
+          const c = draft.config[h.id]
+          return { horseId: h.id, name: h.name, microchip: h.microchip, breed: h.breed, sex: h.sex, stall: c.stall, targetTemp: c.targetTemp, feeding: c.feeding, water: c.water, careNote: c.careNote, insurance: { opted: c.insurance === 'buy' } }
+        }),
+      })
+      setSent(true)
+      clear()
+      toast(`Đã gửi đơn ${order.id}`)
+      navigate(`/orders/${order.id}`)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Không gửi được đơn.', 'error')
+      setBusy(false)
+    }
   }
 
   return (
-    <BookingShell step={4} crumb="Bước 4: Xác nhận & Dự toán" title="Rà soát Thông tin & Dự toán Chi phí" subtitle="Kiểm tra toàn bộ dữ liệu lộ trình, hồ sơ y tế và bảng chi phí dự kiến trước khi gửi yêu cầu lên hệ thống quản trị.">
-      <div className="alert alert-info" style={{ marginBottom: 16 }}>
-        <i className="fa-solid fa-circle-info" />
-        <div><strong>Quy trình xử lý:</strong> Sau khi bạn bấm xác nhận gửi, yêu cầu sẽ được chuyển đến Quản lý để tiếp nhận và thẩm định (xác minh hồ sơ thú y, lập kế hoạch vận chuyển đường bộ). Giá bên dưới là giá chính thức. Khi đơn được duyệt, bạn thanh toán trong 48 giờ tại mục Đơn của tôi.</div>
+    <BookingShell step={4} title="Xác nhận và gửi đơn" subtitle="Kiểm tra lại thông tin. Sau khi gửi, Quản lý sẽ tiếp nhận và bắt đầu thẩm định.">
+      <div className={`card ${s.review}`} data-card>
+        <div className="card-header"><h3><i className="fa-solid fa-route" /> Chuyến đi</h3><Link to="/booking/route" className={s.editLink}>Sửa</Link></div>
+        <dl className={s.reviewGrid}>
+          <div><dt>Loại chuyến</dt><dd>{international ? `Quốc tế (${COUNTRIES[countries.origin].name} → ${COUNTRIES[countries.dest].name})` : 'Trong nước'}</dd></div>
+          <div><dt>Ngày khởi hành</dt><dd>{formatDate(fromIsoDay(draft.departDate))}</dd></div>
+          <div><dt>Điểm đón</dt><dd>{origin.name}</dd></div>
+          <div><dt>Điểm giao</dt><dd>{dest.name}</dd></div>
+          {international && <div><dt>Cửa khẩu</dt><dd>{draft.gate}</dd></div>}
+          <div><dt>Người gửi</dt><dd>{draft.consignor.name}<br /><small className="text-muted">{draft.consignor.phone}</small></dd></div>
+          <div><dt>Người nhận</dt><dd>{draft.consignee.name}<br /><small className="text-muted">{draft.consignee.phone}</small></dd></div>
+        </dl>
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2><i className="fa-solid fa-route" /> 1. Tuyến đường & Thời gian</h2><Link to="/booking/route" className="text-orange small">Chỉnh sửa</Link></div>
-        <div className={s.reviewGrid}>
-          <Item label="Quốc gia Xuất phát">{country(d.originCountry)}</Item>
-          <Item label="Kho / Điểm xuất phát" strong>{d.originLocationName || d.originLocation}</Item>
-          <Item label="Quốc gia Đích đến">{country(d.destCountry)}</Item>
-          <Item label="Điểm đến nhận ngựa" strong>{d.destLocationName || d.destLocation}</Item>
-          <Item label="Phương thức vận chuyển">{isDomestic ? 'Nội địa — Đội xe tải chuyên dụng kiểm soát nhiệt độ & chống sốc' : 'Xuyên quốc gia — Xe tải chuyên dụng đường bộ qua cửa khẩu'}</Item>
-          <Item label="Ngày khởi hành dự kiến">{formatDateVN(d.departureDate)} ({d.urgency === 'urgent' ? 'Hỏa tốc' : d.urgency === 'priority' ? 'Ưu tiên' : 'Tiêu chuẩn'})</Item>
-        </div>
+      <div className="card" data-card>
+        <div className="card-header"><h3><i className="fa-solid fa-horse-head" /> {rows.length} ngựa · xe {cls.label} ({cls.stalls})</h3><Link to="/booking/services" className={s.editLink}>Sửa</Link></div>
+        {rows.map(h => {
+          const c = draft.config[h.id]
+          return (
+            <div key={h.id} className={s.reviewHorse}>
+              <div><b>{h.name}</b> <small>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</small></div>
+              <div className="text-right">{c.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {c.targetTemp}°C</div>
+              <small>{c.insurance === 'buy' ? 'Mua bảo hiểm chuyến đi' : 'Từ chối bảo hiểm (trách nhiệm hạn chế)'}</small>
+              <small className="text-right">{c.insurance === 'buy' ? `Phí ${formatVND(insuranceFee(h.breed))}` : ''}</small>
+            </div>
+          )
+        })}
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2><i className="fa-solid fa-horse-head" /> 2. Thông tin Cá thể Ngựa Đua</h2><Link to="/booking/horses" className="text-orange small">Chỉnh sửa</Link></div>
-        {d.horses.map(h => (
-          <div key={h.id} className={`${s.reviewGrid} ${s.horseBlock}`}>
-            <Item label={`Tên cá thể ngựa #${h.id}`} strong>{h.name}</Item>
-            <Item label="Mã Vi chip Microchip ID"><span className="font-bold text-orange">{h.microchip}</span></Item>
-            <Item label="Giống ngựa / Giới tính">{h.breed} | {h.gender}</Item>
-            <Item label="Độ tuổi / Thể trọng">{h.age} tuổi | {h.weight} kg</Item>
-            <Item label="Màu lông & Đặc điểm">{h.color}{h.marks ? ` — ${h.marks}` : ''}</Item>
-            <Item label="Hình ảnh nhận dạng"><span className="badge badge-success"><i className="fa-solid fa-circle-check" /> Đã đính kèm ảnh</span></Item>
+      {international && (
+        <div className="card" data-card>
+          <div className="card-header"><h3><i className="fa-solid fa-file-import" /> Giấy phép nhập khẩu</h3></div>
+          <FileField
+            label="Import Permit của nước đến" required invalid={submitted && permitMissing} fileName={draft.importPermit?.fileName}
+            hint="Bản gốc hoặc bản in điện tử có mã QR / chữ ký số. Specialist thẩm định sơ bộ khi tiếp nhận đơn."
+            onChange={f => save({ importPermit: f ? { fileName: f, uploadedAt: Date.now() } : undefined })}
+          />
+          {submitted && permitMissing && <div className="form-error">Tải Giấy phép nhập khẩu để gửi đơn quốc tế.</div>}
+          <div className="alert alert-info" style={{ marginTop: 14 }}>
+            <i className="fa-solid fa-circle-info" />
+            <div>Tờ khai hải quan, Giấy kiểm dịch (Health Cert) và Giấy ủy quyền cần biển số xe và thông tin tài xế, nên bạn nộp <b>sau khi đặt cọc</b>, hạn 18:00 ngày trước ngày khởi hành.</div>
           </div>
-        ))}
-      </div>
-
-      <div className="card">
-        <div className="card-header"><h2><i className="fa-solid fa-notes-medical" /> 3. Hồ sơ Pháp lý, Sức khỏe & Chăm sóc</h2><Link to="/booking/services" className="text-orange small">Chỉnh sửa</Link></div>
-        <div className={s.reviewGrid}>
-          <Item label="Giấy tờ đã tải lên"><span className="badge badge-muted">passport_storm_runner.pdf</span> <span className="badge badge-muted">vaccination_card_2026.pdf</span></Item>
-          <Item label="Tiền sử bệnh / Dùng thuốc">Thể trạng bình thường — Không dùng thuốc đặc trị</Item>
-          <Item label="Yêu cầu cách ly">{d.needIsolation === 'yes' ? 'Có cách ly' : 'Vận chuyển chung tiêu chuẩn (Không cách ly)'}</Item>
-          <Item label="Dinh dưỡng trên đường">{d.foodTypeName}</Item>
-          <Item label="Khoang vận chuyển (Stall)">{d.stallTypeName}</Item>
-          <Item label="Nước uống & Bổ sung">{d.waterSupplementName}</Item>
-          <Item label="Gói bảo hiểm đã chọn">{d.insuranceName}</Item>
         </div>
-      </div>
+      )}
 
-      <div className="card">
-        <div className="card-header"><h2><i className="fa-solid fa-calculator" /> 4. Bảng Dự toán Chi phí Tự động (Estimated Quotation)</h2><span className="badge badge-warning">Ước tính ban đầu</span></div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Hạng mục dịch vụ</th><th className="text-right">Đơn giá</th><th className="text-center">Số lượng</th><th className="text-right">Thành tiền</th></tr></thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.title}>
-                  <td><div className="font-semibold">{r.title}</div><div className="sub-text">{r.detail}</div></td>
-                  <td className="text-right font-semibold nowrap">{r.unit}</td>
-                  <td className="text-center nowrap">{r.qty}</td>
-                  <td className="text-right font-bold nowrap" style={r.amount === null ? { color: 'var(--green)' } : undefined}>{r.amount === null ? r.includedLabel : `${r.amount.toLocaleString('vi-VN')} ₫`}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot><tr><td colSpan={3}>TỔNG CHI PHÍ DỰ TOÁN TỰ ĐỘNG</td><td className="text-right nowrap">{totalCost.toLocaleString('vi-VN')} VND</td></tr></tfoot>
-          </table>
-        </div>
-      </div>
-
-      <form onSubmit={submit}>
+      <div className="card" data-card>
         <label className={s.commit}>
-          <input type="checkbox" required checked={agreed} onChange={e => setAgreed(e.target.checked)} />
-          <span>Tôi cam kết các thông tin khai báo về tình trạng sức khỏe, mã vi chip định danh và giá trị cá thể ngựa nêu trên là hoàn toàn trung thực, tuân thủ đúng Quy chế Vận chuyển Động vật Thuần chủng Quốc tế của FEI.</span>
+          <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} />
+          <span>Tôi xác nhận thông tin chính xác và hiểu rằng công ty chỉ vận chuyển, tôi tự chuẩn bị và nộp hồ sơ pháp lý, kiểm dịch, hải quan với cơ quan chức năng.</span>
         </label>
-        <div className={s.actions}>
-          <Link to="/booking/services" className="btn btn-ghost"><i className="fa-solid fa-arrow-left" /> Bước 3: Dịch vụ và Y tế</Link>
-          <button type="submit" className="btn btn-primary"><i className="fa-solid fa-paper-plane" /> Xác nhận & Gửi Yêu cầu Vận chuyển</button>
-        </div>
-      </form>
+        {submitted && !agree && <div className="form-error">Cần xác nhận để gửi đơn.</div>}
+      </div>
+
+      <div className={s.actions}>
+        <Link to="/booking/services" className="btn btn-ghost"><i className="fa-solid fa-arrow-left" /> Dịch vụ và bảo hiểm</Link>
+        <button type="button" className="btn btn-primary btn-lg" onClick={submit} disabled={busy}><i className="fa-solid fa-paper-plane" /> {busy ? 'Đang gửi…' : 'Gửi yêu cầu đặt đơn'}</button>
+      </div>
     </BookingShell>
   )
 }

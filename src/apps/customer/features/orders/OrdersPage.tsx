@@ -1,91 +1,85 @@
-// Đơn của tôi: danh sách. Chuyển từ CUS/don_cua_toi.html + renderList().
+// Đơn của tôi: danh sách đơn đặt chuyến, đơn cần bạn xử lý lên đầu.
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { PAYMENT_HOURS } from '@shared/config/business-rules'
-import { choiceDeadline, paymentDeadline } from '@shared/lib/deadlines'
-import { formatDate, formatDateTime, formatVND } from '@shared/lib/format'
-import { choiceExpired } from '@shared/lib/order-status'
 import { useAuth } from '@shared/auth/AuthContext'
-import { customerOrdersApi } from '@shared/services/orders'
-import { useLoad } from '@shared/services/useLoad'
+import { formatDate, formatVND } from '@shared/lib/format'
 import { useStaggerIn } from '@shared/motion/motion'
-import { orderTotal, type Order } from '@shared/types/order'
-import { StatusBadge } from './StatusBadge'
-import s from './Orders.module.css'
+import { customerBookingsApi, type CustomerBookingView } from '@shared/services/bookings'
+import { useLoad } from '@shared/services/useLoad'
+import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
+import { useNow } from '@shared/ui/useNow'
+import { POST_PAYMENT, nextStep } from './nextStep'
+import s from './OrderDetail.module.css'
 
-const TABS: [string, string, (o: Order) => boolean][] = [
+type TabKey = 'all' | 'action' | 'progress' | 'docs' | 'closed'
+const TABS: [TabKey, string, (b: CustomerBookingView, action: boolean) => boolean][] = [
   ['all', 'Tất cả', () => true],
-  ['processing', 'Chờ thẩm định', o => ['processing', 'choose_option', 'rechecking'].includes(o.status)],
-  ['awaiting_payment', 'Chờ thanh toán', o => o.status === 'awaiting_payment'],
-  ['paid', 'Đã thanh toán', o => o.status === 'paid'],
-  ['in_transit', 'Đang vận chuyển', o => o.status === 'in_transit'],
-  ['delivered', 'Chờ nghiệm thu', o => o.status === 'delivered' || o.status === 'disputed'],
-  ['closed', 'Đã đóng', o => ['completed', 'rejected', 'cancelled'].includes(o.status)],
+  ['action', 'Cần bạn xử lý', (_, a) => a],
+  ['progress', 'Đang xử lý', b => ['pending_intake', 'under_review', 'pending_commercial'].includes(b.status)],
+  ['docs', 'Đã đặt cọc', b => POST_PAYMENT.includes(b.status)],
+  ['closed', 'Đã đóng', b => b.status === 'quote_expired' || b.status === 'cancelled'],
 ]
 
 export default function OrdersPage() {
   const { session } = useAuth()
-  const { data: orders = [] } = useLoad(() => customerOrdersApi.list(session!.name), [session?.name])
-  const [tab, setTab] = useState('all')
-  const waiting = orders.filter(o => o.status === 'awaiting_payment')
-  const choosing = orders.filter(o => o.status === 'choose_option' && !choiceExpired(o))
-  const list = orders.filter(TABS.find(t => t[0] === tab)![2])
-  const rowsRef = useStaggerIn('tbody tr', [tab, orders.length])
+  const now = useNow()
+  const { data: orders } = useLoad(() => customerBookingsApi.list(session!.name), [session?.name])
+  const [tab, setTab] = useState<TabKey>('all')
+  const all = (orders ?? []).map(b => ({ b, next: nextStep(b, now) }))
+  const match = TABS.find(t => t[0] === tab)![2]
+  const list = all.filter(x => match(x.b, x.next.actionNeeded)).sort((a, z) => Number(z.next.actionNeeded) - Number(a.next.actionNeeded) || z.b.createdAt - a.b.createdAt)
+  const ref = useStaggerIn('[data-row]', [tab, all.length])
 
   return (
     <div className="page">
       <div className="wrap">
-        <div className="breadcrumb"><Link to="/portal">Cổng Khách hàng</Link> / <span className="text-orange font-semibold">Đơn của tôi</span></div>
-        <div className="page-header">
-          <h1>Đơn của tôi</h1>
-          <p>Theo dõi trạng thái các đơn vận chuyển. Khi đơn được duyệt, bạn có {PAYMENT_HOURS} giờ để thanh toán 100% giá trị đơn.</p>
+        <div className="breadcrumb"><Link to="/portal">Tổng quan</Link> / <span className="text-orange font-semibold">Đơn của tôi</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+          <div className="page-header" style={{ margin: 0 }}>
+            <h1>Đơn của tôi</h1>
+            <p>Theo dõi từng đơn từ lúc gửi đến khi đặt cọc. Đơn cần bạn xử lý nằm trên cùng.</p>
+          </div>
+          <Link to="/booking/route" className="btn btn-primary"><i className="fa-solid fa-plus" /> Đặt chuyến mới</Link>
         </div>
 
-        <div className={s.alerts}>
-          {choosing.length > 0 && (
-            <div className="alert alert-danger"><i className="fa-solid fa-circle-exclamation" /><div>
-              Bạn có <strong>{choosing.length} đơn cần phản hồi</strong> do hồ sơ ngựa có vấn đề ({choosing.map(o => o.id).join(', ')}).
-              Hạn gần nhất: <strong>{formatDateTime(Math.min(...choosing.map(o => choiceDeadline(o.offer!.sentAt))))}</strong>.
-            </div></div>
-          )}
-          {waiting.length > 0 && (
-            <div className="alert alert-warning"><i className="fa-solid fa-credit-card" /><div>
-              Bạn có <strong>{waiting.length} đơn đã được duyệt</strong> đang chờ thanh toán.
-              Hạn gần nhất: <strong>{formatDateTime(Math.min(...waiting.map(o => paymentDeadline(o.approvedAt!, o.departAt))))}</strong>. Quá hạn đơn sẽ tự hủy.
-            </div></div>
-          )}
+        <div className={s.tabs} role="group" aria-label="Lọc đơn">
+          {TABS.map(([k, label, m]) => (
+            <button key={k} className={`${s.tab} ${tab === k ? s.tabOn : ''}`} aria-pressed={tab === k} onClick={() => setTab(k)}>
+              {label}<span className={s.count}>{all.filter(x => m(x.b, x.next.actionNeeded)).length}</span>
+            </button>
+          ))}
         </div>
 
-        <div className="card">
-          <div className="tabs">
-            {TABS.map(([key, label, match]) => (
-              <button key={key} className={`tab ${key === tab ? 'active' : ''}`} onClick={() => setTab(key)}>{label}<span className="count">{orders.filter(match).length}</span></button>
+        {orders && !list.length ? (
+          <div className={s.empty}><i className="fa-solid fa-box-open" /><h3>Không có đơn nào ở mục này</h3><p>Chọn mục khác hoặc đặt chuyến mới.</p></div>
+        ) : (
+          <div ref={ref} className={s.list}>
+            {list.map(({ b, next }) => (
+              <article key={b.id} data-row className={`${s.row} ${next.actionNeeded ? s.rowAction : ''}`}>
+                <div>
+                  <div className={s.rowTop}>
+                    <span className={s.rowId}>{b.id}</span>
+                    <BookingStatusBadge status={b.status} />
+                    <span className="badge badge-muted">{b.type === 'international' ? 'Quốc tế' : 'Trong nước'}</span>
+                  </div>
+                  <div className={s.rowRoute}>{b.origin.name.split(' — ')[0]} → {b.dest.name.split(' — ')[0]}</div>
+                  <div className={s.rowMeta}>
+                    <span><i className="fa-solid fa-calendar-day" />Khởi hành {formatDate(b.departAt)}</span>
+                    <span><i className="fa-solid fa-horse-head" />{b.horses.length} ngựa</span>
+                    {b.gate && <span><i className="fa-solid fa-flag" />{b.gate}</span>}
+                  </div>
+                  <div className={`${s.rowNext} ${next.tone === 'danger' ? s.rowNextDanger : next.tone === 'warning' ? s.rowNextWarn : ''}`}>
+                    <i className={`fa-solid ${next.icon}`} aria-hidden="true" /> <span><b>{next.title}.</b> {next.actionNeeded ? '' : next.text}</span>
+                  </div>
+                </div>
+                <div className={s.rowSide}>
+                  {b.quote && <div><div className={s.rowAmount}>{formatVND(b.quote.total)}</div><div className={s.rowAmountLbl}>Tổng tạm tính</div></div>}
+                  <Link to={`/orders/${b.id}`} className={`btn btn-sm ${next.actionNeeded ? 'btn-primary' : 'btn-ghost'}`}>{next.actionNeeded ? 'Xử lý ngay' : 'Xem chi tiết'}</Link>
+                </div>
+              </article>
             ))}
           </div>
-          <div ref={rowsRef} className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Mã đơn</th><th>Tuyến đường</th><th>Khởi hành</th><th className="text-right">Tổng giá trị đơn</th><th>Trạng thái</th><th className="text-right">Thao tác</th></tr></thead>
-              <tbody>
-                {list.length ? list.map(o => (
-                  <tr key={o.id}>
-                    <td className="font-semibold text-orange nowrap">{o.id}</td>
-                    <td>{o.routeShort}{o.border && <div className="sub-text"><i className="fa-solid fa-flag" /> {o.border}</div>}</td>
-                    <td className="nowrap">{formatDate(o.departAt)}</td>
-                    <td className="text-right font-semibold nowrap">{formatVND(orderTotal(o))}</td>
-                    <td><StatusBadge order={o} /></td>
-                    <td className="text-right nowrap">
-                      {o.status === 'awaiting_payment'
-                        ? <Link className="btn btn-primary btn-sm" to={`/orders/${o.id}`}><i className="fa-solid fa-credit-card" /> Thanh toán</Link>
-                        : o.status === 'delivered'
-                          ? <Link className="btn btn-primary btn-sm" to={`/acceptance?id=${o.id}`}><i className="fa-solid fa-clipboard-check" /> Nghiệm thu</Link>
-                          : <Link className="btn btn-ghost btn-sm" to={`/orders/${o.id}`}><i className="fa-solid fa-eye" /> Xem</Link>}
-                    </td>
-                  </tr>
-                )) : <tr><td colSpan={6} className="text-center text-muted" style={{ padding: 24 }}>Không có đơn nào</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )

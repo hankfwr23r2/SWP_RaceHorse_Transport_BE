@@ -1,4 +1,4 @@
-// Quy tắc nghiệp vụ dùng chung. Khớp docs/PRD.md mục 4–7.
+// Quy tắc nghiệp vụ dùng chung. Khớp docs/PRD.md. Quy tắc riêng của luồng đặt đơn (Flow 1): xem booking-rules.ts.
 // Giá trị chuyển nguyên từ code HTML cũ (don_cua_toi.js, manager_*.js, kiem_dich.js, thu_tuc.js, acceptance.js).
 
 export const HOUR = 60 * 60 * 1000
@@ -13,8 +13,8 @@ export const HOLIDAYS = ['2026-01-01', '2026-04-30', '2026-05-01', '2026-09-02',
 export const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 
 // ===== Đặt đơn =====
-export const MIN_LEAD_DAYS = 10
-export const MAX_HORSES = 10
+export const MIN_LEAD_DAYS = 30 // PRD mục 1.4: đặt trước ngày khởi hành tối thiểu 30 ngày
+export const MAX_HORSES = 9 // 1 đơn = 1 xe; xe Heavy lớn nhất có 9 ngăn
 
 // ===== Thẩm định (cam kết với khách) =====
 // Hạn = mốc SỚM HƠN của (1) 17:00 ngày làm việc thứ APPRAISAL_WORKING_DAYS sau ngày gửi đơn
@@ -54,14 +54,11 @@ export const HOTLINE = '1900 6868'
 export const OFFICE_ADDRESS = 'Văn phòng Vận chuyển Ngựa, 120 Xô Viết Nghệ Tĩnh, TP.HCM'
 export const BANK = { name: 'Vietcombank', account: '0071 000 123 456', owner: 'CONG TY TNHH EQUINEZ LOGISTICS' }
 
-// Chính sách hoàn tiền hiển thị cho khách (tính theo số ngày trước ngày khởi hành)
+// Chính sách hoàn cọc khi khách hủy đơn (PRD mục 8.3). Cọc là 50% giá trị đơn.
 export const REFUND_POLICY: [string, string][] = [
-  ['Công ty hủy chuyến', '100%'],
-  ['Ngựa không đạt kiểm tra sức khỏe tại chỗ ngày lấy ngựa', '100% trừ phí kiểm dịch đã phát sinh'],
-  ['Khách hủy trước khởi hành từ 7 ngày trở lên', '90%'],
-  ['Khách hủy trước khởi hành 3 – 6 ngày', '50%'],
-  ['Khách hủy trước khởi hành dưới 3 ngày', 'Không hoàn'],
+  ['Hủy từ 7 ngày trở lên trước ngày khởi hành', 'Hoàn 80% tiền cọc'],
+  ['Hủy từ 3 đến dưới 7 ngày trước ngày khởi hành', 'Hoàn 50% tiền cọc'],
+  ['Hủy từ 72 giờ trước ngày khởi hành đến 18:00 ngày D-1', 'Hoàn 20% tiền cọc'],
+  ['Hủy sau 18:00 ngày D-1 hoặc đúng ngày khởi hành', 'Không hoàn cọc'],
+  ['Bất khả kháng (dịch bệnh, thiên tai, ngựa ốm có chứng nhận)', 'Hoàn 70% tiền cọc'],
 ]
-
-// Các bước khách nhìn thấy (tiếp nhận, kiểm dịch, lập lộ trình, duyệt gộp thành "Chờ thẩm định")
-export const CUSTOMER_STEPS = ['Gửi đơn', 'Chờ thẩm định', 'Thanh toán', 'Vận chuyển', 'Nghiệm thu']

@@ -2,7 +2,7 @@
 // Khi có Spring Boot: xóa file này, các service gọi fetch('/api/...') thay vì đọc/ghi store.
 
 // Tăng số này mỗi khi sửa dữ liệu mẫu (mock/*) để trình duyệt bỏ bản cũ đã lưu trong phiên và nạp bản mới.
-export const MOCK_VERSION = 3
+export const MOCK_VERSION = 8
 
 export function createStore<T extends { id: string }>(key: string, seed: () => T[]) {
   const storageKey = `SWP_MOCK_v${MOCK_VERSION}_${key}`
