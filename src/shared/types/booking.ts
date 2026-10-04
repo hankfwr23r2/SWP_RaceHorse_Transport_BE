@@ -1,5 +1,5 @@
 // Đơn đặt chuyến theo quy trình mới (Flow 1). Khớp docs/PRD.md mục 2, 13. Các luồng 2–6 sẽ thêm trạng thái và trường vào đây.
-import type { BookingStatus, ClearanceDocType, ClearanceOption, HorseDocType, WelfareCondition } from '../config/booking-rules'
+import type { BookingStatus, ClearanceDocType, ExpenseCategory, HorseDocType, IncidentAction, IncidentKind, IncidentStatus, Payer, WelfareCondition } from '../config/booking-rules'
 import type { CountryCode } from '../config/network'
 
 export type Sex = 'stallion' | 'mare' | 'gelding'
@@ -46,25 +46,9 @@ export interface StaffRef { id: string; name: string }
 
 export interface MedicalReview {
   status: 'pending' | 'approved' | 'resubmit'
-  temp: number
-  restPlan: string
-  welfareNote: string
   at?: number
   by?: string
   resubmit?: { reason: string; items: { horseId: string; doc: HorseDocType }[]; at: number }
-}
-
-export interface FleetPlan {
-  vehicleId: string
-  driverId: string
-  escortId: string
-  etd: number
-  etaBorder?: number
-  etaDest: number
-  stops: string[]
-  note: string
-  confirmedAt: number
-  by: string
 }
 
 export interface QuoteLine { label: string; detail: string; amount: number }
@@ -74,46 +58,37 @@ export interface Quote {
   adjustments: Adjustment[]
   subtotal: number
   total: number
-  deposit: number
-  demurragePerHour: number
+  deposit: number // 30%
+  balance: number // 70% còn lại, trả ngày D
   sentAt: number
   expiresAt: number
   sentBy: string
 }
 
-// ===== Giấy tờ pháp lý khách nộp sau cọc (Flow 2) =====
-export interface ClearanceFile extends HorseDoc { version: number }
-export interface ClearanceRejection { docs: ClearanceDocType[]; reasons: string[]; note: string; at: number; by: string }
+// ===== Giấy tờ pháp lý do Specialist làm (Flow 2) =====
+export type ClearanceStatus = 'todo' | 'doing' | 'done'
+export interface ClearanceItem { type: ClearanceDocType; status: ClearanceStatus; note: string; photos: string[]; updatedAt?: number; by?: string }
+export interface CustomerFlag { at: number; note: string; by: string } // khách báo sai thông tin, không chặn tiến độ
 export interface Clearance {
-  options: Record<ClearanceOption, boolean> // giấy tùy chọn áp dụng cho chuyến này (quốc tế)
-  docs: Partial<Record<ClearanceDocType, ClearanceFile>>
-  submittedAt?: number
-  rejection?: ClearanceRejection // lần yêu cầu nộp lại gần nhất
-  approvedAt?: number
-  approvedBy?: string
-  delayedAt?: number // quá 18:00 D-1 chưa đủ hồ sơ
+  items: ClearanceItem[]
+  horsesCleared: string[] // horseId đã có giấy thông quan (quốc tế)
+  flags: CustomerFlag[]
+  acceptedAt?: number // Specialist tiếp nhận Vận đơn
+  acceptedBy?: string
+  doneAt?: number
+  doneBy?: string
 }
-export interface Readiness { confirmedAt: number; by: string } // Coordinator xác nhận sẵn sàng, phát lệnh xuất bến
 
 // ===== Lộ trình chi tiết và Trip Manifest (Flow 3) =====
 export interface RouteLeg { no: number; from: string; to: string; departAt: number; arriveAt: number }
+// Trạm trung chuyển (checkpoint dọc tuyến): ngựa dừng tối thiểu 30 phút, Escort ghi nhật ký an sinh
 export interface RestStop { afterLeg: number; name: string; minutes: number; facilities: string }
-export interface VetPoint { name: string; phone: string; near: string }
 export interface RoutePlan {
   legs: RouteLeg[]
   rests: RestStop[]
-  vets: VetPoint[]
   borderEta?: number // quốc tế: giờ tới cửa khẩu
   completedAt?: number
   by?: string
-  returnNote?: string // Manager trả về, lý do
-}
-export interface Manifest {
-  tripId: string // TRP-NNNN
-  approvedAt: number
-  approvedBy: string
-  acks: { driver?: number; escort?: number } // Driver và Escort đã nhận lệnh trên app
-  departedAt?: number // Driver bắt đầu đi đến điểm đón
 }
 
 // ===== Hành trình thực tế (Flow 4) =====
@@ -148,9 +123,48 @@ export interface WelfareLog {
 }
 export interface TripRun { checkpoints: Checkpoint[]; welfare: WelfareLog[]; startedAt?: number; deliveredAt?: number }
 
+// ===== Mỗi xe của đơn là một chuyến (PRD mục 1.4, 10.2) =====
+export interface DriverPack { items: string[]; at: number; by: string } // Coordinator nhập cho Driver mang theo
+export interface VehicleTrip {
+  tripId: string // TRP-NNNN-1, TRP-NNNN-2...
+  vehicleId: string
+  driverId: string
+  escortId: string
+  horseIds: string[]
+  acks: { driver?: number; escort?: number } // nhận Lệnh điều xe trên app
+  driverPack?: DriverPack
+  departedAt?: number // Driver bấm bắt đầu đến điểm đón
+  run?: TripRun
+}
+export interface Waybill { no: string; issuedAt: number }
+export interface PlanConfirmed { at: number; by: string; note: string }
+
 export interface Cancellation { at: number; reason: string; rate: number; refund: number; forceMajeure: boolean }
 
-export interface Payment { paidAt: number; amount: number; reference: string; contractSignedAt: number }
+export interface Payment { paidAt: number; amount: number; reference: string }
+
+// ===== Sự cố (Flow 5) và quyết toán (Flow 6) =====
+export interface IncidentExpense { id: string; category: ExpenseCategory; label: string; photo: string; amount: number; payer: Payer; at: number; by: string }
+export interface IncidentPlan { action: IncidentAction; note: string; newEta: number; budget: number; at: number; by: string }
+export interface Incident {
+  id: string // INC-NNNN-i
+  tripId: string
+  kind: IncidentKind
+  reportedBy: string
+  reportedAt: number
+  photo: string
+  note: string
+  status: IncidentStatus
+  plan?: IncidentPlan
+  rejection?: { reason: string; at: number; by: string }
+  approval?: { budget: number; calledCustomer: boolean; at: number; by: string }
+  fitConfirmedAt?: number // Escort xác nhận ngựa đủ sức đi tiếp (sự cố sức khỏe)
+  resolvedAt?: number
+  expenses: IncidentExpense[]
+}
+export interface SettlementItem { label: string; amount: number; photo?: string }
+export interface Settlement { items: SettlementItem[]; total: number; issuedAt: number; dueAt: number; by: string; paid?: Payment }
+export interface Rating { trip: number; driver: number; escort: number; comment: string; at: number }
 export interface HistoryEntry { time: number; actor: string; text: string }
 
 export interface Booking {
@@ -160,12 +174,11 @@ export interface Booking {
   type: TransportType
   origin: PlaceRef
   dest: PlaceRef
-  gate?: string // cửa khẩu khách chọn (chỉ quốc tế), khóa theo đơn
+  gate?: string // cửa khẩu do Coordinator chọn khi chốt lộ trình (chỉ quốc tế), khóa theo đơn; khách không chọn
   departAt: number
   consignor: Party
   consignee: Party
   horses: BookingHorse[]
-  importPermit?: HorseDoc // chỉ quốc tế
   status: BookingStatus
 
   // ----- nội bộ (khách không thấy) -----
@@ -174,13 +187,17 @@ export interface Booking {
 
   // ----- kết quả từng bước -----
   medical?: MedicalReview
-  fleet?: FleetPlan
+  trips?: VehicleTrip[] // hệ thống tự gán khi tiếp nhận, Coordinator sửa được
+  plan?: PlanConfirmed // Coordinator đã xác nhận xe, nhân sự và lộ trình
+  route?: RoutePlan // một lộ trình dùng chung cho mọi xe
   quote?: Quote
-  payment?: Payment
+  payment?: Payment // cọc 30%
+  waybill?: Waybill
   clearance?: Clearance
-  readiness?: Readiness
-  route?: RoutePlan
-  manifest?: Manifest
-  trip?: TripRun
+  balance?: Payment // 70% ngày D
+  incidents?: Incident[]
+  expensesSubmittedAt?: number // Driver đã gửi bảng kê chi phí sau giao
+  settlement?: Settlement
+  rating?: Rating
   cancellation?: Cancellation
 }

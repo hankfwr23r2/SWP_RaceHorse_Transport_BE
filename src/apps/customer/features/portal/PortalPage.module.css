@@ -1,13 +1,8 @@
-/* Tổng quan của khách */
-.hero { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; padding: 32px 36px; border-radius: 20px; color: white; background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 55%, #7c2d12 130%); margin-bottom: 16px; }
-.hero > div:first-child { max-width: 640px; }
+/* Trang chủ của khách */
+.greet { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.greet .hello { background: var(--orange-soft); color: var(--orange); margin-bottom: 0; }
 .hello { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; padding: 5px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); margin-bottom: 14px; }
-.hero h1 { font-size: clamp(1.5rem, 3vw, 2.1rem); font-weight: 800; line-height: 1.25; }
-.hero h1 span { display: block; color: #fdba74; }
-.hero p { margin-top: 10px; color: #cbd5e1; font-size: 0.95rem; }
 .heroActions { display: flex; gap: 12px; flex-wrap: wrap; }
-.ghostLight { background: transparent; color: white; border-color: rgba(255, 255, 255, 0.4); }
-.ghostLight:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
 
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
 .stat { display: grid; gap: 2px; padding: 16px 18px; background: white; border: 1px solid var(--line); border-radius: var(--radius); transition: border-color 0.15s ease; }

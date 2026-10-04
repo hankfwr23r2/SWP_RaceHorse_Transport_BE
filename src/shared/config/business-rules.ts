@@ -54,11 +54,12 @@ export const HOTLINE = '1900 6868'
 export const OFFICE_ADDRESS = 'Văn phòng Vận chuyển Ngựa, 120 Xô Viết Nghệ Tĩnh, TP.HCM'
 export const BANK = { name: 'Vietcombank', account: '0071 000 123 456', owner: 'CONG TY TNHH EQUINEZ LOGISTICS' }
 
-// Chính sách hoàn cọc khi khách hủy đơn (PRD mục 8.3). Cọc là 50% giá trị đơn.
+// Chính sách hoàn cọc khi khách hủy đơn (PRD mục 8.3). Cọc là 30% giá trị đơn.
 export const REFUND_POLICY: [string, string][] = [
   ['Hủy từ 7 ngày trở lên trước ngày khởi hành', 'Hoàn 80% tiền cọc'],
   ['Hủy từ 3 đến dưới 7 ngày trước ngày khởi hành', 'Hoàn 50% tiền cọc'],
   ['Hủy từ 72 giờ trước ngày khởi hành đến 18:00 ngày D-1', 'Hoàn 20% tiền cọc'],
   ['Hủy sau 18:00 ngày D-1 hoặc đúng ngày khởi hành', 'Không hoàn cọc'],
   ['Bất khả kháng (dịch bệnh, thiên tai, ngựa ốm có chứng nhận)', 'Hoàn 70% tiền cọc'],
+  ['Đã trả số dư 70% mà xe chưa nhận ngựa', 'Hoàn 100% số dư'],
 ]

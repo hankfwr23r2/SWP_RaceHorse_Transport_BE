@@ -1,27 +1,29 @@
-// Specialist: hồ sơ pháp lý khách nộp sau cọc, cần đối chiếu (PRD mục 3.5). Specialist là người gác cổng duy nhất.
+// Specialist: giấy tờ kiểm dịch và hải quan của các đơn đã đặt cọc. Nhà xe làm trọn gói, Specialist là người làm và báo tiến độ (PRD mục 3).
+import { ReadMore } from '@shared/ui/ReadMore'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { docsDueAt } from '@shared/lib/booking'
+import { clearanceProgress, docsDueAt, isClearanceOverdue } from '@shared/lib/booking'
 import { formatDate, formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import { useLoad } from '@shared/services/useLoad'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
-import { Tabs } from '../../../shared/BookingParts'
+import { useNow } from '@shared/ui/useNow'
+import { EmptyCard, ListLayout, OrderCard } from '../../../shared/BookingParts'
 import { placeShort } from '../../../shared/place'
-import s from '../../../shared/booking.module.css'
 
-type Tab = 'todo' | 'waiting' | 'done'
+type Tab = 'todo' | 'working' | 'done'
 
 export default function LegalListPage() {
   const { session } = useAuth()
+  const now = useNow()
   const { data: all } = useLoad(bookingsApi.list)
   const [tab, setTab] = useState<Tab>('todo')
-  const mine = (all ?? []).filter(b => b.intake?.specialist.name === session!.name && b.payment)
+  const mine = (all ?? []).filter(b => b.intake?.specialist.name === session!.name && b.payment && b.clearance)
   const groups: Record<Tab, typeof mine> = {
-    todo: mine.filter(b => b.status === 'documents_submitted'),
-    waiting: mine.filter(b => ['awaiting_clearance_docs', 'pending_resubmission', 'documentation_delayed'].includes(b.status)),
-    done: mine.filter(b => ['legal_docs_approved', 'dispatch_approved'].includes(b.status)),
+    todo: mine.filter(b => b.status === 'waybill_issued'),
+    working: mine.filter(b => b.status === 'clearance_in_progress'),
+    done: mine.filter(b => b.clearance!.doneAt),
   }
   const shown = groups[tab]
 
@@ -29,29 +31,23 @@ export default function LegalListPage() {
     <div className="page">
       <div className="wrap">
         <div className="page-header">
-          <h1>Hồ sơ pháp lý</h1>
-          <p>Giấy tờ khách nộp sau khi đặt cọc. Bạn là người duy nhất duyệt tính hợp lệ của hồ sơ thú y, kiểm dịch và hải quan.</p>
+          <h1>Giấy tờ chuyến đi</h1>
+          <ReadMore text={'Khách không làm thủ tục thông quan. Bạn tiếp nhận Vận đơn, làm giấy kiểm dịch và hải quan, cập nhật từng hạng mục kèm ảnh để khách và quản lý theo dõi.'} />
         </div>
-        <Tabs<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Chờ duyệt', groups.todo.length], ['waiting', 'Chờ khách nộp', groups.waiting.length], ['done', 'Đã duyệt', groups.done.length]]} />
-        <div className="card table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Tuyến</th><th>Khởi hành</th><th>Hạn nộp</th><th>Trạng thái</th><th className="text-right">Thao tác</th></tr></thead>
-            <tbody>
-              {shown.map(b => (
-                <tr key={b.id}>
-                  <td className={s.id}>{b.id}</td>
-                  <td>{b.customer}</td>
-                  <td>{placeShort(b.origin.name)} → {placeShort(b.dest.name)}<div className={s.sub}>{b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'}</div></td>
-                  <td className="nowrap">{formatDate(b.departAt)}</td>
-                  <td className="nowrap">{formatDateTime(docsDueAt(b.departAt))}{b.clearance?.submittedAt && <div className={s.sub}>Nộp {formatDateTime(b.clearance.submittedAt)}</div>}</td>
-                  <td><BookingStatusBadge status={b.status} audience="staff" /></td>
-                  <td className="text-right"><Link to={`/specialist/legal/${b.id}`} className={`btn btn-sm ${tab === 'todo' ? 'btn-primary' : 'btn-ghost'}`}>{tab === 'todo' ? 'Duyệt hồ sơ' : 'Xem'}</Link></td>
-                </tr>
-              ))}
-              {all && !shown.length && <tr><td colSpan={7}><div className={s.empty}><i className="fa-solid fa-circle-check" />Không có đơn nào ở mục này.</div></td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <ListLayout<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Vận đơn mới', groups.todo.length], ['working', 'Đang làm', groups.working.length], ['done', 'Đã xong', groups.done.length]]}>
+          {shown.map(b => {
+            const p = clearanceProgress(b.clearance!)
+            const late = isClearanceOverdue(b, now)
+            return (
+              <OrderCard key={b.id} id={b.id} customer={b.customer} route={`${placeShort(b.origin.name)} → ${placeShort(b.dest.name)}`} kind={b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'}
+                badge={<BookingStatusBadge status={b.status} audience="staff" />} alert={late}
+                meta={[['fa-calendar-day', 'Khởi hành', formatDate(b.departAt)], ['fa-file-signature', 'Tiến độ', `${p.done}/${p.total} hạng mục`], ...(b.waybill ? [['fa-file-contract', 'Vận đơn', b.waybill.no] as [string, string, string]] : [])]}
+                note={(late || b.clearance!.flags.length > 0) ? <>{late && <span style={{ color: 'var(--red)' }}>Quá {formatDateTime(docsDueAt(b.departAt))} mà giấy tờ chưa xong. </span>}{b.clearance!.flags.length > 0 && <span style={{ color: 'var(--red)' }}>Khách báo sai {b.clearance!.flags.length} chỗ.</span>}</> : undefined}
+                action={<Link to={`/specialist/legal/${b.id}`} className={`btn btn-sm ${tab === 'done' ? 'btn-ghost' : 'btn-primary'}`}>{tab === 'todo' ? 'Tiếp nhận' : tab === 'working' ? 'Làm giấy tờ' : 'Xem'}</Link>} />
+            )
+          })}
+          {all && !shown.length && <EmptyCard text="Không có đơn nào ở mục này." />}
+        </ListLayout>
       </div>
     </div>
   )

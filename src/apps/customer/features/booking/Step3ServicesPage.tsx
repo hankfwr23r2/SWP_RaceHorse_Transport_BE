@@ -88,7 +88,7 @@ export default function Step3ServicesPage() {
                 <input id={`temp-${h.id}`} type="range" min={TARGET_TEMP.min} max={TARGET_TEMP.max} step={0.5} value={c.targetTemp} onChange={e => set(h.id, { targetTemp: Number(e.target.value) })} />
                 <span className={s.tempVal}>{c.targetTemp}°C</span>
               </div>
-              <div className="form-hint">Khoảng khuyến nghị {TARGET_TEMP.min}–{TARGET_TEMP.max}°C. Kiểm dịch viên có thể điều chỉnh khi thẩm định.</div>
+              <div className="form-hint">Khoảng khuyến nghị {TARGET_TEMP.min}–{TARGET_TEMP.max}°C.</div>
             </div>
 
             <div className={s.grid2}>

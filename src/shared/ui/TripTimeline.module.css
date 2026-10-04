@@ -16,3 +16,6 @@
 .welfare { margin-top: 6px; font-size: 0.82rem; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--green-soft); color: #065f46; }
 .welfare i { margin-right: 6px; }
 .welfareWarn { background: var(--amber-soft); color: var(--amber); }
+
+.photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.welfare button { margin-left: 8px; vertical-align: middle; display: inline-grid; }

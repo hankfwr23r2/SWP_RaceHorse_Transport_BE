@@ -5,9 +5,8 @@ import { useAuth } from '@shared/auth/AuthContext'
 import { formatDate, formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import { useLoad } from '@shared/services/useLoad'
-import { Tabs } from '../../../shared/BookingParts'
+import { EmptyCard, ListLayout, OrderCard } from '../../../shared/BookingParts'
 import { placeShort } from '../../../shared/place'
-import s from '../../../shared/booking.module.css'
 
 type Tab = 'todo' | 'waiting' | 'done'
 
@@ -28,28 +27,16 @@ export default function VerificationListPage() {
       <div className="wrap">
         <div className="page-header">
           <h1>Thẩm định y tế</h1>
-          <p>Hồ sơ ngựa được giao cho bạn. Đối chiếu hộ chiếu, microchip, xét nghiệm và đặt chỉ dẫn an sinh cho chuyến đi.</p>
+          <p>Hồ sơ ngựa được giao cho bạn. Đối chiếu hộ chiếu, microchip, xét nghiệm và xác nhận đạt y tế.</p>
         </div>
-        <Tabs<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Cần thẩm định', groups.todo.length], ['waiting', 'Chờ khách bổ sung', groups.waiting.length], ['done', 'Đã đạt y tế', groups.done.length]]} />
-        <div className="card table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Tuyến</th><th>Khởi hành</th><th>Ngựa</th><th>{tab === 'waiting' ? 'Yêu cầu bổ sung' : 'Giao lúc'}</th><th className="text-right">Thao tác</th></tr></thead>
-            <tbody>
-              {shown.map(b => (
-                <tr key={b.id}>
-                  <td className={s.id}>{b.id}</td>
-                  <td>{b.customer}</td>
-                  <td>{placeShort(b.origin.name)} → {placeShort(b.dest.name)}<div className={s.sub}>{b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'}</div></td>
-                  <td className="nowrap">{formatDate(b.departAt)}</td>
-                  <td>{b.horses.length}</td>
-                  <td className="nowrap">{tab === 'waiting' ? formatDateTime(b.medical!.resubmit!.at) : formatDateTime(b.intake!.at)}</td>
-                  <td className="text-right"><Link to={`/specialist/verification/${b.id}`} className={`btn btn-sm ${tab === 'todo' ? 'btn-primary' : 'btn-ghost'}`}>{tab === 'todo' ? 'Thẩm định' : 'Xem'}</Link></td>
-                </tr>
-              ))}
-              {all && !shown.length && <tr><td colSpan={7}><div className={s.empty}><i className="fa-solid fa-circle-check" />Không có hồ sơ nào ở mục này.</div></td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <ListLayout<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Cần thẩm định', groups.todo.length], ['waiting', 'Chờ khách bổ sung', groups.waiting.length], ['done', 'Đã đạt y tế', groups.done.length]]}>
+          {shown.map(b => (
+            <OrderCard key={b.id} id={b.id} customer={b.customer} route={`${placeShort(b.origin.name)} → ${placeShort(b.dest.name)}`} kind={b.type === 'international' ? 'Quốc tế' : 'Trong nước'}
+              meta={[['fa-calendar-day', 'Khởi hành', formatDate(b.departAt)], ['fa-horse-head', 'Ngựa', `${b.horses.length} con`], ['fa-clock', tab === 'waiting' ? 'Yêu cầu bổ sung' : 'Giao lúc', formatDateTime(tab === 'waiting' ? b.medical!.resubmit!.at : b.intake!.at)]]}
+              action={<Link to={`/specialist/verification/${b.id}`} className={`btn btn-sm ${tab === 'todo' ? 'btn-primary' : 'btn-ghost'}`}>{tab === 'todo' ? 'Thẩm định' : 'Xem'}</Link>} />
+          ))}
+          {all && !shown.length && <EmptyCard text="Không có hồ sơ nào ở mục này." />}
+        </ListLayout>
       </div>
     </div>
   )

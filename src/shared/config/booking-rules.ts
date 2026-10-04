@@ -3,9 +3,9 @@
 import { BIG_TRUCK_FACTOR } from './public-pricing'
 
 // ===== Cọc, báo giá =====
-export const DEPOSIT_RATE = 0.5 // cọc cố định 50% (PRD mục 11.1)
+export const DEPOSIT_RATE = 0.3 // cọc 30% để nhận Vận đơn; 70% còn lại trả ngày D (PRD mục 2.6, 11.1)
 export const QUOTE_VALID_HOURS = 48 // hạn giữ báo giá; quá hạn thì đơn hết hiệu lực
-export const DOCS_CUTOFF_HOUR = 18 // hạn nộp giấy cần thông tin của hệ thống: 18:00 ngày D-1
+export const DOCS_CUTOFF_HOUR = 18 // 18:00 ngày D-1: mốc cảnh báo nội bộ giấy tờ và mốc hoàn cọc (PRD mục 3.4, 8.3)
 
 // ===== Hạng xe (PRD mục 10) =====
 export type VehicleClass = 'light' | 'medium' | 'heavy'
@@ -31,72 +31,107 @@ export const TARGET_TEMP = { min: 20, max: 24, default: 22 }
 // ===== Trạng thái đơn (PRD mục 13). Khách thấy nhãn tiếng Việt; nội bộ thấy thêm mã gốc. =====
 export type BookingStatus =
   | 'pending_intake' | 'under_review' | 'pending_commercial' | 'awaiting_payment' | 'quote_expired' // Flow 1
-  | 'awaiting_clearance_docs' | 'documents_submitted' | 'pending_resubmission' | 'documentation_delayed' | 'legal_docs_approved' | 'dispatch_approved' // Flow 2
-  | 'route_planning' | 'route_plan_completed' | 'trip_manifest_approved' | 'ready_for_pickup' | 'en_route_to_pickup' // Flow 3
-  | 'in_transit' | 'delivered_pending_settlement' // Flow 4
+  | 'waybill_issued' | 'clearance_in_progress' | 'clearance_done' // Flow 2
+  | 'ready_for_pickup' | 'en_route_to_pickup' // Flow 3
+  | 'in_transit' | 'incident_reported' | 'pending_emergency_approval' | 'emergency_plan_active' // Flow 5
+  | 'delivered_pending_settlement' // Flow 4
+  | 'expenses_submitted' | 'settlement_issued' | 'payment_overdue' | 'completed' // Flow 6
   | 'cancelled' // khách hủy đơn (PRD mục 8.3)
 export type Tone = 'info' | 'warning' | 'success' | 'danger' | 'muted' | 'orange'
 export const BOOKING_STATUS: Record<BookingStatus, { code: string; label: string; customerLabel: string; tone: Tone }> = {
-  pending_intake: { code: 'Pending Manager Intake', label: 'Chờ Manager tiếp nhận', customerLabel: 'Đã gửi, chờ tiếp nhận', tone: 'info' },
+  pending_intake: { code: 'Pending Manager Intake', label: 'Chờ quản lý tiếp nhận', customerLabel: 'Đã gửi, chờ tiếp nhận', tone: 'info' },
   under_review: { code: 'Under Internal Review', label: 'Đang thẩm định nội bộ', customerLabel: 'Đang thẩm định', tone: 'info' },
-  pending_commercial: { code: 'Pending Final Commercial Approval', label: 'Chờ Manager duyệt báo giá', customerLabel: 'Đang lập báo giá', tone: 'orange' },
+  pending_commercial: { code: 'Pending Final Commercial Approval', label: 'Chờ quản lý duyệt báo giá', customerLabel: 'Đang lập báo giá', tone: 'orange' },
   awaiting_payment: { code: 'Awaiting Payment', label: 'Chờ khách đặt cọc', customerLabel: 'Chờ đặt cọc', tone: 'warning' },
   quote_expired: { code: 'Quote Expired', label: 'Báo giá hết hạn', customerLabel: 'Báo giá hết hạn', tone: 'muted' },
-  awaiting_clearance_docs: { code: 'Awaiting Clearance Documents', label: 'Chờ khách nộp giấy tờ pháp lý', customerLabel: 'Chờ bạn nộp giấy tờ', tone: 'success' },
-  documents_submitted: { code: 'Documents Submitted - Pending Review', label: 'Chờ Specialist duyệt hồ sơ', customerLabel: 'Đã nộp, chờ kiểm tra', tone: 'info' },
-  pending_resubmission: { code: 'Pending Resubmission', label: 'Chờ khách nộp lại', customerLabel: 'Cần bạn nộp lại giấy tờ', tone: 'danger' },
-  documentation_delayed: { code: 'Documentation Delayed', label: 'Đình trệ do thiếu hồ sơ', customerLabel: 'Quá hạn nộp giấy tờ', tone: 'danger' },
-  legal_docs_approved: { code: 'Legal Docs Approved', label: 'Hồ sơ pháp lý đã duyệt, chờ lệnh xuất bến', customerLabel: 'Hồ sơ đã duyệt', tone: 'success' },
-  dispatch_approved: { code: 'Dispatch Approved', label: 'Lệnh xuất bến đã duyệt', customerLabel: 'Đã duyệt xuất bến', tone: 'success' },
-  route_planning: { code: 'Route Planning in Progress', label: 'Đang lập lộ trình chi tiết', customerLabel: 'Đang lập lộ trình', tone: 'info' },
-  route_plan_completed: { code: 'Route Plan Completed', label: 'Chờ Manager duyệt Trip Manifest', customerLabel: 'Lộ trình chờ duyệt', tone: 'orange' },
-  trip_manifest_approved: { code: 'Trip Manifest Approved', label: 'Trip Manifest đã duyệt, chờ Driver và Escort nhận lệnh', customerLabel: 'Lộ trình đã duyệt', tone: 'success' },
+  waybill_issued: { code: 'Waybill Issued', label: 'Đã có Vận đơn, chờ kiểm dịch viên tiếp nhận', customerLabel: 'Đã có vận đơn', tone: 'success' },
+  clearance_in_progress: { code: 'Clearance In Progress', label: 'Kiểm dịch viên đang làm thủ tục giấy tờ', customerLabel: 'Đang làm thủ tục giấy tờ', tone: 'info' },
+  clearance_done: { code: 'Clearance Done', label: 'Giấy tờ xong, chờ tài xế và hộ tống nhận lệnh', customerLabel: 'Giấy tờ đã xong', tone: 'success' },
   ready_for_pickup: { code: 'Ready for Pickup', label: 'Sẵn sàng đón ngựa', customerLabel: 'Sẵn sàng đón ngựa', tone: 'success' },
   en_route_to_pickup: { code: 'En Route to Pickup', label: 'Xe đang đến điểm đón', customerLabel: 'Xe đang đến điểm đón', tone: 'info' },
   in_transit: { code: 'In Transit', label: 'Đang vận chuyển', customerLabel: 'Đang vận chuyển', tone: 'info' },
-  delivered_pending_settlement: { code: 'Delivered - Pending Settlement', label: 'Đã giao, chờ quyết toán', customerLabel: 'Đã giao ngựa', tone: 'success' },
+  incident_reported: { code: 'Incident Reported - Action Required', label: 'Có sự cố, chờ điều phối lập phương án', customerLabel: 'Xe gặp sự cố, đang xử lý', tone: 'danger' },
+  pending_emergency_approval: { code: 'Pending Emergency Approval', label: 'Chờ quản lý duyệt phương án khẩn cấp', customerLabel: 'Xe gặp sự cố, đang xử lý', tone: 'danger' },
+  emergency_plan_active: { code: 'Emergency Plan Active', label: 'Đang thực hiện phương án khẩn cấp', customerLabel: 'Đang xử lý sự cố, ngựa được chăm sóc', tone: 'warning' },
+  delivered_pending_settlement: { code: 'Delivered - Pending Settlement', label: 'Đã giao, chờ tài xế gửi chi phí', customerLabel: 'Đã giao ngựa', tone: 'success' },
+  expenses_submitted: { code: 'Expenses Submitted - Pending Audit', label: 'Chờ quản lý đối soát chi phí', customerLabel: 'Đã giao, đang quyết toán', tone: 'orange' },
+  settlement_issued: { code: 'Settlement Issued - Awaiting Final Payment', label: 'Đã phát hành quyết toán, chờ khách trả', customerLabel: 'Chờ thanh toán quyết toán', tone: 'warning' },
+  payment_overdue: { code: 'Payment Overdue', label: 'Khách quá hạn thanh toán quyết toán', customerLabel: 'Quá hạn thanh toán', tone: 'danger' },
+  completed: { code: 'Order Completed', label: 'Đã hoàn tất', customerLabel: 'Đã hoàn tất', tone: 'success' },
   cancelled: { code: 'Cancelled', label: 'Khách đã hủy đơn', customerLabel: 'Đã hủy', tone: 'muted' },
 }
 
+// Thứ tự trạng thái theo luồng (đầu → cuối); đơn đã đóng (hết hạn, hủy) xếp cuối. Dùng để sắp danh sách đơn.
+const CLOSED: BookingStatus[] = ['quote_expired', 'cancelled']
+const MAIN_FLOW = (Object.keys(BOOKING_STATUS) as BookingStatus[]).filter(s => !CLOSED.includes(s))
+export const statusRank = (s: BookingStatus): number => (CLOSED.includes(s) ? MAIN_FLOW.length + CLOSED.indexOf(s) : MAIN_FLOW.indexOf(s))
+
 // Các bước khách thấy trên thanh tiến độ của đơn (các luồng sau sẽ thêm bước vào cuối)
-export const BOOKING_STEPS = ['Gửi đơn', 'Thẩm định', 'Báo giá', 'Đặt cọc', 'Giấy tờ pháp lý', 'Lộ trình', 'Vận chuyển', 'Quyết toán']
+export const BOOKING_STEPS = ['Gửi đơn', 'Thẩm định', 'Báo giá', 'Đặt cọc', 'Giấy tờ', 'Sẵn sàng', 'Vận chuyển', 'Quyết toán']
 export const stepOf = (s: BookingStatus): number => ({
-  pending_intake: 0, under_review: 1, pending_commercial: 1, awaiting_payment: 2, quote_expired: 2,
-  awaiting_clearance_docs: 4, documents_submitted: 4, pending_resubmission: 4, documentation_delayed: 4, legal_docs_approved: 4, dispatch_approved: 5,
-  route_planning: 5, route_plan_completed: 5, trip_manifest_approved: 5, ready_for_pickup: 6, en_route_to_pickup: 6,
-  in_transit: 6, delivered_pending_settlement: 7, cancelled: 0,
+  pending_intake: 0, under_review: 1, pending_commercial: 2, awaiting_payment: 3, quote_expired: 3,
+  waybill_issued: 4, clearance_in_progress: 4,
+  clearance_done: 5, ready_for_pickup: 5, en_route_to_pickup: 5,
+  in_transit: 6, incident_reported: 6, pending_emergency_approval: 6, emergency_plan_active: 6,
+  delivered_pending_settlement: 7, expenses_submitted: 7, settlement_issued: 7, payment_overdue: 7,
+  completed: BOOKING_STEPS.length, cancelled: 0,
 }[s])
 
 // Tra cứu công khai ở trang chủ chỉ cho thấy 5 bước gọn
 export const PUBLIC_STEPS = ['Gửi đơn', 'Thẩm định', 'Đặt cọc', 'Chuẩn bị chuyến', 'Vận chuyển']
-export const publicStepOf = (s: BookingStatus): number => (s === 'pending_intake' || s === 'cancelled' ? 0 : s === 'under_review' || s === 'pending_commercial' ? 1 : s === 'awaiting_payment' || s === 'quote_expired' ? 2 : s === 'in_transit' || s === 'delivered_pending_settlement' ? 4 : 3)
+export const publicStepOf = (s: BookingStatus): number => (s === 'pending_intake' || s === 'cancelled' ? 0 : s === 'under_review' || s === 'pending_commercial' ? 1 : s === 'awaiting_payment' || s === 'quote_expired' ? 2 : ['in_transit', 'incident_reported', 'pending_emergency_approval', 'emergency_plan_active', 'delivered_pending_settlement', 'expenses_submitted', 'settlement_issued', 'payment_overdue', 'completed'].includes(s) ? 4 : 3)
 
-// ===== Giấy tờ pháp lý khách nộp sau khi đặt cọc (Flow 2, PRD mục 3.4, 12) =====
-export type ClearanceDocType = 'health_cert' | 'customs_declaration' | 'poa' | 'quarantine_cert' | 'ata_carnet' | 'commercial_invoice'
-export type ClearanceOption = 'quarantine' | 'ata' | 'invoice'
-export const CLEARANCE_DOC: Record<ClearanceDocType, { label: string; short: string; hint: string; international: boolean; option?: ClearanceOption; optionLabel?: string }> = {
-  health_cert: { label: 'Giấy chứng nhận kiểm dịch động vật vận chuyển (Health Cert)', short: 'Health Cert', hint: 'Bản có mộc đỏ của Chi cục Thú y. Microchip phải khớp ngựa trong đơn.', international: false },
-  customs_declaration: { label: 'Tờ khai hải quan điện tử', short: 'Tờ khai hải quan', hint: 'Bản đã phân luồng hoặc có mã tiếp nhận. Biển số xe và cửa khẩu phải khớp Carrier Info Sheet.', international: true },
-  poa: { label: 'Giấy ủy quyền áp tải (PoA)', short: 'PoA', hint: 'Đã ký, đóng mộc đỏ. Đúng họ tên, CCCD / hộ chiếu của Driver và Escort trong Carrier Info Sheet.', international: false },
-  quarantine_cert: { label: 'Giấy chứng nhận cách ly kiểm dịch trước xuất phát', short: 'Giấy cách ly', hint: 'Nộp sau khi hoàn thành thời gian cách ly 7 đến 14 ngày.', international: true, option: 'quarantine', optionLabel: 'Nước đến yêu cầu cách ly kiểm dịch trước xuất phát' },
-  ata_carnet: { label: 'Sổ ATA Carnet (bản scan cuống sổ)', short: 'ATA Carnet', hint: 'Chỉ khi đi thi đấu, triển lãm theo diện tạm nhập, tái xuất.', international: true, option: 'ata', optionLabel: 'Chuyến đi thi đấu / triển lãm (tạm nhập, tái xuất)' },
-  commercial_invoice: { label: 'Hóa đơn thương mại (PDF)', short: 'Hóa đơn thương mại', hint: 'Chỉ khi người gửi bán ngựa cho người nhận. Cần để đối chiếu với tờ khai hải quan.', international: true, option: 'invoice', optionLabel: 'Người gửi bán ngựa cho người nhận' },
+// ===== Sự cố và chi phí (Flow 5, PRD mục 6, 11.5) =====
+export type IncidentKind = 'horse_health' | 'vehicle_breakdown' | 'border_congestion'
+export const INCIDENT_KIND: Record<IncidentKind, { label: string; icon: string; hint: string }> = {
+  horse_health: { label: 'Sức khỏe ngựa', icon: 'fa-horse-head', hint: 'Đau bụng, sốt, mất nước, chấn thương' },
+  vehicle_breakdown: { label: 'Hỏng phương tiện', icon: 'fa-screwdriver-wrench', hint: 'Hỏng điều hòa thùng, nổ lốp, sự cố động cơ' },
+  border_congestion: { label: 'Tắc cửa khẩu', icon: 'fa-road-barrier', hint: 'Cửa khẩu tạm dừng tiếp nhận, tắc quá giờ' },
 }
-export const REJECT_REASONS = ['Sai biển số xe', 'Sai mã microchip', 'Thiếu mộc', 'Giấy hết hạn', 'Giấy phép không hợp lệ', 'Sai cửa khẩu', 'PoA không hợp lệ']
+export type IncidentAction = 'vet_clinic' | 'repair_on_site' | 'rescue_van' | 'holding_stable'
+export const INCIDENT_ACTION: Record<IncidentAction, string> = {
+  vet_clinic: 'Đưa ngựa vào trạm thú y gần nhất',
+  repair_on_site: 'Sửa xe tại chỗ, giữ nguyên xe chính',
+  rescue_van: 'Xe cứu hộ đưa ngựa về chuồng đệm hoặc phòng khám (không chạy tiếp qua cửa khẩu)',
+  holding_stable: 'Đưa ngựa về chuồng đệm gần cửa khẩu chờ thông quan',
+}
+export type ExpenseCategory = 'vet_fee' | 'medicine' | 'holding_stable' | 'rescue' | 'repair' | 'other'
+export const EXPENSE_CATEGORY: Record<ExpenseCategory, string> = {
+  vet_fee: 'Viện phí thú y', medicine: 'Thuốc cấp cứu', holding_stable: 'Tiền chuồng đệm', rescue: 'Xe cứu hộ', repair: 'Sửa chữa xe', other: 'Khoản khác',
+}
+export type IncidentStatus = 'reported' | 'pending_approval' | 'active' | 'resolved'
+export type Payer = 'customer' | 'carrier'
+export const SETTLEMENT_GRACE_HOURS = 24 // hạn trả bảng quyết toán; quá hạn là Payment Overdue (PRD mục 8.2)
+
+// ===== Giấy tờ pháp lý do Specialist làm (Flow 2, PRD mục 3.3, 12) =====
+export type ClearanceDocType = 'health_cert' | 'poa' | 'customs_declaration' | 'import_permit' | 'quarantine_cert' | 'ata_carnet' | 'commercial_invoice'
+// base: có sẵn ở mọi đơn thuộc tuyến tương ứng; không phải base thì Specialist thêm khi cần
+export const CLEARANCE_DOC: Record<ClearanceDocType, { label: string; short: string; hint: string; international: boolean; base: boolean }> = {
+  health_cert: { label: 'Giấy chứng nhận kiểm dịch động vật vận chuyển', short: 'Giấy kiểm dịch', hint: 'Mộc đỏ của cơ quan thú y có thẩm quyền.', international: false, base: true },
+  poa: { label: 'Giấy ủy quyền áp tải', short: 'Giấy ủy quyền áp tải', hint: 'Song ngữ, ghi đúng tài xế và hộ tống của từng xe.', international: false, base: true },
+  customs_declaration: { label: 'Tờ khai hải quan điện tử', short: 'Tờ khai hải quan', hint: 'Biển số xe và cửa khẩu phải khớp lộ trình.', international: true, base: true },
+  import_permit: { label: 'Giấy phép nhập khẩu', short: 'Giấy phép nhập khẩu', hint: 'Do cơ quan thú y nước nhập khẩu phê duyệt.', international: true, base: true },
+  quarantine_cert: { label: 'Giấy chứng nhận cách ly kiểm dịch trước xuất phát', short: 'Giấy cách ly', hint: 'Chỉ khi nước đến yêu cầu.', international: true, base: false },
+  ata_carnet: { label: 'Sổ ATA Carnet', short: 'ATA Carnet', hint: 'Chỉ khi đi thi đấu, triển lãm (tạm nhập, tái xuất).', international: true, base: false },
+  commercial_invoice: { label: 'Hóa đơn thương mại', short: 'Hóa đơn thương mại', hint: 'Chỉ khi người gửi bán ngựa cho người nhận.', international: true, base: false },
+}
 
 // ===== Đơn giá mẫu (PRD chưa có biểu giá chính thức) =====
 export const CLASS_FACTOR: Record<VehicleClass, number> = { light: 1, medium: BIG_TRUCK_FACTOR, heavy: 1.9 }
 export const CREW_FEE_PER_DAY = 1_800_000 // 01 Driver + 01 Escort, mỗi ngày
 export const SINGLE_STALL_FEE = 1_500_000 // khoang đơn mở rộng, mỗi ngựa
-export const CARRIER_DATA_FEE = { domestic: 0, international: 300_000 } // Carrier Data Package (PRD mục 11.2: miễn phí hoặc 200.000 – 500.000 đ/chuyến)
-export const DEMURRAGE_PER_HOUR = 400_000 // phí lưu xe chờ (PRD mục 11.3: 300.000 – 500.000 đ/giờ)
+export const CLEARANCE_FEE = { domestic: 0, international: 300_000 } // phí thủ tục kiểm dịch & hải quan, cố định (PRD mục 11.2)
+export const FUEL_BOT_PER_KM = 9_000 // nhiên liệu + BOT ước tính mỗi km (số mẫu)
+export const FUEL_BUFFER_RATE = 0.05 // dự phòng trên nhiên liệu và BOT
+export const MARGIN_RATE = 0.05 // biên lợi nhuận, gộp vào đơn giá, không hiện thành dòng riêng
+export const DEMURRAGE_PER_HOUR = 400_000 // phí lưu xe chờ, chỉ khi lỗi phía khách (PRD mục 11.3: 300.000 – 500.000 đ/giờ)
 export const INSURANCE_RATE_BOOKING = 0.02 // trên giá trị bảo hiểm của giống ngựa
 // Giá trị bảo hiểm theo giống (VNĐ). Khách không tự khai; số mẫu, chờ bảng giá thật của nhà bảo hiểm.
 export const BREED_INSURED_VALUE: Record<string, number> = {
   Thoroughbred: 1_000_000_000, Arabian: 800_000_000, 'Quarter Horse': 600_000_000, Warmblood: 900_000_000, Appaloosa: 500_000_000, Khác: 400_000_000,
 }
 
-// ===== Lộ trình chi tiết và Trip Manifest (Flow 3, PRD mục 4.2) =====
+// ===== Lộ trình: trạm trung chuyển và Lệnh điều xe (Flow 1, 3, PRD mục 4.2) =====
 export const MAX_CONTINUOUS_HOURS = 4 // ngựa không đi liên tục quá 3–4 giờ
 export const TARGET_LEG_HOURS = 3.5
 export const MIN_REST_MINUTES = 30
@@ -113,3 +148,10 @@ export const WELFARE_CONDITION: Record<WelfareCondition, { label: string; tone: 
 
 // ===== Hủy đơn và hoàn cọc (PRD mục 8.3) =====
 export const REFUND_RATE = { d7: 0.8, d3: 0.5, beforeCutoff: 0.2, afterCutoff: 0, forceMajeure: 0.7 } // tỷ lệ hoàn trên tiền cọc
+
+// ===== Chính sách chi phí sự cố (PRD mục 11.5): liên quan ngựa thì khách chịu, liên quan vận chuyển thì nhà xe chịu =====
+export const INCIDENT_COST_POLICY: { who: 'customer' | 'carrier'; group: string; items: string[] }[] = [
+  { who: 'customer', group: 'Liên quan đến ngựa', items: ['Thuốc, viện phí thú y', 'Chuồng đệm, cỏ và nước trong lúc chờ', 'Ngựa ốm hoặc chấn thương', 'Hồ sơ ngựa sai hoặc hết hạn', 'Người nhận từ chối', 'Hồi hương', 'Lưu xe do lỗi phía khách'] },
+  { who: 'carrier', group: 'Liên quan đến vận chuyển', items: ['Hỏng xe, cứu hộ cơ khí, xe cứu hộ', 'Hỏng điều hòa thùng xe', 'Tai nạn do xe hoặc tài xế', 'Chậm do nhà xe', 'Giấy nhà xe làm sai', 'Chênh lệch nhiên liệu và BOT'] },
+  { who: 'carrier', group: 'Tắc cửa khẩu', items: ['Nhà xe chịu toàn bộ phí lưu xe, tiền chuồng và chăm sóc ngựa. Khách chấp nhận giao trễ khi tắc cửa khẩu và không yêu cầu bồi thường.'] },
+]

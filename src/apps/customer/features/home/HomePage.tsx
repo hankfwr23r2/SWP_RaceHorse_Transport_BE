@@ -5,17 +5,14 @@ import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { CountUp, reducedMotion, useScrollReveal } from '@shared/motion/motion'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { PUBLIC_STEPS } from '@shared/config/booking-rules'
-import { MAX_HORSES, MIN_LEAD_DAYS } from '@shared/config/business-rules'
+import { MIN_LEAD_DAYS } from '@shared/config/business-rules'
 import { COUNTRIES, GATES, PLACES, type CountryCode } from '@shared/config/network'
-import { BIG_TRUCK_FACTOR, CARE_FEE_PER_DAY, DRIVE_HOURS_PER_DAY, INSURANCE_RATE, KM_TIERS, QUARANTINE_FEE, TRIP_OPEN_FEE } from '@shared/config/public-pricing'
-import { formatDate, formatVND } from '@shared/lib/format'
-import { estimateFee, type FeeEstimate } from '@shared/lib/pricing'
+import { formatDate } from '@shared/lib/format'
 import { trackOrder, type PublicTracking } from '@shared/services/tracking'
 import { FLAG_SVG } from '@shared/ui/flags'
-import { Flag } from '@shared/ui/Flag'
-import { Select } from '@shared/ui/Select'
+import { FeeLookup, PriceTable } from '../pricing/PriceLookup'
 import s from './HomePage.module.css'
 
 gsap.registerPlugin(MotionPathPlugin)
@@ -31,9 +28,14 @@ const SLIDES = [
   { bg: null, tag: 'Báo giá minh bạch', title: 'Biết trước chi phí', hl: 'trước khi đặt chuyến', text: 'Tra cước theo tuyến và số ngựa. Giá trên đơn được báo trước; phụ phí phát sinh (nếu có) sẽ được thông báo rõ.', cta: ['Tra cứu cước', '/?tab=fee#tra-cuu'] },
 ]
 
+// Trang khách đã đăng nhập dùng lại các khối này: đổi liên kết sang trang trong app khách
+export type LinkMap = (to: string) => string
+export const portalLinks: LinkMap = to => (to === '/login' ? '/booking/route' : to.startsWith('/?tab=') ? '#tra-cuu' : to.startsWith('/#') ? to.slice(1) : to)
+const same: LinkMap = to => to
+
 const Words = ({ text }: { text: string }) => <>{text.split(' ').map((w, i) => <span key={i} className={s.word}>{w}&nbsp;</span>)}</>
 
-function Hero() {
+export function Hero({ link = same }: { link?: LinkMap }) {
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
   const root = useRef<HTMLElement>(null)
@@ -60,7 +62,7 @@ function Hero() {
             <span className={s.heroTag}>{sl.tag}</span>
             <h1><span className={s.line}><Words text={sl.title} /></span><span className={s.line}><span className={s.hl}><Words text={sl.hl} /></span></span></h1>
             <p>{sl.text}</p>
-            <Link to={sl.cta[1]} className="btn btn-solid btn-lg">{sl.cta[0]}</Link>
+            <Link to={link(sl.cta[1])} className="btn btn-solid btn-lg">{sl.cta[0]}</Link>
           </div>
         </div>
       ))}
@@ -132,120 +134,6 @@ function OrderLookup() {
 const pad = (n: number) => String(n).padStart(2, '0')
 const formatClockDate = (t: number) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())} ${formatDate(t)}` }
 
-// ===== Tra cứu cước =====
-function FeeLookup() {
-  const navigate = useNavigate()
-  const [fromId, setFromId] = useState('dni')
-  const [toId, setToId] = useState('pnh')
-  const [horses, setHorses] = useState('1')
-  const [valueText, setValueText] = useState('')
-  const [error, setError] = useState<{ field: 'to' | 'horses'; message: string } | null>(null)
-  const [result, setResult] = useState<(FeeEstimate & { from: string; to: string; value: number }) | null>(null)
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    const from = PLACES.find(p => p.id === fromId)!
-    const to = PLACES.find(p => p.id === toId)!
-    const n = Number(horses)
-    const value = Number(valueText.replace(/\D/g, ''))
-    if (from.id === to.id) return setError({ field: 'to', message: 'Điểm đến phải khác điểm đi.' })
-    if (from.country !== 'VN' && to.country !== 'VN') return setError({ field: 'to', message: 'Hiện chỉ nhận tuyến có điểm đi hoặc điểm đến tại Việt Nam.' })
-    if (!Number.isInteger(n) || n < 1 || n > MAX_HORSES) return setError({ field: 'horses', message: `Số ngựa từ 1 đến ${MAX_HORSES}. Trên ${MAX_HORSES} con, vui lòng gọi hotline 1900 6868.` })
-    setError(null)
-    setResult({ ...estimateFee(from, to, n, value), from: from.name, to: to.name, value })
-  }
-
-  const groups = (Object.keys(COUNTRIES) as CountryCode[]).map(code => ({
-    label: COUNTRIES[code].name,
-    icon: <Flag code={code} size={16} />,
-    options: PLACES.filter(p => p.country === code).map(p => ({ value: p.id, label: p.name })),
-  }))
-
-  return (
-    <>
-      <form className={s.feeForm} noValidate onSubmit={submit}>
-        <Select label="Điểm đi" value={fromId} groups={groups} onChange={v => { setFromId(v); setError(null) }} />
-        <Select label="Điểm đến" value={toId} groups={groups} invalid={error?.field === 'to'} onChange={v => { setToId(v); setError(null) }} />
-        <label className={s.horseField}>
-          <span>Số ngựa <small>(tối đa {MAX_HORSES}/đơn)</small></span>
-          <input className={cx(error?.field === 'horses' && s.inputError)} type="number" inputMode="numeric" min={1} max={MAX_HORSES} value={horses} onChange={e => { setHorses(e.target.value); setError(null) }} />
-        </label>
-        <label className={s.horseField}>
-          <span>Giá trị ngựa khai báo <small>(₫, không bắt buộc)</small></span>
-          <input inputMode="numeric" placeholder="VD: 2.000.000.000" value={valueText} onChange={e => setValueText(e.target.value)} />
-        </label>
-        <button className="btn btn-solid" type="submit">Tính cước</button>
-      </form>
-      {error && <p className={s.formError}><i className="fa-solid fa-circle-exclamation" /> {error.message}</p>}
-      {!error && result && (
-        <div className={s.feeResult}>
-          <div>
-            <div className={s.feeRoute}>
-              <span><i className="fa-solid fa-route" /> <b>{result.from} → {result.to}</b></span>
-              <span>{result.gate ? <>Cửa khẩu <b>{result.gate}</b></> : 'Nội địa'}</span>
-              <span>Khoảng <b>{result.km} km</b> · {result.hours < DRIVE_HOURS_PER_DAY ? `~${Math.ceil(result.hours)} giờ` : `${result.days} ngày`}</span>
-            </div>
-            <table className={s.feeTable}>
-              <tbody>
-                {result.rows.map(([name, detail, amount]) => <tr key={name}><td>{name}<span className={s.sub}>{detail}</span></td><td>{formatVND(amount)}</td></tr>)}
-                {!result.value && <tr><td>Bảo hiểm vận chuyển<span className={s.sub}>Nhập giá trị ngựa khai báo để tính (gói cơ bản 2%, toàn diện 5%)</span></td><td>—</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div className={s.feeTotal}>
-            <span>Tổng cước tham khảo</span>
-            <strong>{formatVND(result.total)}</strong>
-            <small>Giá chính thức hiển thị trên đơn sau khi bạn gửi. Đặt trước tối thiểu {MIN_LEAD_DAYS} ngày.</small>
-            <button className="btn btn-solid" onClick={() => navigate('/login')}>Đặt chuyến tuyến này</button>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-// ===== Bảng giá =====
-function PriceTable() {
-  return (
-    <>
-      <div className={s.priceGrid}>
-        <div>
-          <h3><i className="fa-solid fa-truck" /> Cước xe (tính cho mỗi xe 2 ngăn)</h3>
-          <table className={s.priceTable}>
-            <thead><tr><th>Hạng mục</th><th>Đơn giá</th></tr></thead>
-            <tbody>
-              <tr><td>Phí mở chuyến</td><td>{formatVND(TRIP_OPEN_FEE)}</td></tr>
-              {KM_TIERS.map(([to, rate], i) => {
-                const from = i ? KM_TIERS[i - 1][0] + 1 : 0
-                return <tr key={to}><td>{to === Infinity ? `Từ km ${from}` : `Km ${from} – ${to}`}</td><td>{formatVND(rate)}/km</td></tr>
-              })}
-              <tr><td>Xe 4 ngăn (3 – 4 ngựa)</td><td>× {BIG_TRUCK_FACTOR} giá xe 2 ngăn</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <h3><i className="fa-solid fa-horse-head" /> Phí theo ngựa</h3>
-          <table className={s.priceTable}>
-            <thead><tr><th>Hạng mục</th><th>Đơn giá</th></tr></thead>
-            <tbody>
-              <tr><td>Kiểm dịch vận chuyển nội địa</td><td>{formatVND(QUARANTINE_FEE.domestic)}/ngựa</td></tr>
-              <tr><td>Kiểm dịch & thủ tục xuất nhập cảnh</td><td>{formatVND(QUARANTINE_FEE.border)}/ngựa</td></tr>
-              <tr><td>Chăm sóc dọc đường</td><td>{formatVND(CARE_FEE_PER_DAY)}/ngựa/ngày</td></tr>
-              <tr><td>Bảo hiểm gói cơ bản</td><td>{INSURANCE_RATE.basic * 100}% giá trị khai báo</td></tr>
-              <tr><td>Bảo hiểm gói toàn diện</td><td>{INSURANCE_RATE.full * 100}% giá trị khai báo</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div className={s.priceNotes}>
-        <div><i className="fa-solid fa-calendar-check" />Đặt trước tối thiểu {MIN_LEAD_DAYS} ngày so với ngày khởi hành.</div>
-        <div><i className="fa-solid fa-earth-asia" />Tuyến trong Việt Nam, hoặc giữa Việt Nam với Lào, Campuchia.</div>
-        <div><i className="fa-solid fa-receipt" />Giá tham khảo. Giá chính thức ghi trên đơn và không thay đổi sau khi duyệt.</div>
-      </div>
-    </>
-  )
-}
-
 type Tab = 'order' | 'fee' | 'price'
 const TABS: [Tab, string][] = [['order', 'Tra cứu đơn hàng'], ['fee', 'Tra cứu cước'], ['price', 'Bảng giá']]
 
@@ -264,7 +152,7 @@ function Lookup() {
       </div>
       <div className={s.lookupCard}>
         <div className={cx(s.lookupPanel, s.active)} key={tab}>
-          {tab === 'order' ? <OrderLookup /> : tab === 'fee' ? <FeeLookup /> : <PriceTable />}
+          {tab === 'order' ? <OrderLookup /> : tab === 'fee' ? <FeeLookup bookHref="/login" /> : <PriceTable />}
         </div>
       </div>
     </section>
@@ -358,7 +246,7 @@ function Journey({ country }: { country: CountryCode }) {
   )
 }
 
-function Network() {
+export function Network() {
   const [active, setActive] = useState<CountryCode>('VN')
   const flagsRef = useRef<HTMLDivElement>(null)
   useGSAP(() => {
@@ -413,8 +301,8 @@ const SERVICES: [string, string, string, string, string][] = [
 const PROCESS: [string, string, string, string][] = [
   ['fa-paper-plane', 'Gửi đơn', 'Chọn tuyến, chọn ngựa từ Hồ sơ ngựa, chọn dịch vụ và khai bảo hiểm.', `Trước ngày đi ≥ ${MIN_LEAD_DAYS} ngày`],
   ['fa-magnifying-glass', 'Thẩm định', 'Kiểm dịch viên xác minh hồ sơ, điều phối viên lập lộ trình.', 'Trong 5 ngày làm việc'],
-  ['fa-credit-card', 'Duyệt & thanh toán', 'Quản lý duyệt đơn, bạn thanh toán 100% giá trên đơn.', 'Trong 48 giờ'],
-  ['fa-folder-open', 'Chuẩn bị giấy tờ', 'Bạn gửi bản gốc giấy tờ, chúng tôi xin giấy kiểm dịch (và tờ khai hải quan nếu đi quốc tế).', 'Trước ngày đi 3 ngày'],
+  ['fa-credit-card', 'Duyệt & đặt cọc', 'Quản lý duyệt đơn, bạn đặt cọc 30%, phần còn lại trả vào ngày bốc ngựa.', 'Trong 48 giờ'],
+  ['fa-folder-open', 'Làm giấy tờ', 'Chúng tôi làm giấy kiểm dịch (và tờ khai hải quan nếu đi quốc tế), bạn theo dõi tiến độ trực tuyến.', 'Trước ngày đi'],
   ['fa-truck-moving', 'Vận chuyển', 'Tài xế nhận ngựa theo checklist, hộ tống báo cáo sức khỏe dọc đường, bạn theo dõi hành trình trực tuyến.', 'Theo lộ trình'],
   ['fa-clipboard-check', 'Nghiệm thu', 'Kiểm tra tình trạng ngựa khi nhận và xác nhận hoàn thành.', 'Trong 24 giờ'],
 ]
@@ -428,21 +316,14 @@ function useStepsLine() {
   return ref
 }
 
-export default function HomePage() {
-  const scope = useScrollReveal(`.${s.reveal}`)
-  const stepsRef = useStepsLine()
+export function About({ link = same }: { link?: LinkMap }) {
   return (
-    <div ref={scope}>
-      <Hero />
-      <Lookup />
-      <Network />
-
       <section className={s.about}>
         <div className={cx(s.aboutLeft, s.reveal)}>
           <div className={s.aboutLeftInner}>
             <h2>Về chúng tôi</h2>
             <p>Chúng tôi chuyên vận chuyển ngựa đua bằng đường bộ. Mỗi đơn đều được kiểm dịch viên xác minh hồ sơ thú y và điều phối viên lập lộ trình riêng. Quản lý duyệt đơn trước khi bạn thanh toán.</p>
-            <Link to="/#quy-trinh" className={s.linkArrow}>Xem quy trình <i className="fa-solid fa-arrow-right-long" /></Link>
+            <Link to={link('/#quy-trinh')} className={s.linkArrow}>Xem quy trình <i className="fa-solid fa-arrow-right-long" /></Link>
           </div>
         </div>
         <div className={s.aboutRight}>
@@ -453,19 +334,40 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+  )
+}
 
+export function Services({ link = same }: { link?: LinkMap }) {
+  return (
       <section className={s.services} id="dich-vu">
         <div className="wrap">
           <h2 className={cx('section-title', s.reveal)}>Dịch vụ</h2>
           <div className={s.serviceGrid}>
             {SERVICES.map(([to, icon, tile, title, text], i) => (
-              <Link key={title} to={to} className={cx(s.service, s.reveal)} data-delay={i * 120}>
+              <Link key={title} to={link(to)} className={cx(s.service, s.reveal)} data-delay={i * 120}>
                 <span className={s.serviceTile}><i className={`fa-solid ${icon}`} /><b>{tile}</b></span><h3>{title}</h3><p>{text}</p>
               </Link>
             ))}
           </div>
         </div>
       </section>
+  )
+}
+
+// Hiệu ứng hiện dần khi cuộn cho các khối trang chủ; dùng cả ở trang khách đã đăng nhập
+export const useLandingReveal = () => useScrollReveal(`.${s.reveal}`)
+
+export default function HomePage() {
+  const scope = useScrollReveal(`.${s.reveal}`)
+  const stepsRef = useStepsLine()
+  return (
+    <div ref={scope}>
+      <Hero />
+      <Lookup />
+      <Network />
+
+      <About />
+      <Services />
 
       <section className={s.process} id="quy-trinh">
         <div className="wrap">

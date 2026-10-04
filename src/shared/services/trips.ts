@@ -22,7 +22,7 @@ export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
   assigned: 'Đã chốt lộ trình, chờ khởi hành',
   in_transit: 'Đang vận chuyển',
   done: 'Hoàn thành',
-  rejected_assessment: 'Không khả thi, trả Manager',
+  rejected_assessment: 'Không khả thi, trả quản lý',
 }
 
 export interface TripView extends OpsTrip { status: TripStatus; order: Order }

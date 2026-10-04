@@ -1,9 +1,0 @@
-.photos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.photos figure { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-.photos img { width: 100%; height: 200px; object-fit: cover; display: block; }
-.photos figcaption { padding: 10px 12px; font-weight: 600; font-size: 0.88rem; }
-.checklist { display: grid; gap: 10px; font-size: 0.9rem; }
-.check { display: flex; gap: 10px; align-items: flex-start; }
-.checkIcon { width: 22px; height: 22px; border-radius: 999px; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; flex-shrink: 0; }
-
-@media (max-width: 640px) { .photos { grid-template-columns: 1fr; } }

@@ -1,8 +1,7 @@
-// Tổng quan của khách sau đăng nhập: việc cần làm, số liệu nhanh, đường đi của một đơn.
+// Trang chủ của khách sau đăng nhập: giao diện như trang chủ công khai (banner, tra cứu cước, mạng lưới, dịch vụ), giữ nguyên phần việc của khách (số liệu nhanh, việc cần làm, các bước của một đơn).
 import { Link } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
 import { BOOKING_STEPS, DEPOSIT_RATE, QUOTE_VALID_HOURS } from '@shared/config/booking-rules'
-import { MIN_LEAD_DAYS } from '@shared/config/business-rules'
 import { horseReadiness } from '@shared/lib/booking'
 import { formatDate } from '@shared/lib/format'
 import { useStaggerIn } from '@shared/motion/motion'
@@ -11,15 +10,17 @@ import { horsesApi } from '@shared/services/horses'
 import { useLoad } from '@shared/services/useLoad'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { useNow } from '@shared/ui/useNow'
+import { About, Hero, Network, Services, portalLinks, useLandingReveal } from '../home/HomePage'
 import { nextStep } from '../orders/nextStep'
+import { PriceLookup } from '../pricing/PriceLookup'
 import s from './PortalPage.module.css'
 
 const STEP_TEXT = [
   'Chọn ngựa từ Hồ sơ ngựa, khai tuyến đường và dịch vụ.',
   'Kiểm dịch viên và Điều phối viên thẩm định song song.',
   `Nhận báo giá chính thức, có hiệu lực ${QUOTE_VALID_HOURS} giờ.`,
-  `Đặt cọc ${DEPOSIT_RATE * 100}% để giữ xe, nhận Carrier Info Sheet.`,
-  'Xin giấy kiểm dịch, mở tờ khai, nộp lên hệ thống trước 18:00 ngày D-1.',
+  `Đặt cọc ${DEPOSIT_RATE * 100}% để nhận vận đơn. Nhà xe làm giấy kiểm dịch và hải quan, bạn theo dõi tiến độ.`,
+  'Ngày bốc ngựa: trả số dư còn lại, giao bản gốc hồ sơ ngựa cho tài xế.',
 ]
 
 export default function PortalPage() {
@@ -36,18 +37,18 @@ export default function PortalPage() {
   const ready = (horses ?? []).filter(h => horseReadiness(h).ok).length
   const needDocs = (horses ?? []).length - ready
 
+  const reveal = useLandingReveal()
+
   return (
-    <div ref={ref} className="page">
+    <div ref={reveal}>
+      <Hero link={portalLinks} />
+      <div ref={ref} className="page">
       <div className="wrap">
-        <section className={s.hero} data-card>
-          <div>
-            <span className={s.hello}><i className="fa-solid fa-hand" /> Xin chào, {owner}</span>
-            <h1>Vận chuyển ngựa đua <span>an toàn, minh bạch từng bước</span></h1>
-            <p>Việt Nam, Lào, Campuchia. Một đơn đi riêng một xe, một tài xế và một nhân viên chăm sóc đi kèm. Đặt trước tối thiểu {MIN_LEAD_DAYS} ngày.</p>
-          </div>
+        <section className={s.greet} data-card>
+          <span className={s.hello}><i className="fa-solid fa-hand" /> Xin chào, {owner}</span>
           <div className={s.heroActions}>
-            <Link to="/booking/route" className="btn btn-white btn-lg"><i className="fa-solid fa-plus" /> Đặt chuyến mới</Link>
-            <Link to="/horses" className={`btn btn-lg ${s.ghostLight}`}><i className="fa-solid fa-horse-head" /> Hồ sơ ngựa</Link>
+            <Link to="/booking/route" className="btn btn-primary"><i className="fa-solid fa-plus" /> Đặt chuyến mới</Link>
+            <Link to="/horses" className="btn btn-ghost"><i className="fa-solid fa-horse-head" /> Hồ sơ ngựa</Link>
           </div>
         </section>
 
@@ -72,13 +73,19 @@ export default function PortalPage() {
           </div>
         </section>
 
-        <section className="card" data-card>
+        <section className="card" data-card id="quy-trinh">
           <div className="card-header"><h3><i className="fa-solid fa-list-ol" /> Một đơn đi qua những bước nào</h3></div>
           <ol className={s.steps}>
             {BOOKING_STEPS.map((label, i) => <li key={label}><span className={s.stepNum}>{i + 1}</span><div><b>{label}</b><p>{STEP_TEXT[i]}</p></div></li>)}
           </ol>
         </section>
       </div>
+      </div>
+
+      <div id="tra-cuu" style={{ padding: '8px 0 40px' }}><PriceLookup bookHref="/booking/route" /></div>
+      <Network />
+      <About link={portalLinks} />
+      <Services link={portalLinks} />
     </div>
   )
 }

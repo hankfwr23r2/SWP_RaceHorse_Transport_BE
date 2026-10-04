@@ -32,7 +32,6 @@ function Summary() {
           <div><dt>Loại chuyến</dt><dd>{draft.type === 'domestic' ? 'Trong nước' : draft.type === 'international' ? 'Quốc tế' : <span className="text-muted">Chưa chọn</span>}</dd></div>
           <div><dt>Điểm đón</dt><dd>{(draft.originId && nameOf(draft.originId)) || <span className="text-muted">—</span>}</dd></div>
           <div><dt>Điểm giao</dt><dd>{(draft.destId && nameOf(draft.destId)) || <span className="text-muted">—</span>}</dd></div>
-          {draft.type === 'international' && <div><dt>Cửa khẩu</dt><dd>{draft.gate || <span className="text-muted">—</span>}</dd></div>}
           <div><dt>Ngày khởi hành</dt><dd>{draft.departDate ? formatDate(fromIsoDay(draft.departDate)) : <span className="text-muted">—</span>}</dd></div>
           <div><dt>Số ngựa</dt><dd>{n ? `${n} con` : <span className="text-muted">—</span>}</dd></div>
           {cls && <div><dt>Xe dự kiến</dt><dd>{cls.label} · {cls.stalls}</dd></div>}
@@ -46,7 +45,7 @@ function Summary() {
           <ul>
             <li>Quản lý tiếp nhận, Kiểm dịch viên và Điều phối viên thẩm định song song.</li>
             <li>Báo giá chính thức gửi cho bạn, có hiệu lực 48 giờ.</li>
-            <li>Đặt cọc 50% để giữ xe.</li>
+            <li>Đặt cọc 30% để nhận vận đơn. Nhà xe làm giấy kiểm dịch và hải quan giúp bạn.</li>
           </ul>
         </div>
       </div>
@@ -59,7 +58,7 @@ export function BookingShell({ step, title, subtitle, children }: { step: number
   return (
     <div ref={ref} className="page">
       <div className="wrap">
-        <div className="breadcrumb"><Link to="/portal">Tổng quan</Link> / <span>Đặt chuyến mới</span> / <span className="text-orange font-semibold">{STEPS[step - 1][1]}</span></div>
+        <div className="breadcrumb"><Link to="/portal">Trang chủ</Link> / <span>Đặt chuyến mới</span> / <span className="text-orange font-semibold">{STEPS[step - 1][1]}</span></div>
         <div className="page-header">
           <h1>{title}</h1>
           <p>{subtitle}</p>

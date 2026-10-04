@@ -18,6 +18,8 @@ export const horsesApi = {
     const next = Math.max(0, ...store.all().map(h => Number(h.id.slice(2)))) + 1
     return structuredClone(store.add({ ...data, microchip, id: `H-${String(next).padStart(3, '0')}`, owner, completedTrips: 0, createdAt: Date.now() }))
   },
+  // Đơn hoàn tất: cộng số chuyến đã chạy vào lý lịch từng ngựa (PRD mục 7.6)
+  addCompletedTrip: async (ids: string[]): Promise<void> => { ids.forEach(id => { const h = store.all().find(x => x.id === id); if (h) store.update(id, { completedTrips: h.completedTrips + 1 }) }) },
   // Microchip là khóa định danh: không sửa sau khi lưu lần đầu
   update: async (owner: string, id: string, patch: Partial<NewHorse>): Promise<HorseProfile> => {
     const current = store.all().find(h => h.id === id && h.owner === owner)

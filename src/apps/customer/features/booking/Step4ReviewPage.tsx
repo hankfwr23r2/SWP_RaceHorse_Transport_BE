@@ -1,4 +1,4 @@
-// Bước 4: xác nhận, tải Import Permit (quốc tế) và gửi đơn. Đơn gửi đi ở trạng thái "Chờ Manager tiếp nhận".
+// Bước 4: xác nhận và gửi đơn. Đơn gửi đi ở trạng thái "Chờ Manager tiếp nhận".
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
@@ -10,7 +10,8 @@ import { customerBookingsApi } from '@shared/services/bookings'
 import { horsesApi } from '@shared/services/horses'
 import { useLoad } from '@shared/services/useLoad'
 import { SEX_LABEL, type PlaceRef } from '@shared/types/booking'
-import { FileField } from '@shared/ui/FileField'
+import { Modal } from '@shared/ui/Modal'
+import { ReadMore } from '@shared/ui/ReadMore'
 import { useToast } from '@shared/ui/toast'
 import { BookingShell } from './BookingShell'
 import { countriesOf, useBookingDraft } from './draft'
@@ -22,14 +23,31 @@ export default function Step4ReviewPage() {
   const toast = useToast()
   const { session } = useAuth()
   const owner = session!.name
-  const { draft, save, clear } = useBookingDraft()
+  const { draft, clear } = useBookingDraft()
   const { data: horses } = useLoad(() => horsesApi.list(owner), [owner])
   const [agree, setAgree] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false) // đã gửi: bản nháp bị xóa, không chuyển ngược về bước 1
 
-  if (sent) return null
+  const [placed, setPlaced] = useState<{ id: string; route: string; date: string; horses: number } | null>(null)
+
+  // Đã gửi: hiện popup xác nhận, khách chọn xem đơn vừa đặt hoặc chi tiết đơn
+  if (sent) {
+    if (!placed) return null
+    const toList = () => navigate('/orders?group=new')
+    return (
+      <Modal onClose={toList} title={<><i className="fa-solid fa-circle-check" style={{ color: 'var(--green)' }} /> Đã gửi đơn {placed.id}</>} subtitle="Đơn của bạn đã được ghi nhận"
+        footer={<><button className="btn btn-ghost" onClick={() => navigate(`/orders/${placed.id}`)}>Xem chi tiết đơn</button><button className="btn btn-primary" onClick={toList}>Xem đơn vừa đặt</button></>}>
+        <dl className={s.reviewGrid}>
+          <div><dt>Tuyến</dt><dd>{placed.route}</dd></div>
+          <div><dt>Ngày khởi hành</dt><dd>{placed.date}</dd></div>
+          <div><dt>Số ngựa</dt><dd>{placed.horses} con</dd></div>
+        </dl>
+        <p className="form-hint" style={{ marginTop: 14 }}>Đơn nằm ở mục <b>Vừa đặt</b> trong Đơn của tôi. Quản lý sẽ tiếp nhận, Kiểm dịch viên và Điều phối viên thẩm định, rồi gửi báo giá cho bạn. Bạn theo dõi từng bước ở đó.</p>
+      </Modal>
+    )
+  }
   const countries = countriesOf(draft)
   if (!countries || !draft.departDate) return <Navigate to="/booking/route" replace />
   if (!draft.horseIds.length) return <Navigate to="/booking/horses" replace />
@@ -40,26 +58,25 @@ export default function Step4ReviewPage() {
   const place = (id: string, country: PlaceRef['country']): PlaceRef => ({ id, name: findLocation(id)?.name ?? id, country })
   const origin = place(draft.originId, countries.origin)
   const dest = place(draft.destId, countries.dest)
-  const permitMissing = international && !draft.importPermit
   const cls = VEHICLE_CLASS[classForHorses(rows.length)]
 
   const submit = async () => {
     setSubmitted(true)
-    if (permitMissing || !agree || busy) return
+    if (!agree || busy) return
     setBusy(true)
     try {
       const order = await customerBookingsApi.create(owner, {
-        type: draft.type as 'domestic' | 'international', origin, dest, gate: international ? draft.gate : undefined,
-        departAt: fromIsoDay(draft.departDate), consignor: draft.consignor, consignee: draft.consignee, importPermit: international ? draft.importPermit : undefined,
+        type: draft.type as 'domestic' | 'international', origin, dest,
+        departAt: fromIsoDay(draft.departDate), consignor: draft.consignor, consignee: draft.consignee,
         horses: rows.map(h => {
           const c = draft.config[h.id]
           return { horseId: h.id, name: h.name, microchip: h.microchip, breed: h.breed, sex: h.sex, stall: c.stall, targetTemp: c.targetTemp, feeding: c.feeding, water: c.water, careNote: c.careNote, insurance: { opted: c.insurance === 'buy' } }
         }),
       })
+      setPlaced({ id: order.id, route: `${origin.name.split(' — ')[0]} → ${dest.name.split(' — ')[0]}`, date: formatDate(fromIsoDay(draft.departDate)), horses: rows.length })
       setSent(true)
       clear()
       toast(`Đã gửi đơn ${order.id}`)
-      navigate(`/orders/${order.id}`)
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Không gửi được đơn.', 'error')
       setBusy(false)
@@ -75,7 +92,6 @@ export default function Step4ReviewPage() {
           <div><dt>Ngày khởi hành</dt><dd>{formatDate(fromIsoDay(draft.departDate))}</dd></div>
           <div><dt>Điểm đón</dt><dd>{origin.name}</dd></div>
           <div><dt>Điểm giao</dt><dd>{dest.name}</dd></div>
-          {international && <div><dt>Cửa khẩu</dt><dd>{draft.gate}</dd></div>}
           <div><dt>Người gửi</dt><dd>{draft.consignor.name}<br /><small className="text-muted">{draft.consignor.phone}</small></dd></div>
           <div><dt>Người nhận</dt><dd>{draft.consignee.name}<br /><small className="text-muted">{draft.consignee.phone}</small></dd></div>
         </dl>
@@ -96,21 +112,10 @@ export default function Step4ReviewPage() {
         })}
       </div>
 
-      {international && (
-        <div className="card" data-card>
-          <div className="card-header"><h3><i className="fa-solid fa-file-import" /> Giấy phép nhập khẩu</h3></div>
-          <FileField
-            label="Import Permit của nước đến" required invalid={submitted && permitMissing} fileName={draft.importPermit?.fileName}
-            hint="Bản gốc hoặc bản in điện tử có mã QR / chữ ký số. Specialist thẩm định sơ bộ khi tiếp nhận đơn."
-            onChange={f => save({ importPermit: f ? { fileName: f, uploadedAt: Date.now() } : undefined })}
-          />
-          {submitted && permitMissing && <div className="form-error">Tải Giấy phép nhập khẩu để gửi đơn quốc tế.</div>}
-          <div className="alert alert-info" style={{ marginTop: 14 }}>
-            <i className="fa-solid fa-circle-info" />
-            <div>Tờ khai hải quan, Giấy kiểm dịch (Health Cert) và Giấy ủy quyền cần biển số xe và thông tin tài xế, nên bạn nộp <b>sau khi đặt cọc</b>, hạn 18:00 ngày trước ngày khởi hành.</div>
-          </div>
-        </div>
-      )}
+      <div className="alert alert-info" data-card>
+        <i className="fa-solid fa-circle-info" />
+        <ReadMore text={'Bạn không cần làm giấy kiểm dịch hay thủ tục hải quan. Nhà xe sẽ làm trọn gói sau khi bạn đặt cọc và báo tiến độ cho bạn. Bạn chỉ cần giao bản gốc hồ sơ ngựa cho tài xế khi nhận ngựa.'} />
+      </div>
 
       <div className="card" data-card>
         <label className={s.commit}>

@@ -9,12 +9,12 @@ interface QuoteSheetProps {
   subtotal: number
   total: number
   deposit: number
-  demurragePerHour: number
+  balance: number
   expiresAt?: number
 }
 
-// Phiếu báo giá (PRD mục 2.5): cố định, chi phí thực tế trả sau, phí phát sinh dự phòng, tiền cọc
-export function QuoteSheet({ lines, adjustments = [], subtotal, total, deposit, demurragePerHour, expiresAt }: QuoteSheetProps) {
+// Phiếu báo giá (PRD mục 2.5): mọi khoản cố định, không phụ thu; cọc 30% và số dư 70% ngày bốc ngựa
+export function QuoteSheet({ lines, adjustments = [], subtotal, total, deposit, balance, expiresAt }: QuoteSheetProps) {
   return (
     <div className={s.sheet}>
       <table className={s.table}>
@@ -37,14 +37,14 @@ export function QuoteSheet({ lines, adjustments = [], subtotal, total, deposit, 
       </table>
 
       <div className={s.totals}>
-        <div className={s.total}><span>Tổng giá trị tạm tính</span><b>{formatVND(total)}</b></div>
-        <div className={s.note}>Chưa gồm VAT, nhiên liệu và phí cầu đường BOT.</div>
-        <div className={s.deposit}><span>Tiền đặt cọc giữ xe ({DEPOSIT_RATE * 100}%)</span><b>{formatVND(deposit)}</b></div>
+        <div className={s.total}><span>Tổng giá trị</span><b>{formatVND(total)}</b></div>
+        <div className={s.note}>Chưa gồm VAT. Giá cố định, nhiên liệu và phí cầu đường đã nằm trong báo giá.</div>
+        <div className={s.deposit}><span>Đặt cọc để nhận vận đơn ({DEPOSIT_RATE * 100}%)</span><b>{formatVND(deposit)}</b></div>
+        <div className={s.deposit}><span>Thanh toán còn lại vào ngày bốc ngựa ({100 - DEPOSIT_RATE * 100}%)</span><b>{formatVND(balance)}</b></div>
       </div>
 
       <div className={s.after}>
-        <div><i className="fa-solid fa-gas-pump" aria-hidden="true" /> <b>Chi phí thực tế trả sau:</b> nhiên liệu và phí cầu đường BOT. Tài xế chi trả dọc đường, quyết toán theo hóa đơn sau chuyến đi.</div>
-        <div><i className="fa-solid fa-clock" aria-hidden="true" /> <b>Phí lưu xe chờ thông quan quá giờ:</b> {formatVND(demurragePerHour)} mỗi giờ, chỉ tính khi chậm do giấy tờ của khách.</div>
+        <div><i className="fa-solid fa-lock" aria-hidden="true" /> <b>Không phụ thu ngoài phiếu:</b> chỉ phát sinh thêm khi có sự cố liên quan đến ngựa hoặc dịch vụ bạn chọn thêm (xem chính sách chi phí sự cố).</div>
         {expiresAt && <div><i className="fa-solid fa-hourglass-half" aria-hidden="true" /> <b>Báo giá có hiệu lực đến</b> {formatDateTime(expiresAt)}.</div>}
       </div>
     </div>

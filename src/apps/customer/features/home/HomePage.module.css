@@ -65,15 +65,15 @@
 .track-miss { border-style: dashed; color: var(--muted); font-size: 0.9rem; }
 
 /* Tra cứu cước */
-.fee-form { display: grid; grid-template-columns: 1fr 1fr 150px 1.2fr auto; gap: 12px; align-items: end; }
+.fee-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: end; }
 .horse-field { display: flex; flex-direction: column; gap: 6px; }
 .horse-field span { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
 .horse-field small { font-size: 0.75rem; font-weight: 500; }
-.horse-field input { height: 48px; padding: 0 14px; border: 1px solid #d2d6dc; border-radius: 10px; font-size: 0.95rem; font-family: inherit; color: var(--text); background: white; transition: border-color 0.2s, box-shadow 0.2s; }
+.horse-field input, .horse-field select { height: 48px; padding: 0 14px; border: 1px solid #d2d6dc; border-radius: 10px; font-size: 0.95rem; font-family: inherit; color: var(--text); background: white; transition: border-color 0.2s, box-shadow 0.2s; }
 .horse-field input { appearance: textfield; -moz-appearance: textfield; }
 .horse-field input::-webkit-outer-spin-button, .horse-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.horse-field input:hover { border-color: #94a3b8; }
-.horse-field input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15); }
+.horse-field input:hover, .horse-field select:hover { border-color: #94a3b8; }
+.horse-field input:focus, .horse-field select:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15); }
 .fee-form :global(.btn) { height: 48px; }
 .fee-result { margin-top: 20px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; animation: dropUp 0.35s ease; }
 .fee-route { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.85rem; color: var(--muted); margin-bottom: 10px; }

@@ -7,6 +7,20 @@
 .count { font-size: 0.74rem; background: rgba(15, 23, 42, 0.08); border-radius: 999px; padding: 1px 8px; }
 .tabOn .count { background: rgba(255, 255, 255, 0.28); }
 
+.ordersLayout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start; }
+.sideNav { position: sticky; top: 84px; display: grid; gap: 4px; padding: 14px; background: white; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.sideNav h2 { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 6px 6px; }
+.sideItem { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; min-height: 42px; padding: 8px 10px; border: none; border-radius: var(--radius-sm); background: transparent; font: inherit; font-size: 0.88rem; font-weight: 600; color: var(--text); text-align: left; cursor: pointer; }
+.sideItem i { color: var(--muted); text-align: center; }
+.sideItem:hover { background: var(--bg-page); }
+.sideItem:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.sideItemOn { background: var(--orange-soft); color: var(--orange); }
+.sideItemOn i { color: var(--orange); }
+.sideItemAlert i { color: var(--amber); }
+.sideSub { margin-left: 14px; min-height: 36px; font-size: 0.82rem; font-weight: 500; border-left: 2px solid var(--line); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.sideSub.sideItemOn { border-left-color: var(--orange); }
+.sideRule { border: none; border-top: 1px solid var(--line); margin: 6px 0; }
+.sideItemOn .count { background: var(--orange); color: white; }
 .list { display: grid; gap: 12px; }
 .row { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 16px 18px; background: white; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); transition: border-color 0.15s ease; }
 .row:hover { border-color: var(--orange); }
@@ -145,3 +159,11 @@
 .fold[open] > summary::after { transform: rotate(180deg); }
 .foldBody { display: grid; gap: 16px; margin-top: 14px; }
 .foldBody > :global(.card) { box-shadow: none; }
+
+@media (max-width: 860px) {
+  .ordersLayout { grid-template-columns: 1fr; }
+  .sideNav { position: static; display: flex; overflow-x: auto; gap: 6px; padding: 10px; }
+  .sideNav h2, .sideRule { display: none; }
+  .sideItem { grid-template-columns: 20px auto auto; white-space: nowrap; }
+  .sideSub { margin-left: 0; border-left: none; }
+}

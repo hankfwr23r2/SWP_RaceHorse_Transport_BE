@@ -1,5 +1,7 @@
 import { useId } from 'react'
 import { captureName, captureTime } from '../lib/capture'
+import { rememberPreview } from '../lib/previews'
+import { ImageThumb } from './ImageThumb'
 import { formatClock } from '../lib/format'
 import s from './CaptureField.module.css'
 
@@ -13,10 +15,10 @@ export function CaptureField({ label, value, onChange, hint, required, invalid, 
     <div className={s.field}>
       <div className={`${s.label} ${required ? s.required : ''}`} id={`${id}-l`}>{label}</div>
       <input id={id} className={s.input} type="file" accept="image/*" capture="environment" disabled={disabled} aria-labelledby={`${id}-l`}
-        onChange={e => { if (e.target.files?.[0]) onChange(captureName()); e.target.value = '' }} />
+        onChange={e => { const f = e.target.files?.[0]; if (f) { const n = captureName(); rememberPreview(n, f); onChange(n) } e.target.value = '' }} />
       {value ? (
         <div className={s.done}>
-          <i className="fa-solid fa-camera" aria-hidden="true" />
+          <ImageThumb name={value} size={40} />
           <span className={s.text}>Đã chụp lúc <b>{at ? formatClock(at) : '—'}</b></span>
           {!disabled && <label htmlFor={id} className={s.retake}>Chụp lại</label>}
         </div>

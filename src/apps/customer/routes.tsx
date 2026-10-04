@@ -12,7 +12,6 @@ import Step3ServicesPage from './features/booking/Step3ServicesPage'
 import Step4ReviewPage from './features/booking/Step4ReviewPage'
 import OrdersPage from './features/orders/OrdersPage'
 import OrderDetailPage from './features/orders/OrderDetailPage'
-import AcceptancePage from './features/acceptance/AcceptancePage'
 
 const C = ['customer'] as AppRoute['roles']
 
@@ -20,7 +19,7 @@ export const routes: AppRoute[] = [
   { path: '/', page: HomePage, roles: [], title: 'Trang chủ', layout: 'public' },
   { path: '/login', page: LoginPage, roles: [], title: 'Đăng nhập', layout: 'bare' },
   { path: '/register', page: RegisterPage, roles: [], title: 'Đăng ký', layout: 'bare' },
-  { path: '/portal', page: PortalPage, roles: C, title: 'Tổng quan', layout: 'customer' },
+  { path: '/portal', page: PortalPage, roles: C, title: 'Trang chủ', layout: 'customer' },
   { path: '/horses', page: HorsesPage, roles: C, title: 'Hồ sơ ngựa', layout: 'customer' },
   { path: '/booking/route', page: Step1RoutePage, roles: C, title: 'Đặt chuyến · Chuyến đi', layout: 'customer' },
   { path: '/booking/horses', page: Step2HorsesPage, roles: C, title: 'Đặt chuyến · Chọn ngựa', layout: 'customer' },
@@ -28,7 +27,6 @@ export const routes: AppRoute[] = [
   { path: '/booking/review', page: Step4ReviewPage, roles: C, title: 'Đặt chuyến · Xác nhận & gửi', layout: 'customer' },
   { path: '/orders', page: OrdersPage, roles: C, title: 'Đơn của tôi', layout: 'customer' },
   { path: '/orders/:id', page: OrderDetailPage, roles: C, title: 'Chi tiết đơn', example: 'ORD-2026-0105', layout: 'customer' },
-  { path: '/acceptance', page: AcceptancePage, roles: C, title: 'Nghiệm thu', layout: 'customer' },
 ]
 
 routes.push({ path: '/sitemap', page: () => <SitemapPage app="customer" />, roles: [], title: 'Sitemap', layout: 'public' })

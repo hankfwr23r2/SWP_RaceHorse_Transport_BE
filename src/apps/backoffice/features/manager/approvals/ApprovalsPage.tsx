@@ -2,7 +2,7 @@
 // Báo giá do hệ thống tính; Manager chỉ điều chỉnh phụ phí và chiết khấu thương mại rồi gửi cho khách.
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
-import { DEMURRAGE_PER_HOUR, QUOTE_VALID_HOURS, VEHICLE_CLASS } from '@shared/config/booking-rules'
+import { QUOTE_VALID_HOURS, VEHICLE_CLASS } from '@shared/config/booking-rules'
 import { finalizeQuote, vehicleClassOf } from '@shared/lib/booking'
 import { formatDate, formatDateTime, formatVND } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
@@ -13,7 +13,7 @@ import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { Modal } from '@shared/ui/Modal'
 import { QuoteSheet } from '@shared/ui/QuoteSheet'
 import { useToast } from '@shared/ui/toast'
-import { HorseConfigList, Tabs, TripSummary } from '../../../shared/BookingParts'
+import { HorseConfigList, TripSummary, EmptyCard, ListLayout, OrderCard } from '../../../shared/BookingParts'
 import { placeShort } from '../../../shared/place'
 import s from '../../../shared/booking.module.css'
 
@@ -29,9 +29,8 @@ function QuoteModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
   const { data: crew } = useLoad(crewApi.list)
   const [rows, setRows] = useState<AdjRow[]>([])
   const [busy, setBusy] = useState(false)
-  const vehicle = vehicles?.find(v => v.id === b.fleet?.vehicleId)
   const adjustments = rows.filter(r => r.label.trim() && digits(r.amount) > 0).map(r => ({ label: r.label.trim(), amount: r.kind === 'discount' ? -digits(r.amount) : digits(r.amount) }))
-  const preview = draft && finalizeQuote(draft.lines, adjustments, Date.now(), session!.name, DEMURRAGE_PER_HOUR)
+  const preview = draft && finalizeQuote(draft.lines, adjustments, Date.now(), session!.name)
   const nameOf = (id?: string) => crew?.find(c => c.id === id)?.name ?? '—'
   const set = (i: number, patch: Partial<AdjRow>) => setRows(r => r.map((x, j) => (j === i ? { ...x, ...patch } : x)))
 
@@ -48,10 +47,16 @@ function QuoteModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
     >
       <h4 style={{ marginBottom: 10 }}>Kết quả thẩm định</h4>
       <dl className={s.grid}>
-        <div><dt>Y tế</dt><dd>Đạt · {b.medical?.by}<div className={s.sub}>Nhiệt độ {b.medical?.temp}°C{b.medical?.restPlan ? ` · ${b.medical.restPlan}` : ''}</div></dd></div>
-        <div><dt>Xe</dt><dd>{vehicle ? `${vehicle.plate} · ${VEHICLE_CLASS[vehicleClassOf(vehicle.capacity)].label} (${vehicle.capacity} ngăn)` : '—'}</dd></div>
-        <div><dt>Tài xế · Hộ tống</dt><dd>{nameOf(b.fleet?.driverId)} · {nameOf(b.fleet?.escortId)}</dd></div>
-        <div><dt>ETD · ETA</dt><dd>{b.fleet && formatDateTime(b.fleet.etd)}<div className={s.sub}>Đến {b.fleet && formatDateTime(b.fleet.etaDest)}</div></dd></div>
+        <div><dt>Y tế</dt><dd>Đạt · {b.medical?.by}</dd></div>
+        <div><dt>Lộ trình</dt><dd>{b.route ? `${b.route.legs.length} chặng, ${b.route.rests.length} trạm trung chuyển` : '—'}<div className={s.sub}>{b.route && `Khởi hành ${formatDateTime(b.route.legs[0].departAt)} · đến ${formatDateTime(b.route.legs[b.route.legs.length - 1].arriveAt)}`}</div></dd></div>
+      </dl>
+
+      <h4 style={{ margin: '18px 0 10px' }}>{b.trips && b.trips.length > 1 ? `${b.trips.length} xe của đơn` : 'Xe của đơn'}</h4>
+      <dl className={s.grid}>
+        {(b.trips ?? []).map((t, i) => {
+          const v = vehicles?.find(x => x.id === t.vehicleId)
+          return <div key={t.tripId}><dt>Xe {i + 1} · {t.tripId}</dt><dd>{v ? `${v.plate} · ${VEHICLE_CLASS[vehicleClassOf(v.capacity)].label} (${v.capacity} ngăn)` : '—'}<div className={s.sub}>{nameOf(t.driverId)} · {nameOf(t.escortId)} · {t.horseIds.length} ngựa</div></dd></div>
+        })}
       </dl>
 
       <h4 style={{ margin: '18px 0 10px' }}>Chuyến đi</h4>
@@ -92,29 +97,18 @@ export default function ApprovalsPage() {
       <div className="wrap">
         <div className="page-header">
           <h1>Duyệt báo giá</h1>
-          <p>Đơn đã có kết quả thẩm định y tế và phương án xe. Duyệt báo giá để gửi khách, khách có {QUOTE_VALID_HOURS} giờ đặt cọc 50%.</p>
+          <p>Đơn đã có kết quả thẩm định y tế, phương án xe và lộ trình. Duyệt báo giá để gửi khách, khách có {QUOTE_VALID_HOURS} giờ đặt cọc 30%.</p>
         </div>
-        <Tabs<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Chờ duyệt báo giá', todo.length], ['sent', 'Đã gửi báo giá', sent.length]]} />
-        <div className="card table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Tuyến</th><th>Khởi hành</th><th>Ngựa</th>{tab === 'sent' && <th className="text-right">Tổng / Cọc</th>}<th>Trạng thái</th><th className="text-right">Thao tác</th></tr></thead>
-            <tbody>
-              {shown.map(b => (
-                <tr key={b.id}>
-                  <td className={s.id}>{b.id}</td>
-                  <td>{b.customer}</td>
-                  <td>{placeShort(b.origin.name)} → {placeShort(b.dest.name)}<div className={s.sub}>{b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'}</div></td>
-                  <td className="nowrap">{formatDate(b.departAt)}</td>
-                  <td>{b.horses.length}</td>
-                  {tab === 'sent' && <td className="text-right nowrap">{b.quote && <>{formatVND(b.quote.total)}<div className={s.sub}>Cọc {formatVND(b.quote.deposit)}</div></>}</td>}
-                  <td><BookingStatusBadge status={b.status} audience="staff" /></td>
-                  <td className="text-right">{tab === 'todo' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen(b)}>Duyệt báo giá</button> : <span className={s.sub}>{b.quote && `Gửi ${formatDateTime(b.quote.sentAt)}`}</span>}</td>
-                </tr>
-              ))}
-              {all && !shown.length && <tr><td colSpan={8}><div className={s.empty}><i className="fa-solid fa-circle-check" />{tab === 'todo' ? 'Không có đơn nào chờ duyệt báo giá.' : 'Chưa gửi báo giá nào.'}</div></td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <ListLayout<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Chờ duyệt báo giá', todo.length], ['sent', 'Đã gửi báo giá', sent.length]]}>
+          {shown.map(b => (
+            <OrderCard key={b.id} id={b.id} customer={b.customer} route={`${placeShort(b.origin.name)} → ${placeShort(b.dest.name)}`} kind={b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'}
+              badge={<BookingStatusBadge status={b.status} audience="staff" />}
+              meta={[['fa-calendar-day', 'Khởi hành', formatDate(b.departAt)], ['fa-horse-head', 'Ngựa', `${b.horses.length} con`], ['fa-truck', 'Số xe', `${b.trips?.length ?? 0}`], ...(tab === 'sent' && b.quote ? [['fa-paper-plane', 'Gửi lúc', formatDateTime(b.quote.sentAt)] as [string, string, string]] : [])]}
+              side={tab === 'sent' && b.quote ? <div style={{ textAlign: 'right' }}><b>{formatVND(b.quote.total)}</b><div className={s.sub}>Cọc {formatVND(b.quote.deposit)}</div></div> : undefined}
+              action={tab === 'todo' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen(b)}>Duyệt báo giá</button> : undefined} />
+          ))}
+          {all && !shown.length && <EmptyCard text={tab === 'todo' ? 'Không có đơn nào chờ duyệt báo giá.' : 'Chưa gửi báo giá nào.'} />}
+        </ListLayout>
       </div>
       {open && <QuoteModal b={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload() }} />}
     </div>

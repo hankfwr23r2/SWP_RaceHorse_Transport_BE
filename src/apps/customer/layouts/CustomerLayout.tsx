@@ -9,11 +9,10 @@ import { AppHeader, appHeaderStyles as h } from '@shared/ui/AppHeader'
 import { TranslateToggle } from '@shared/ui/TranslateToggle'
 
 const MENU: [string, string][] = [
-  ['/portal', 'Tổng quan'],
+  ['/portal', 'Trang chủ'],
   ['/horses', 'Hồ sơ ngựa'],
   ['/booking/route', 'Đặt chuyến mới'],
   ['/orders', 'Đơn của tôi'],
-  ['/acceptance', 'Nghiệm thu'],
 ]
 
 const isActive = (to: string, path: string) =>
@@ -25,7 +24,7 @@ export function CustomerLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <AppHeader
-        homeHref="/portal" links={MENU} isActive={isActive} userName={session?.name}
+        homeHref="/portal" contained links={MENU} isActive={isActive} userName={session?.name}
         onLogout={() => { logout(); navigate('/') }}
         extra={<a href={`tel:${HOTLINE.replace(/\s/g, '')}`} className={h.hotline}><i className="fa-solid fa-headset" /> <strong>{HOTLINE}</strong></a>}
       />

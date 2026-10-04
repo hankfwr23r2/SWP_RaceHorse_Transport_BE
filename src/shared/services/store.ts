@@ -2,7 +2,19 @@
 // Khi có Spring Boot: xóa file này, các service gọi fetch('/api/...') thay vì đọc/ghi store.
 
 // Tăng số này mỗi khi sửa dữ liệu mẫu (mock/*) để trình duyệt bỏ bản cũ đã lưu trong phiên và nạp bản mới.
-export const MOCK_VERSION = 8
+export const MOCK_VERSION = 15
+
+// Dữ liệu mẫu lưu trong phiên để đi trọn luồng giữa hai app (khách và nội bộ là hai trang riêng, chuyển qua lại không mất dữ liệu).
+// Bấm F5 (tải lại trang) thì đặt lại dữ liệu mẫu về ban đầu, để thử lại từ đầu; phiên đăng nhập và bản nháp đặt chuyến được giữ.
+export function clearMockData(storage: Pick<Storage, 'length' | 'key' | 'removeItem'>) {
+  const keys: string[] = []
+  for (let i = 0; i < storage.length; i++) { const k = storage.key(i); if (k?.startsWith('SWP_MOCK_')) keys.push(k) }
+  keys.forEach(k => storage.removeItem(k))
+}
+const isReload = () => {
+  try { return (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload' } catch { return false }
+}
+if (typeof sessionStorage !== 'undefined' && isReload()) { try { clearMockData(sessionStorage) } catch { /* bỏ qua khi bị chặn lưu trữ */ } }
 
 export function createStore<T extends { id: string }>(key: string, seed: () => T[]) {
   const storageKey = `SWP_MOCK_v${MOCK_VERSION}_${key}`

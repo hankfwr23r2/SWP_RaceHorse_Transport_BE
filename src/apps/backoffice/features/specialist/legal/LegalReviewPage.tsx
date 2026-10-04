@@ -1,85 +1,108 @@
-// Specialist: đối chiếu hồ sơ pháp lý một đơn. Mọi điểm đối chiếu đạt thì duyệt; sai sót thì yêu cầu khách nộp lại (bắt buộc chọn lý do).
+// Specialist: làm giấy tờ kiểm dịch và hải quan một đơn (PRD mục 3). Cập nhật từng hạng mục kèm ảnh; tuyến quốc tế ghi nhận thông quan từng ngựa.
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { CLEARANCE_DOC, REJECT_REASONS, type ClearanceDocType } from '@shared/config/booking-rules'
-import { docsDueAt, legalChecks } from '@shared/lib/booking'
+import { CLEARANCE_DOC, type ClearanceDocType } from '@shared/config/booking-rules'
+import { canCompleteClearance, clearanceProgress, docsDueAt, isClearanceOverdue } from '@shared/lib/booking'
 import { formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
-import { crewApi, vehiclesApi } from '@shared/services/fleet'
 import { useLoad } from '@shared/services/useLoad'
-import type { Booking } from '@shared/types/booking'
+import type { Booking, ClearanceItem, ClearanceStatus } from '@shared/types/booking'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
+import { FileField } from '@shared/ui/FileField'
+import { ImageThumb } from '@shared/ui/ImageThumb'
 import { useToast } from '@shared/ui/toast'
 import { History, TripSummary } from '../../../shared/BookingParts'
 import s from '../../../shared/booking.module.css'
 
-function Review({ b, team, onDone }: { b: Booking; team: Parameters<typeof legalChecks>[1]; onDone: () => void }) {
+const STATUS_LABEL: Record<ClearanceStatus, string> = { todo: 'Chưa làm', doing: 'Đang làm', done: 'Xong' }
+
+function ItemRow({ b, item, editable, run }: { b: Booking; item: ClearanceItem; editable: boolean; run: (fn: () => Promise<unknown>, msg: string) => Promise<void> }) {
+  const { session } = useAuth()
+  const [note, setNote] = useState(item.note)
+  const patch = (p: { status?: ClearanceStatus; note?: string; photos?: string[] }, msg: string) => run(() => bookingsApi.updateClearanceItem(b.id, session!.name, item.type, p), msg)
+  return (
+    <div className={s.horse}>
+      <div className={s.horseTop}>
+        <div><div className={s.horseName}>{CLEARANCE_DOC[item.type].label}</div><div className={s.horseMeta}>{CLEARANCE_DOC[item.type].hint}</div></div>
+        <select className="form-control" style={{ width: 140 }} aria-label={`Trạng thái ${CLEARANCE_DOC[item.type].short}`} disabled={!editable} value={item.status} onChange={e => patch({ status: e.target.value as ClearanceStatus }, `${CLEARANCE_DOC[item.type].short}: ${STATUS_LABEL[e.target.value as ClearanceStatus].toLowerCase()}`)}>
+          {(Object.keys(STATUS_LABEL) as ClearanceStatus[]).map(k => <option key={k} value={k}>{STATUS_LABEL[k]}</option>)}
+        </select>
+      </div>
+      <div className="form-group" style={{ margin: '8px 0 0' }}>
+        <input className="form-control" aria-label={`Ghi chú ${CLEARANCE_DOC[item.type].short}`} placeholder="Ghi chú tiến độ (khách và quản lý đều thấy)" disabled={!editable} value={note} onChange={e => setNote(e.target.value)} onBlur={() => { if (note !== item.note) patch({ note }, 'Đã lưu ghi chú') }} />
+      </div>
+      {item.photos.length > 0 && (
+        <ul style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0 0' }}>
+          {item.photos.map((p, i) => (
+            <li key={p + i} style={{ position: 'relative' }}><ImageThumb name={p} size={64} />{editable && <button className={s.iconBtn} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, background: 'white' }} aria-label={`Xóa ${p}`} onClick={() => patch({ photos: item.photos.filter((_, j) => j !== i) }, 'Đã xóa ảnh')}><i className="fa-solid fa-xmark" /></button>}</li>
+          ))}
+        </ul>
+      )}
+      {editable && <FileField key={item.photos.length} label="Thêm ảnh chụp giấy" accept=".jpg,.jpeg,.png,.pdf" onChange={f => { if (f) patch({ photos: [...item.photos, f] }, 'Đã thêm ảnh') }} />}
+    </div>
+  )
+}
+
+function Work({ b, onDone }: { b: Booking; onDone: () => void }) {
   const toast = useToast()
   const navigate = useNavigate()
   const { session } = useAuth()
-  const checks = legalChecks(b, team)
-  const submittedDocs = (Object.keys(b.clearance!.docs) as ClearanceDocType[])
-  const [ok, setOk] = useState<string[]>([])
-  const [fixing, setFixing] = useState(false)
-  const [reasons, setReasons] = useState<string[]>([])
-  const [docs, setDocs] = useState<ClearanceDocType[]>([])
-  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const all = ok.length === checks.length
+  const c = b.clearance!
+  const editable = ['waybill_issued', 'clearance_in_progress'].includes(b.status)
+  const p = clearanceProgress(c)
+  const why = canCompleteClearance(b)
+  const extra = (Object.keys(CLEARANCE_DOC) as ClearanceDocType[]).filter(t => !CLEARANCE_DOC[t].base && (b.type === 'international' || !CLEARANCE_DOC[t].international) && !c.items.some(i => i.type === t))
 
   const run = async (fn: () => Promise<unknown>, msg: string, after?: () => void) => {
     setBusy(true)
-    try { await fn(); toast(msg); onDone(); after?.() } catch (e) { toast(e instanceof Error ? e.message : 'Không thực hiện được', 'error'); setBusy(false) }
+    try { await fn(); toast(msg); onDone(); after?.() } catch (e) { toast(e instanceof Error ? e.message : 'Không thực hiện được', 'error') } finally { setBusy(false) }
   }
-  const toggle = <T,>(list: T[], v: T, on: boolean) => (on ? [...list, v] : list.filter(x => x !== v))
-  const startFix = () => { setFixing(true); setDocs(submittedDocs.filter(d => checks.some(c => c.doc === d && !ok.includes(c.id)))) }
 
   return (
     <>
-      <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-folder-open" /> Hồ sơ khách nộp</h3><span className="sub-text">Nộp {b.clearance?.submittedAt && formatDateTime(b.clearance.submittedAt)}</span></div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          {submittedDocs.map(t => {
-            const f = b.clearance!.docs[t]!
-            return <div key={t} className={s.horse} style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}><div><b>{CLEARANCE_DOC[t].label}</b><div className={s.horseMeta}><i className="fa-solid fa-file-pdf" /> {f.fileName} · lần nộp {f.version}</div></div><span className="badge badge-info">Đã nộp</span></div>
-          })}
-        </div>
-      </div>
+      {b.status === 'waybill_issued' && (
+        <div className="alert alert-info"><i className="fa-solid fa-file-contract" /><div style={{ flex: 1 }}><b>Vận đơn {b.waybill?.no} chờ bạn tiếp nhận.</b> Bấm tiếp nhận để bắt đầu làm giấy tờ.</div><button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(() => bookingsApi.acceptWaybill(b.id, session!.name), 'Đã tiếp nhận Vận đơn')}>Tiếp nhận Vận đơn</button></div>
+      )}
+      {isClearanceOverdue(b) && <div className="alert alert-danger"><i className="fa-solid fa-triangle-exclamation" /><div>Đã quá mốc 18:00 ngày trước ngày khởi hành ({formatDateTime(docsDueAt(b.departAt))}) mà giấy tờ chưa xong. Quản lý đã được cảnh báo.</div></div>}
+      {c.flags.length > 0 && (
+        <div className="alert alert-warning"><i className="fa-solid fa-flag" /><div><b>Khách báo sai thông tin:</b><ul>{c.flags.map(f => <li key={f.at}>{f.note} <span className={s.sub}>({formatDateTime(f.at)})</span></li>)}</ul></div></div>
+      )}
 
       <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-list-check" /> Đối chiếu</h3><span className="sub-text">{ok.length}/{checks.length} đạt</span></div>
-        <div className={s.reasonList} role="group" aria-label="Điểm cần đối chiếu">
-          {checks.map(c => (
-            <label key={c.id} style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={ok.includes(c.id)} onChange={e => { const on = e.target.checked; setOk(x => toggle(x, c.id, on)) }} style={{ marginTop: 3 }} />
-              <span><b>{CLEARANCE_DOC[c.doc].short}:</b> {c.label}</span></label>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className={s.actionBar}>
-          <div><b>{all ? 'Mọi điểm đối chiếu đạt' : 'Chưa thể duyệt'}</b><div className={s.hint}>{all ? 'Duyệt toàn bộ hồ sơ để chuyển Điều phối kiểm tra sẵn sàng.' : 'Cần tick đạt tất cả điểm đối chiếu. Điểm nào sai thì yêu cầu khách nộp lại.'}</div></div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn btn-ghost" onClick={startFix} disabled={busy}><i className="fa-solid fa-rotate-left" /> Yêu cầu bổ sung</button>
-            <button className="btn btn-primary" disabled={!all || busy} onClick={() => run(() => bookingsApi.approveLegal(b.id, session!.name), `Đã duyệt hồ sơ pháp lý ${b.id}`, () => navigate('/specialist/legal'))}><i className="fa-solid fa-stamp" /> Duyệt toàn bộ hồ sơ pháp lý</button>
-          </div>
-        </div>
-        {fixing && (
-          <div className={`${s.actionBox} ${s.actionDanger}`} style={{ marginTop: 14 }}>
-            <b>Yêu cầu khách nộp lại</b>
-            <div><div className={s.hint} style={{ marginBottom: 6 }}>Giấy cần nộp lại</div>
-              <div className={s.reasonList}>{submittedDocs.map(t => <label key={t}><input type="checkbox" checked={docs.includes(t)} onChange={e => { const on = e.target.checked; setDocs(x => toggle(x, t, on)) }} />{CLEARANCE_DOC[t].label}</label>)}</div></div>
-            <div><div className={s.hint} style={{ marginBottom: 6 }}>Lý do (bắt buộc chọn)</div>
-              <div className={s.reasonList}>{REJECT_REASONS.map(r => <label key={r}><input type="checkbox" checked={reasons.includes(r)} onChange={e => { const on = e.target.checked; setReasons(x => toggle(x, r, on)) }} />{r}</label>)}</div></div>
-            <div className="form-group" style={{ margin: 0 }}><label htmlFor="fixnote">Ghi chú cho khách</label><textarea id="fixnote" className="form-control" rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="VD: Biển số trên tờ khai là 29H-12346, cần sửa thành 29H-12345." /></div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setFixing(false)}>Hủy</button>
-              <button className="btn btn-danger" disabled={busy || !reasons.length || !docs.length} onClick={() => run(() => bookingsApi.requestClearanceFix(b.id, session!.name, { docs, reasons, note: note.trim() }), 'Đã yêu cầu khách nộp lại giấy tờ', () => navigate('/specialist/legal'))}>Gửi yêu cầu nộp lại</button>
-            </div>
-          </div>
+        <div className="card-header"><h3><i className="fa-solid fa-file-signature" /> Hạng mục giấy tờ</h3><span className="sub-text">{p.done}/{p.total} xong</span></div>
+        <p className={s.hint} style={{ marginBottom: 10 }}>Giấy làm bên ngoài hệ thống (cơ quan thú y, hải quan). Cập nhật trạng thái và ảnh chụp để khách xem tiến độ.</p>
+        <div style={{ display: 'grid', gap: 10 }}>{c.items.map(i => <ItemRow key={i.type} b={b} item={i} editable={editable && !busy} run={run} />)}</div>
+        {editable && extra.length > 0 && (
+          <select className="form-control" style={{ maxWidth: 420, marginTop: 12 }} aria-label="Thêm hạng mục giấy" value="" onChange={e => { const t = e.target.value as ClearanceDocType; if (t) run(() => bookingsApi.addClearanceItem(b.id, session!.name, t), `Đã thêm ${CLEARANCE_DOC[t].short}`) }}>
+            <option value="">+ Thêm hạng mục khi cần…</option>
+            {extra.map(t => <option key={t} value={t}>{CLEARANCE_DOC[t].label}</option>)}
+          </select>
         )}
       </div>
+
+      {b.type === 'international' && (
+        <div className="card">
+          <div className="card-header"><h3><i className="fa-solid fa-stamp" /> Giấy thông quan theo ngựa</h3><span className="sub-text">{c.horsesCleared.length}/{b.horses.length}</span></div>
+          <p className={s.hint} style={{ marginBottom: 10 }}>Hệ thống chỉ ghi nhận ngựa đã có giấy thông quan. Giấy lấy từ đâu do vận hành xử lý.</p>
+          <div className={s.reasonList}>
+            {b.horses.map(h => (
+              <label key={h.horseId}><input type="checkbox" disabled={!editable || busy} checked={c.horsesCleared.includes(h.horseId)} onChange={e => run(() => bookingsApi.markHorseCleared(b.id, session!.name, h.horseId, e.target.checked), `${h.name}: ${e.target.checked ? 'đã có' : 'bỏ ghi nhận'} giấy thông quan`)} />{h.name} <span className={s.sub}>Chip {h.microchip}</span></label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {editable && (
+        <div className="card">
+          <div className={s.actionBar}>
+            <div><b>{why ? 'Chưa thể hoàn tất' : 'Mọi giấy tờ đã xong'}</b><div className={s.hint}>{why ?? 'Hoàn tất để xe được phép đi đón ngựa khi tài xế và hộ tống đã nhận lệnh.'}</div></div>
+            <button className="btn btn-primary" disabled={!!why || busy || b.status === 'waybill_issued'} onClick={() => run(() => bookingsApi.completeClearance(b.id, session!.name), `Đã hoàn tất giấy tờ ${b.id}`, () => navigate('/specialist/legal'))}><i className="fa-solid fa-stamp" /> Hoàn tất giấy tờ</button>
+          </div>
+        </div>
+      )}
+      {c.doneAt && <div className="alert alert-success"><i className="fa-solid fa-stamp" /><div>Đã hoàn tất giấy tờ lúc {formatDateTime(c.doneAt)}{c.doneBy ? ` bởi ${c.doneBy}` : ''}.</div></div>}
     </>
   )
 }
@@ -88,42 +111,21 @@ export default function LegalReviewPage() {
   const { id = '' } = useParams()
   const { session } = useAuth()
   const { data: b, reload } = useLoad(() => bookingsApi.get(id), [id])
-  const { data: vehicles } = useLoad(vehiclesApi.list)
-  const { data: crew } = useLoad(crewApi.list)
 
-  if (!b || !vehicles || !crew) return <div className="page"><div className="wrap"><p className="text-muted">Đang tải…</p></div></div>
+  if (!b) return <div className="page"><div className="wrap"><p className="text-muted">Đang tải…</p></div></div>
   if (b.intake?.specialist.name !== session!.name) return <div className="page"><div className="wrap"><div className="alert alert-danger"><i className="fa-solid fa-lock" /><div>Đơn {b.id} không được giao cho bạn. <Link to="/specialist/legal" className="text-orange font-semibold">Về danh sách</Link></div></div></div></div>
-
-  const v = vehicles.find(x => x.id === b.fleet?.vehicleId)
-  const driver = crew.find(x => x.id === b.fleet?.driverId)
-  const escort = crew.find(x => x.id === b.fleet?.escortId)
-  const team = v && driver && escort ? { plate: v.plate, driverName: driver.name, driverId: driver.idNumber ?? '', escortName: escort.name, escortId: escort.idNumber ?? '' } : null
 
   return (
     <div className="page">
       <div className="wrap">
-        <div className="breadcrumb"><Link to="/specialist/legal">Hồ sơ pháp lý</Link> / <span className="text-orange font-semibold">{b.id}</span></div>
+        <div className="breadcrumb"><Link to="/specialist/legal">Giấy tờ chuyến đi</Link> / <span className="text-orange font-semibold">{b.id}</span></div>
         <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><h1>Đơn {b.id}</h1><BookingStatusBadge status={b.status} audience="staff" /></div>
         <div className={s.layout}>
           <div className={s.main}>
             <div className="card"><div className="card-header"><h3><i className="fa-solid fa-route" /> Chuyến đi</h3></div><TripSummary b={b} /></div>
-            {team && (
-              <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-id-card" /> Dữ liệu chuẩn để đối chiếu</h3></div>
-                <dl className={s.grid}>
-                  <div><dt>Biển số xe</dt><dd>{team.plate}</dd></div>
-                  <div><dt>Tài xế</dt><dd>{team.driverName}<div className={s.sub}>{team.driverId}</div></dd></div>
-                  <div><dt>Hộ tống</dt><dd>{team.escortName}<div className={s.sub}>{team.escortId}</div></dd></div>
-                  <div><dt>Microchip</dt><dd>{b.horses.map(h => h.microchip).join(', ')}</dd></div>
-                  {b.gate && <div><dt>Cửa khẩu</dt><dd>{b.gate}</dd></div>}
-                </dl>
-              </div>
-            )}
-            {b.status === 'documents_submitted' && team && <Review key={b.clearance?.submittedAt} b={b} team={team} onDone={reload} />}
-            {b.status === 'documents_submitted' && !team && <div className="alert alert-danger"><i className="fa-solid fa-circle-exclamation" /><div>Đơn chưa có phương án xe, không đối chiếu được.</div></div>}
-            {['awaiting_clearance_docs', 'documentation_delayed'].includes(b.status) && <div className="alert alert-info"><i className="fa-solid fa-hourglass-half" /><div>Khách chưa nộp giấy tờ. Hạn nộp {formatDateTime(docsDueAt(b.departAt))}.</div></div>}
-            {b.status === 'pending_resubmission' && <div className="alert alert-warning"><i className="fa-solid fa-hourglass-half" /><div><b>Đang chờ khách nộp lại.</b> {b.clearance?.rejection?.reasons.join(', ')}. {b.clearance?.rejection?.note}</div></div>}
-            {['legal_docs_approved', 'dispatch_approved'].includes(b.status) && <div className="alert alert-success"><i className="fa-solid fa-stamp" /><div>Đã duyệt hồ sơ pháp lý {b.clearance?.approvedAt && formatDateTime(b.clearance.approvedAt)}.</div></div>}
+            {b.clearance && b.payment
+              ? <Work b={b} onDone={reload} />
+              : <div className="alert alert-info"><i className="fa-solid fa-hourglass-half" /><div>Đơn chưa đặt cọc nên chưa có Vận đơn và chưa bắt đầu làm giấy tờ.</div></div>}
           </div>
           <aside className={s.side}>
             <div className="card"><div className="card-header"><h3><i className="fa-solid fa-clock-rotate-left" /> Nhật ký đơn</h3></div><History b={b} /></div>

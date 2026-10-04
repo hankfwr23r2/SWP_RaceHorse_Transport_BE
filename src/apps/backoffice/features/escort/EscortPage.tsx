@@ -1,4 +1,4 @@
-// App Hộ tống (Escort): nhận lệnh, chuẩn bị tủ thuốc (Flow 3), rồi quét chip và ghi nhật ký an sinh (Flow 4, PRD mục 4.4, 5).
+// App Hộ tống (Escort): nhận Lệnh điều xe, chuẩn bị tủ thuốc (Flow 3), rồi quét chip và ghi nhật ký an sinh (Flow 4, PRD mục 4.4, 5). Mỗi xe một chuyến riêng.
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
 import { formatDateTime } from '@shared/lib/format'
@@ -34,7 +34,8 @@ export default function EscortPage() {
   if (!ready) return <p className="text-muted">Đang tải…</p>
   if (!trip) return <Empty text="Bạn chưa có chuyến nào cần xử lý." />
 
-  const acked = trip.manifest?.acks.escort
+  const { b, t } = trip
+  const acked = t.acks.escort
   const run = async (fn: () => Promise<unknown>, msg: string) => {
     setBusy(true)
     try { await fn(); toast(msg); setChecked([]); reload() } catch (e) { toast(e instanceof Error ? e.message : 'Không thực hiện được', 'error') }
@@ -43,31 +44,28 @@ export default function EscortPage() {
 
   return (
     <>
-      <TripPicker trips={trips} value={trip.id} onChange={id => { setSelected(id); setChecked([]) }} />
-      <TripHeader b={trip} />
+      <TripPicker trips={trips} value={t.tripId} onChange={id => { setSelected(id); setChecked([]) }} />
+      <TripHeader b={b} t={t} />
       <Segmented<Tab> value={tab} onChange={setTab} tabs={[['job', 'Việc', 'fa-list-check'], ['journey', 'Hành trình', 'fa-route'], ['manifest', 'Lệnh', 'fa-clipboard-list']]} />
 
-      {tab === 'manifest' && <ManifestView b={trip} vehicle={vehicle} driver={driver} escort={escort} />}
-      {tab === 'journey' && <Panel title="Các mốc hành trình" icon="fa-route"><TripTimeline b={trip} now={now} staff /></Panel>}
+      {tab === 'manifest' && <ManifestView b={b} trip={t} vehicle={vehicle} driver={driver} escort={escort} />}
+      {tab === 'journey' && <Panel title="Các mốc hành trình" icon="fa-route"><TripTimeline trip={t} now={now} staff /></Panel>}
       {tab === 'job' && (
         <>
-          <Panel title="Chỉ dẫn an sinh" icon="fa-heart-pulse">
-            <p>Nhiệt độ khoang <b>{trip.medical?.temp ?? 22}°C</b>. {trip.medical?.restPlan || 'Nghỉ xả cơ 30 phút sau mỗi 3 giờ.'}{trip.medical?.welfareNote ? ` ${trip.medical.welfareNote}` : ''}</p>
-          </Panel>
-          {trip.status === 'trip_manifest_approved' && !acked && (
+          {!t.departedAt && !acked && (
             <Panel title="Nhận lệnh và chuẩn bị" icon="fa-clipboard-check">
-              <p>Tick từng mục khi đã chuẩn bị, rồi xác nhận nhận lệnh.</p>
+              <p>Lệnh điều xe đã phát ngay sau khi khách đặt cọc. Tick từng mục khi đã chuẩn bị, rồi xác nhận nhận lệnh.</p>
               <Checklist items={KIT} checked={checked} onChange={setChecked} />
-              <button className={`btn btn-primary ${s.big}`} disabled={checked.length < KIT.length || busy} onClick={() => run(() => bookingsApi.acknowledgeManifest(trip.id, 'escort', session!.name), 'Đã xác nhận nhận lệnh điều vận')}>
+              <button className={`btn btn-primary ${s.big}`} disabled={checked.length < KIT.length || busy} onClick={() => run(() => bookingsApi.acknowledgeTrip(b.id, t.tripId, 'escort', session!.name), 'Đã xác nhận nhận Lệnh điều xe')}>
                 <i className="fa-solid fa-check" /> Tôi đã nhận lệnh ({checked.length}/{KIT.length})
               </button>
             </Panel>
           )}
-          {trip.status === 'trip_manifest_approved' && acked && (
-            <Panel title="Đã nhận lệnh" icon="fa-circle-check" tone="ok"><p>Bạn xác nhận lúc {formatDateTime(acked)}. {trip.manifest?.acks.driver ? '' : 'Đang chờ tài xế xác nhận.'}</p></Panel>
+          {!t.departedAt && acked && (
+            <Panel title="Đã nhận lệnh" icon="fa-circle-check" tone="ok"><p>Bạn xác nhận lúc {formatDateTime(acked)}. {!b.clearance?.doneAt ? 'Nhà xe đang làm giấy tờ, xe chỉ đi đón ngựa khi giấy tờ xong. ' : ''}{t.acks.driver ? '' : 'Đang chờ tài xế xác nhận.'}</p></Panel>
           )}
-          {trip.status === 'ready_for_pickup' && <Panel title="Sẵn sàng đón ngựa" icon="fa-truck-fast" tone="ok"><p>Giờ đón dự kiến {trip.fleet && formatDateTime(trip.fleet.etd)}. Chờ tài xế bắt đầu đến điểm đón.</p></Panel>}
-          <EscortJob key={trip.id} b={trip} reload={reload} />
+          {!t.departedAt && acked && !!t.acks.driver && !!b.clearance?.doneAt && <Panel title="Sẵn sàng đón ngựa" icon="fa-truck-fast" tone="ok"><p>Giờ đón dự kiến {b.route && formatDateTime(b.route.legs[0].departAt)}. Chờ tài xế bắt đầu đến điểm đón.</p></Panel>}
+          <EscortJob key={t.tripId} b={b} t={t} reload={reload} />
         </>
       )}
     </>

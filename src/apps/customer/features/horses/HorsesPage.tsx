@@ -35,7 +35,7 @@ export default function HorsesPage() {
   return (
     <div className="page">
       <div className="wrap">
-        <div className="breadcrumb"><Link to="/portal">Tổng quan</Link> / <span className="text-orange font-semibold">Hồ sơ ngựa</span></div>
+        <div className="breadcrumb"><Link to="/portal">Trang chủ</Link> / <span className="text-orange font-semibold">Hồ sơ ngựa</span></div>
         <div className={s.head}>
           <div className="page-header" style={{ margin: 0 }}>
             <h1>Hồ sơ ngựa</h1>

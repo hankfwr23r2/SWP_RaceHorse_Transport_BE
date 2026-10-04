@@ -1,26 +1,29 @@
-// Thành phần chung cho app di động của Tài xế và Hộ tống: chọn chuyến, tiêu đề chuyến, xem Manifest.
+// Thành phần chung cho app di động của Tài xế và Hộ tống: chọn chuyến, tiêu đề chuyến, xem Lệnh điều xe.
 import type { ReactNode } from 'react'
 import { formatDate } from '@shared/lib/format'
-import type { Booking } from '@shared/types/booking'
+import type { Booking, VehicleTrip } from '@shared/types/booking'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { placeShort } from './place'
 import s from './field.module.css'
 
-export function TripPicker({ trips, value, onChange }: { trips: Booking[]; value?: string; onChange: (id: string) => void }) {
+// Một chuyến của tôi = một xe của một đơn
+export interface FieldTrip { b: Booking; t: VehicleTrip }
+
+export function TripPicker({ trips, value, onChange }: { trips: FieldTrip[]; value?: string; onChange: (tripId: string) => void }) {
   if (trips.length < 2) return null
   return (
     <select className="form-control" style={{ marginBottom: 14 }} aria-label="Chọn chuyến" value={value} onChange={e => onChange(e.target.value)}>
-      {trips.map(t => <option key={t.id} value={t.id}>{t.manifest?.tripId} · {placeShort(t.origin.name)} → {placeShort(t.dest.name)}</option>)}
+      {trips.map(({ b, t }) => <option key={t.tripId} value={t.tripId}>{t.tripId} · {placeShort(b.origin.name)} → {placeShort(b.dest.name)}</option>)}
     </select>
   )
 }
 
-export function TripHeader({ b }: { b: Booking }) {
+export function TripHeader({ b, t }: FieldTrip) {
   return (
     <div className={s.head}>
-      <div className={s.headTop}><span className={s.trip}>{b.manifest?.tripId}</span><BookingStatusBadge status={b.status} audience="staff" /></div>
+      <div className={s.headTop}><span className={s.trip}>{t.tripId}</span><BookingStatusBadge status={b.status} audience="staff" /></div>
       <div className={s.route}>{placeShort(b.origin.name)}<i className="fa-solid fa-arrow-right" aria-hidden="true" />{placeShort(b.dest.name)}</div>
-      <div className={s.meta}><span><i className="fa-solid fa-calendar-day" aria-hidden="true" /> {formatDate(b.departAt)}</span><span><i className="fa-solid fa-horse-head" aria-hidden="true" /> {b.horses.length} ngựa</span>{b.gate && <span><i className="fa-solid fa-flag" aria-hidden="true" /> {b.gate}</span>}</div>
+      <div className={s.meta}><span><i className="fa-solid fa-calendar-day" aria-hidden="true" /> {formatDate(b.departAt)}</span><span><i className="fa-solid fa-horse-head" aria-hidden="true" /> {t.horseIds.length} ngựa</span>{b.gate && <span><i className="fa-solid fa-flag" aria-hidden="true" /> {b.gate}</span>}</div>
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
 import { MIN_LEAD_DAYS } from '@shared/config/business-rules'
-import { COUNTRIES, COUNTRY_LOCATIONS, GATES, type CountryCode } from '@shared/config/network'
+import { COUNTRIES, COUNTRY_LOCATIONS, type CountryCode } from '@shared/config/network'
 import { earliestDeparture, fromIsoDay, isDepartureAllowed, toIsoDay } from '@shared/lib/booking'
 import { formatDate } from '@shared/lib/format'
 import type { Party, TransportType } from '@shared/types/booking'
@@ -64,27 +64,24 @@ export default function Step1RoutePage() {
   const [direction, setDirection] = useState(draft.direction)
   const [originId, setOriginId] = useState(draft.originId)
   const [destId, setDestId] = useState(draft.destId)
-  const [gate, setGate] = useState(draft.gate)
   const [date, setDate] = useState(draft.departDate)
   const [consignor, setConsignor] = useState<Party>(draft.consignor.name ? draft.consignor : { ...draft.consignor, name: session?.name ?? '' })
   const [consignee, setConsignee] = useState(draft.consignee)
   const [submitted, setSubmitted] = useState(false)
 
-  useEffect(() => { save({ type, partner, direction, originId, destId, gate: type === 'international' ? gate : '', departDate: date, consignor, consignee }) },
+  useEffect(() => { save({ type, partner, direction, originId, destId, departDate: date, consignor, consignee }) },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, partner, direction, originId, destId, gate, date, consignor, consignee])
+    [type, partner, direction, originId, destId, date, consignor, consignee])
 
   const countries = countriesOf({ type, partner, direction })
-  const gates = partner ? GATES.filter(g => g.country === partner) : []
   const min = earliestDeparture()
-  const reset = () => { setOriginId(''); setDestId(''); setGate('') }
+  const reset = () => { setOriginId(''); setDestId('') }
   const dateError = !date ? 'Chọn ngày khởi hành.' : !isDepartureAllowed(fromIsoDay(date)) ? `Ngày khởi hành phải từ ${formatDate(min)} trở đi (đặt trước tối thiểu ${MIN_LEAD_DAYS} ngày).` : ''
   const errors = {
     type: !type ? 'Chọn loại chuyến.' : '',
     partner: type === 'international' && !partner ? 'Chọn nước bạn.' : '',
     origin: countries && !originId ? 'Chọn điểm đón.' : '',
     dest: countries && !destId ? 'Chọn điểm giao.' : '',
-    gate: type === 'international' && partner && !gate ? 'Chọn cửa khẩu.' : '',
     date: dateError,
   }
   const consignorErr = partyErrors(consignor)
@@ -96,7 +93,7 @@ export default function Step1RoutePage() {
     e.preventDefault()
     setSubmitted(true)
     if (!valid) { document.querySelector('.invalid, .form-error')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); return }
-    save({ type, partner, direction, originId, destId, gate: type === 'international' ? gate : '', departDate: date, consignor, consignee })
+    save({ type, partner, direction, originId, destId, departDate: date, consignor, consignee })
     navigate('/booking/horses')
   }
 
@@ -161,19 +158,9 @@ export default function Step1RoutePage() {
             )}
 
             {type === 'international' && partner && (
-              <div className="form-group">
-                <label htmlFor="gate" className="required">Cửa khẩu</label>
-                <select id="gate" className={`form-control ${submitted && errors.gate ? 'invalid' : ''}`} value={gate} onChange={e => setGate(e.target.value)}>
-                  <option value="">— Chọn cửa khẩu Việt Nam – {COUNTRIES[partner].name} —</option>
-                  {gates.map(g => <option key={g.name} value={g.name}>{g.name}</option>)}
-                </select>
-                {show(errors.gate)}
-                {gate && (
-                  <div className={`alert alert-danger ${s.gateWarn}`}>
-                    <i className="fa-solid fa-triangle-exclamation" />
-                    <div>Cửa khẩu đã chọn: <b>{gate}</b>. Bạn <b>bắt buộc</b> dùng đúng tên cửa khẩu này khi khai Tờ khai hải quan và xin Giấy kiểm dịch. Sau khi đặt, cửa khẩu không đổi được; giấy ghi cửa khẩu khác sẽ bị trả về để xin lại.</div>
-                  </div>
-                )}
+              <div className="alert alert-info">
+                <i className="fa-solid fa-circle-info" />
+                <div>Bạn không cần chọn cửa khẩu. Nhà xe chọn cửa khẩu và các trạm trung chuyển tối ưu cho chuyến, rồi làm giấy kiểm dịch và hải quan giúp bạn.</div>
               </div>
             )}
 
