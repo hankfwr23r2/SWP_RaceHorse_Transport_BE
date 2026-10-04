@@ -6,14 +6,14 @@ import { formatDateTime, formatVND } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import { useLoad } from '@shared/services/useLoad'
 import type { Booking, Incident } from '@shared/types/booking'
-import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { ImageThumb } from '@shared/ui/ImageThumb'
 import { Modal } from '@shared/ui/Modal'
 import { ReadMore } from '@shared/ui/ReadMore'
 import { useToast } from '@shared/ui/toast'
-import { EmptyCard, ListLayout, OrderCard } from '../../../shared/BookingParts'
+import { ListPage, idCell, routeCell, statusCell, type Column } from '../../../shared/ListPage'
 import { placeShort } from '../../../shared/place'
 import s from '../../../shared/booking.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 type Tab = 'approve' | 'active' | 'audit' | 'settle' | 'done'
 type Item = { b: Booking; i: Incident }
@@ -70,7 +70,7 @@ function AuditModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
             <td><ImageThumb name={e.photo} size={40} /></td>
             <td>{EXPENSE_CATEGORY[e.category]}: {e.label}<div className={s.sub}>{INCIDENT_KIND[e.kind].label} · hạn mức duyệt {formatVND(e.budget)}</div></td>
             <td className="nowrap">{formatVND(e.amount)}</td>
-            <td><select aria-label={`Bên chịu ${e.label}`} className="form-control" value={payers[e.id]} onChange={ev => setPayers({ ...payers, [e.id]: ev.target.value as Payer })}><option value="customer">Khách chịu</option><option value="carrier">Nhà xe chịu</option></select></td>
+            <td><FormSelect aria-label={`Bên chịu ${e.label}`} className="form-control" value={payers[e.id]} onChange={ev => setPayers({ ...payers, [e.id]: ev.target.value as Payer })}><option value="customer">Khách chịu</option><option value="carrier">Nhà xe chịu</option></FormSelect></td>
           </tr>
         ))}</tbody>
       </table></div>
@@ -80,6 +80,8 @@ function AuditModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
   )
 }
 
+type Row = { key: string; b: Booking; i?: Incident }
+
 export default function IncidentsPage() {
   const { data: all, reload } = useLoad(bookingsApi.list)
   const [tab, setTab] = useState<Tab>('approve')
@@ -87,41 +89,36 @@ export default function IncidentsPage() {
   const [audit, setAudit] = useState<Booking | null>(null)
   const list = all ?? []
   const incidents = list.flatMap(b => (b.incidents ?? []).map(i => ({ b, i })))
-  const groups = {
-    approve: incidents.filter(x => x.i.status === 'pending_approval'),
-    active: incidents.filter(x => x.i.status === 'active' || x.i.status === 'reported'),
-    audit: list.filter(b => b.status === 'expenses_submitted'),
-    settle: list.filter(b => b.status === 'settlement_issued' || b.status === 'payment_overdue'),
-    done: list.filter(b => b.status === 'completed'),
+  const inc = (xs: Item[]): Row[] => xs.map(x => ({ key: x.i.id, ...x }))
+  const ord = (xs: Booking[]): Row[] => xs.map(b => ({ key: b.id, b }))
+  const groups: Record<Tab, Row[]> = {
+    approve: inc(incidents.filter(x => x.i.status === 'pending_approval')),
+    active: inc(incidents.filter(x => x.i.status === 'active' || x.i.status === 'reported')),
+    audit: ord(list.filter(b => b.status === 'expenses_submitted')),
+    settle: ord(list.filter(b => b.status === 'settlement_issued' || b.status === 'payment_overdue')),
+    done: ord(list.filter(b => b.status === 'completed')),
   }
   const done = () => { setApprove(null); setAudit(null); reload() }
+  const expenses = (b: Booking) => (b.incidents ?? []).flatMap(i => i.expenses).reduce((n, e) => n + e.amount, 0)
+
+  const columns: Column<Row>[] = [
+    { head: 'Mã đơn', cell: r => idCell(r.b) },
+    { head: 'Khách hàng', cell: r => r.b.customer, nowrap: true },
+    { head: 'Tuyến', cell: r => routeCell(placeShort(r.b.origin.name), placeShort(r.b.dest.name)) },
+    { head: 'Nội dung', minWidth: 220, cell: r => (r.i ? <><b>{INCIDENT_KIND[r.i.kind].label}</b> · xe {r.i.tripId}<div className="sub-text">{r.i.plan ? `${INCIDENT_ACTION[r.i.plan.action]}, ETA mới ${formatDateTime(r.i.plan.newEta)}` : r.i.note || 'Chưa có ghi chú'}</div></> : <>Chi phí sự cố <b>{formatVND(expenses(r.b))}</b></>) },
+    { head: 'Thời gian', cell: r => (r.i ? `Báo ${formatDateTime(r.i.reportedAt)}` : r.b.settlement ? `${r.b.settlement.paid ? 'Đã trả' : 'Hạn trả'} ${formatDateTime(r.b.settlement.paid?.paidAt ?? r.b.settlement.dueAt)}` : '-'), minWidth: 110 },
+    { head: 'Trạng thái', cell: r => statusCell(r.b.status) },
+    { head: 'Giá trị', cell: r => (r.i ? (r.i.approval ? formatVND(r.i.approval.budget) : r.i.plan ? `Đề nghị ${formatVND(r.i.plan.budget)}` : '-') : r.b.settlement ? formatVND(r.b.settlement.total) : '-'), right: true },
+    { head: 'Thao tác', cell: r => (tab === 'approve' && r.i ? <button className="btn btn-primary btn-sm" onClick={() => setApprove({ b: r.b, i: r.i! })}>Xem và duyệt</button> : tab === 'audit' ? <button className="btn btn-primary btn-sm" onClick={() => setAudit(r.b)}>Đối soát</button> : null), right: true },
+  ]
   return (
-    <div className="page">
-      <div className="wrap">
-        <div className="page-header">
-          <h1>Sự cố và quyết toán</h1>
-          <p>Duyệt phương án khi xe gặp sự cố, đối soát chi phí sau chuyến và theo dõi khách thanh toán.</p>
-        </div>
-        <ListLayout<Tab> value={tab} onChange={setTab} tabs={[['approve', 'Chờ duyệt phương án', groups.approve.length], ['active', 'Sự cố đang xử lý', groups.active.length], ['audit', 'Chờ đối soát chi phí', groups.audit.length], ['settle', 'Chờ khách thanh toán', groups.settle.length], ['done', 'Đã hoàn tất', groups.done.length]]}>
-          {(tab === 'approve' || tab === 'active') && groups[tab].map(({ b, i }) => (
-            <OrderCard key={i.id} id={b.id} customer={b.customer} route={route(b)} kind={INCIDENT_KIND[i.kind].label} alert={tab === 'approve'}
-              badge={<BookingStatusBadge status={b.status} audience="staff" />}
-              meta={[['fa-truck', 'Xe', i.tripId], ['fa-clock', 'Báo lúc', formatDateTime(i.reportedAt)], ...(i.approval ? [['fa-wallet', 'Hạn mức', formatVND(i.approval.budget)] as [string, string, string]] : i.plan ? [['fa-wallet', 'Đề nghị', formatVND(i.plan.budget)] as [string, string, string]] : [])]}
-              note={i.plan ? `${INCIDENT_ACTION[i.plan.action]}. ETA mới ${formatDateTime(i.plan.newEta)}.` : i.note || undefined}
-              action={tab === 'approve' ? <button className="btn btn-primary btn-sm" onClick={() => setApprove({ b, i })}>Xem và duyệt</button> : undefined} />
-          ))}
-          {(tab === 'audit' || tab === 'settle' || tab === 'done') && groups[tab].map(b => (
-            <OrderCard key={b.id} id={b.id} customer={b.customer} route={route(b)} kind={b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'} alert={b.status === 'payment_overdue'}
-              badge={<BookingStatusBadge status={b.status} audience="staff" />}
-              meta={[['fa-receipt', 'Chi phí sự cố', formatVND((b.incidents ?? []).flatMap(i => i.expenses).reduce((n, e) => n + e.amount, 0))], ...(b.settlement ? [['fa-hourglass-half', b.settlement.paid ? 'Đã trả lúc' : 'Hạn trả', formatDateTime(b.settlement.paid?.paidAt ?? b.settlement.dueAt)] as [string, string, string]] : []), ...(b.rating ? [['fa-star', 'Khách chấm', `${b.rating.trip}/5`] as [string, string, string]] : [])]}
-              side={b.settlement ? <b>{formatVND(b.settlement.total)}</b> : undefined}
-              action={tab === 'audit' ? <button className="btn btn-primary btn-sm" onClick={() => setAudit(b)}>Đối soát</button> : undefined} />
-          ))}
-          {all && !groups[tab].length && <EmptyCard text="Không có đơn nào ở mục này." />}
-        </ListLayout>
-      </div>
+    <>
+      <ListPage title="Sự cố và quyết toán" subtitle="Duyệt phương án, đối soát chi phí, theo dõi thanh toán." tab={tab} onTab={setTab} hot={['approve', 'audit']}
+        tabs={[['approve', 'Chờ duyệt phương án', groups.approve.length], ['active', 'Sự cố đang xử lý', groups.active.length], ['audit', 'Chờ đối soát', groups.audit.length], ['settle', 'Chờ khách thanh toán', groups.settle.length], ['done', 'Đã hoàn tất', groups.done.length]]}
+        rows={groups[tab]} rowKey={r => r.key} columns={columns} haystack={r => [r.b.id, r.b.customer, r.b.origin.name, r.b.dest.name]} dateOf={r => r.b.departAt} loaded={!!all}
+        emptyText="Không có đơn nào ở mục này." hotRow={r => tab === 'approve' || r.b.status === 'payment_overdue'} />
       {approve && <ApproveModal item={approve} onClose={() => setApprove(null)} onDone={done} />}
       {audit && <AuditModal b={audit} onClose={() => setAudit(null)} onDone={done} />}
-    </div>
+    </>
   )
 }

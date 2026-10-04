@@ -8,12 +8,11 @@ import { useOps } from '../../../shared/useOps'
 
 export default function CrewDetailPage() {
   const { id } = useParams()
-  const { ready, trips, crew, vehicles } = useOps()
+  const { ready, trips, crew } = useOps()
   const member = crew.find(x => x.id === id)
   if (!ready) return <div className="page"><div className="wrap"><p className="text-muted">Đang tải…</p></div></div>
   if (!member) return <div className="page"><div className="wrap"><div className="alert alert-warning"><i className="fa-solid fa-user-slash" /><div>Không tìm thấy nhân sự {id}. <Link className="text-orange" to="/coordinator/assignment">Về Phân công</Link></div></div></div></div>
   const rows = trips.flatMap(t => t.legs.filter(l => l.driverId === id || l.escortId === id).map(l => ({ t, l })))
-  const ownVehicle = vehicles.find(v => v.driverId === id)
 
   return (
     <div className="page">
@@ -24,7 +23,6 @@ export default function CrewDetailPage() {
           <div className={p.infoGrid}>
             <InfoItem label="Vai trò">{member.role === 'driver' ? 'Tài xế' : 'Nhân viên hộ tống'}</InfoItem>
             <InfoItem label="Điện thoại">{member.phone}</InfoItem>
-            {member.role === 'driver' && <InfoItem label="Xe cố định">{ownVehicle ? `${ownVehicle.id} · ${ownVehicle.plate}` : '—'}</InfoItem>}
             <InfoItem label="Ghi chú">{member.note ?? '—'}</InfoItem>
           </div>
         </div>

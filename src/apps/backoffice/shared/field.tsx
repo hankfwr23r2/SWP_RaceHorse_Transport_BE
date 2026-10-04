@@ -5,6 +5,7 @@ import type { Booking, VehicleTrip } from '@shared/types/booking'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { placeShort } from './place'
 import s from './field.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 // Một chuyến của tôi = một xe của một đơn
 export interface FieldTrip { b: Booking; t: VehicleTrip }
@@ -12,9 +13,9 @@ export interface FieldTrip { b: Booking; t: VehicleTrip }
 export function TripPicker({ trips, value, onChange }: { trips: FieldTrip[]; value?: string; onChange: (tripId: string) => void }) {
   if (trips.length < 2) return null
   return (
-    <select className="form-control" style={{ marginBottom: 14 }} aria-label="Chọn chuyến" value={value} onChange={e => onChange(e.target.value)}>
+    <FormSelect className="form-control" style={{ marginBottom: 14 }} aria-label="Chọn chuyến" value={value ?? ""} onChange={e => onChange(e.target.value)}>
       {trips.map(({ b, t }) => <option key={t.tripId} value={t.tripId}>{t.tripId} · {placeShort(b.origin.name)} → {placeShort(b.dest.name)}</option>)}
-    </select>
+    </FormSelect>
   )
 }
 

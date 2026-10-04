@@ -1,50 +1,9 @@
 /* Đơn của tôi và Chi tiết đơn */
-.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.tab { min-height: 40px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: white; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--text); cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
-.tab:hover { border-color: var(--orange); }
-.tab:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
-.tabOn { background: var(--orange); border-color: var(--orange); color: white; }
-.count { font-size: 0.74rem; background: rgba(15, 23, 42, 0.08); border-radius: 999px; padding: 1px 8px; }
-.tabOn .count { background: rgba(255, 255, 255, 0.28); }
-
-.ordersLayout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start; }
-.sideNav { position: sticky; top: 84px; display: grid; gap: 4px; padding: 14px; background: white; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
-.sideNav h2 { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 6px 6px; }
-.sideItem { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; min-height: 42px; padding: 8px 10px; border: none; border-radius: var(--radius-sm); background: transparent; font: inherit; font-size: 0.88rem; font-weight: 600; color: var(--text); text-align: left; cursor: pointer; }
-.sideItem i { color: var(--muted); text-align: center; }
-.sideItem:hover { background: var(--bg-page); }
-.sideItem:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
-.sideItemOn { background: var(--orange-soft); color: var(--orange); }
-.sideItemOn i { color: var(--orange); }
-.sideItemAlert i { color: var(--amber); }
-.sideSub { margin-left: 14px; min-height: 36px; font-size: 0.82rem; font-weight: 500; border-left: 2px solid var(--line); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-.sideSub.sideItemOn { border-left-color: var(--orange); }
-.sideRule { border: none; border-top: 1px solid var(--line); margin: 6px 0; }
-.sideItemOn .count { background: var(--orange); color: white; }
-.list { display: grid; gap: 12px; }
-.row { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 16px 18px; background: white; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); transition: border-color 0.15s ease; }
-.row:hover { border-color: var(--orange); }
-.rowAction { border-left: 4px solid var(--orange); }
-.rowTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.rowId { font-weight: 800; color: var(--navy); }
-.rowRoute { font-size: 0.92rem; font-weight: 600; margin-top: 4px; }
-.rowMeta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
-.rowMeta i { color: var(--orange); margin-right: 5px; }
-.rowNext { margin-top: 10px; font-size: 0.84rem; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--bg-page); display: flex; gap: 8px; }
-.rowNextWarn { background: var(--amber-soft); color: var(--amber); }
-.rowNextDanger { background: var(--red-soft); color: #991b1b; }
-.rowSide { display: grid; align-content: center; justify-items: end; gap: 6px; }
-.rowAmount { font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; }
-.rowAmountLbl { font-size: 0.74rem; color: var(--muted); }
-.empty { text-align: center; padding: 48px 20px; background: white; border: 1px dashed #cbd5e1; border-radius: var(--radius); color: var(--muted); }
-.empty i { font-size: 2rem; color: var(--orange); display: block; margin-bottom: 10px; }
-
 /* Chi tiết */
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
 .main { display: grid; gap: 16px; }
-.main > :global(.card) + :global(.card), .side > :global(.card) + :global(.card) { margin-top: 0; }
-.side { display: grid; gap: 16px; position: sticky; top: 88px; }
-.titleRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.main > :global(.card) + :global(.card) { margin-top: 0; }
+.titleRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.titleRow p { margin-top: 4px; }
 
 .progress { display: flex; list-style: none; margin: 0; padding: 16px 8px; background: white; border: 1px solid var(--line); border-radius: var(--radius); }
 .stepItem { flex: 1; position: relative; text-align: center; font-size: 0.8rem; color: var(--muted); }
@@ -117,11 +76,7 @@
 .policy td:last-child { text-align: right; font-weight: 600; white-space: nowrap; }
 
 @media (max-width: 960px) {
-  .layout { grid-template-columns: 1fr; }
-  .side { position: static; }
   .sheetGrid { grid-template-columns: 1fr; }
-  .row { grid-template-columns: 1fr; }
-  .rowSide { justify-items: start; grid-auto-flow: column; justify-content: space-between; }
   .stepItem { font-size: 0.7rem; }
 }
 
@@ -160,10 +115,11 @@
 .foldBody { display: grid; gap: 16px; margin-top: 14px; }
 .foldBody > :global(.card) { box-shadow: none; }
 
-@media (max-width: 860px) {
-  .ordersLayout { grid-template-columns: 1fr; }
-  .sideNav { position: static; display: flex; overflow-x: auto; gap: 6px; padding: 10px; }
-  .sideNav h2, .sideRule { display: none; }
-  .sideItem { grid-template-columns: 20px auto auto; white-space: nowrap; }
-  .sideSub { margin-left: 0; border-left: none; }
-}
+.stepNow2 { font-weight: 700; color: var(--navy); margin: 0 0 -6px; }
+.nextBody { display: grid; gap: 4px; justify-items: start; }
+.nextBody .btn { margin-top: 10px; }
+.nextTag { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.75; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tab { padding: 10px 16px; border: 0; border-radius: 0; box-shadow: none; border-bottom: 3px solid transparent; background: none; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tabOn { color: var(--orange); border-bottom-color: var(--orange); }

@@ -9,7 +9,7 @@ import type { Booking, BookingHorse, HorseProfile, VehicleTrip } from '../types/
 import {
   autoAssign, transitProgress, defaultPayer, incidentActionsFor, settlementOf, approvedSubOf, APPROVED_SUBS, orderGroupOf, ORDER_GROUPS, capacitiesFor, estimateQuote, busyResources, buildRoutePlan, gatesFor, suggestGate, suggestTransitStations, canCompleteClearance, classForHorses, defaultClearanceItems, deriveStatus, docsDueAt, earliestDeparture, finalizeQuote, horseReadiness,
   cancelRefund, insuranceFee, isClearanceOverdue, isDepartureAllowed, isQuoteExpired, layoutLegs, manifestDocuments, nextBookingId, quoteLines, refundOf, reviewDone, routeKm, suggestStaff,
-  findLocation, tripIdFor, validateRoutePlan, vehicleClassOf, waybillNoOf,
+  findLocation, managerBoardOf, managerCounts, orderTabOf, tripIdFor, validateRoutePlan, vehicleClassOf, waybillNoOf,
 } from './booking'
 
 const NOW = new Date(2026, 9, 1, 10, 0).getTime() // 01/10/2026 10:00
@@ -169,19 +169,21 @@ describe('xe và nhân sự', () => {
 })
 
 describe('gán xe tự động (PRD mục 10.2)', () => {
-  const veh = (id: string, capacity: number, over: Partial<Vehicle> = {}): Vehicle => ({ id, name: id, type: 'x', capacity, plate: id, status: 'available', maintenance: '2026-09-01', driverId: `D-${id}`, inspectionNo: `KD-${id}`, transitPermit: `CLV-${id}`, ...over })
+  const veh = (id: string, capacity: number, over: Partial<Vehicle> = {}): Vehicle => ({ id, name: id, type: 'x', capacity, plate: id, inspectionNo: `KD-${id}`, transitPermit: `CLV-${id}`, ...over })
   const esc = (id: string): CrewMember => ({ id, name: id, role: 'escort', phone: '0' })
+  const drv = (id: string): CrewMember => ({ id, name: id, role: 'driver', phone: '0' })
+  const drivers = [drv('D1'), drv('D2'), drv('D3')] // tài xế không gắn với xe
   const none = { vehicles: new Set<string>(), crew: new Set<string>() }
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `H${i + 1}`)
 
   it('một xe đủ chỗ thì dùng đúng một xe, chọn xe nhỏ nhất đủ chỗ', () => {
-    const r = autoAssign(ids(2), [veh('A', 6), veh('B', 2), veh('C', 9)], [esc('E1'), esc('E2')], none)
+    const r = autoAssign(ids(2), [veh('A', 6), veh('B', 2), veh('C', 9)], [...drivers, esc('E1'), esc('E2')], none)
     expect(r.ok).toBe(true)
     expect(r.trips).toHaveLength(1)
-    expect(r.trips[0]).toMatchObject({ vehicleId: 'B', driverId: 'D-B', escortId: 'E1', horseIds: ['H1', 'H2'] })
+    expect(r.trips[0]).toMatchObject({ vehicleId: 'B', driverId: 'D1', escortId: 'E1', horseIds: ['H1', 'H2'] })
   })
   it('6 ngựa, không còn xe 6 chỗ: chia đều 3 + 3 cho hai xe, mỗi xe một Escort riêng', () => {
-    const r = autoAssign(ids(6), [veh('A', 4), veh('B', 4), veh('C', 2)], [esc('E1'), esc('E2'), esc('E3')], none)
+    const r = autoAssign(ids(6), [veh('A', 4), veh('B', 4), veh('C', 2)], [...drivers, esc('E1'), esc('E2'), esc('E3')], none)
     expect(r.ok).toBe(true)
     expect(r.trips.map(t => t.horseIds.length)).toEqual([3, 3])
     expect(new Set(r.trips.map(t => t.escortId)).size).toBe(2)
@@ -189,27 +191,32 @@ describe('gán xe tự động (PRD mục 10.2)', () => {
   it('không xe nào vượt sức chứa, không sót ngựa (1, 2, 9, 10 ngựa)', () => {
     const fleet = [veh('A', 6), veh('B', 6), veh('C', 2), veh('D', 9)]
     for (const n of [1, 2, 9, 10]) {
-      const r = autoAssign(ids(n), fleet, [esc('E1'), esc('E2'), esc('E3')], none)
+      const r = autoAssign(ids(n), fleet, [...drivers, esc('E1'), esc('E2'), esc('E3')], none)
       expect(r.ok, `n=${n}`).toBe(true)
       expect(r.trips.flatMap(t => t.horseIds).sort()).toEqual(ids(n).sort())
       r.trips.forEach(t => expect(t.horseIds.length).toBeLessThanOrEqual(fleet.find(v => v.id === t.vehicleId)!.capacity))
     }
   })
-  it('xe bảo dưỡng, xe hoặc tài xế bận, Escort bận đều bị loại', () => {
-    const fleet = [veh('A', 2, { status: 'maintenance' }), veh('B', 2), veh('C', 2), veh('D', 2)]
-    const r = autoAssign(ids(2), fleet, [esc('E1'), esc('E2')], { vehicles: new Set(['B']), crew: new Set(['E1', 'D-C']) })
-    expect(r.trips[0]).toMatchObject({ vehicleId: 'D', escortId: 'E2' })
+  it('xe thiếu giấy đăng kiểm, xe bận, tài xế bận, Escort bận đều bị loại', () => {
+    const fleet = [veh('A', 2, { inspectionNo: '' }), veh('B', 2), veh('C', 2), veh('D', 2)]
+    const r = autoAssign(ids(2), fleet, [...drivers, esc('E1'), esc('E2')], { vehicles: new Set(['B']), crew: new Set(['E1', 'D1']) })
+    expect(r.trips[0]).toMatchObject({ vehicleId: 'C', driverId: 'D2', escortId: 'E2' })
+  })
+  it('thiếu tài xế rảnh thì báo lỗi dù còn xe', () => {
+    const r = autoAssign(ids(5), [veh('A', 4), veh('B', 4)], [drv('D1'), esc('E1'), esc('E2')], none)
+    expect(r).toMatchObject({ ok: false, trips: [] })
+    expect(r.reason).toMatch(/tài xế/)
   })
   it('thiếu xe hoặc thiếu Escort thì báo lỗi và không gán', () => {
-    expect(autoAssign(ids(5), [veh('A', 2), veh('B', 2)], [esc('E1'), esc('E2')], none)).toMatchObject({ ok: false, trips: [] })
-    expect(autoAssign(ids(4), [veh('A', 2), veh('B', 2)], [esc('E1')], none)).toMatchObject({ ok: false, trips: [] })
-    expect(autoAssign([], [veh('A', 2)], [esc('E1')], none).ok).toBe(false)
+    expect(autoAssign(ids(5), [veh('A', 2), veh('B', 2)], [...drivers, esc('E1'), esc('E2')], none)).toMatchObject({ ok: false, trips: [] })
+    expect(autoAssign(ids(4), [veh('A', 2), veh('B', 2)], [...drivers, esc('E1')], none)).toMatchObject({ ok: false, trips: [] })
+    expect(autoAssign([], [veh('A', 2)], [...drivers, esc('E1')], none).ok).toBe(false)
   })
   it('xe thiếu giấy đăng kiểm bị loại; tuyến quốc tế còn cần giấy phép liên vận', () => {
     const fleet = [veh('A', 2, { inspectionNo: '' }), veh('B', 2, { transitPermit: '' }), veh('C', 2)]
-    expect(autoAssign(ids(2), fleet, [esc('E1')], none).trips[0].vehicleId).toBe('B')
-    expect(autoAssign(ids(2), fleet, [esc('E1')], none, true).trips[0].vehicleId).toBe('C')
-    expect(autoAssign(ids(2), [veh('A', 2, { inspectionNo: '' })], [esc('E1')], none).ok).toBe(false)
+    expect(autoAssign(ids(2), fleet, [...drivers, esc('E1')], none).trips[0].vehicleId).toBe('B')
+    expect(autoAssign(ids(2), fleet, [...drivers, esc('E1')], none, true).trips[0].vehicleId).toBe('C')
+    expect(autoAssign(ids(2), [veh('A', 2, { inspectionNo: '' })], [...drivers, esc('E1')], none).ok).toBe(false)
   })
   it('mã chuyến theo thứ tự xe, mã Vận đơn theo 4 số cuối mã đơn', () => {
     expect(tripIdFor('ORD-2026-0114', 2)).toBe('TRP-0114-2')
@@ -517,5 +524,44 @@ describe('bước tiến độ khớp quy trình', () => {
     const run = { checkpoints: [cp('pickup', 'pickup', 1), cp('rest-1', 'rest', 2), cp('delivery', 'delivery')], welfare: [] }
     expect(transitProgress({ run } as never)).toEqual({ done: 2, total: 3, current: 'delivery' })
     expect(transitProgress({} as never)).toBeUndefined()
+  })
+})
+
+describe('managerCounts', () => {
+  it('đếm đơn chờ tiếp nhận, chờ duyệt giá, sự cố và xe đang chạy', () => {
+    const inc = (status: string) => ({ status }) as Incident
+    const n = managerCounts([
+      { status: 'pending_intake' }, { status: 'pending_commercial' }, { status: 'pending_commercial' },
+      { status: 'in_transit', incidents: [inc('pending_approval'), inc('active')] },
+      { status: 'expenses_submitted' },
+    ])
+    expect(n).toEqual({ intake: 1, quote: 2, incident: 2, moving: 1 })
+  })
+})
+
+describe('orderTabOf', () => {
+  it('xếp đơn vào đúng tab theo giai đoạn và việc khách cần làm', () => {
+    const o = (status: BookingStatus, extra = {}) => orderTabOf({ status, ...extra } as Parameters<typeof orderTabOf>[0])
+    expect(o('pending_commercial')).toBe('confirm')
+    expect(o('under_review', { medical: { status: 'resubmit' } })).toBe('supplement')
+    expect(o('awaiting_payment')).toBe('pay')
+    expect(o('clearance_in_progress')).toBe('prepare')
+    expect(o('ready_for_pickup')).toBe('pay')
+    expect(o('ready_for_pickup', { balance: {} })).toBe('prepare')
+    expect(o('en_route_to_pickup', { balance: {} })).toBe('moving')
+    expect(o('settlement_issued', { settlement: { total: 500000 } })).toBe('pay')
+    expect(o('settlement_issued', { settlement: { total: 0 } })).toBe('settle')
+    expect(o('rejected')).toBe('closed')
+  })
+})
+
+describe('managerBoardOf', () => {
+  it('mỗi trạng thái đang chạy thuộc đúng một cột; đơn đã đóng không có cột', () => {
+    const all = Object.keys(BOOKING_STATUS) as BookingStatus[]
+    const closed = all.filter(s => managerBoardOf(s) === undefined)
+    expect(closed.sort()).toEqual(['cancelled', 'quote_expired', 'rejected'])
+    expect(managerBoardOf('pending_intake')).toBe('intake')
+    expect(managerBoardOf('incident_reported')).toBe('moving')
+    expect(managerBoardOf('payment_overdue')).toBe('settle')
   })
 })

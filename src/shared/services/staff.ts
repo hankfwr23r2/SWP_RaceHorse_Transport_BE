@@ -8,6 +8,12 @@ const store = createStore<StaffMember>('staff', seedStaff)
 export const staffApi = {
   list: async (): Promise<StaffMember[]> => structuredClone(store.all()),
   update: async (id: string, patch: Partial<StaffMember>) => structuredClone(store.update(id, patch)),
+  // Thêm người mới vào danh bạ (do quản trị viên tạo tài khoản): mã KD-xx cho kiểm dịch viên, DP-xx cho điều phối viên
+  create: async (data: Pick<StaffMember, 'name' | 'phone' | 'role'>) => {
+    const prefix = data.role === 'inspector' ? 'KD' : 'DP'
+    const next = Math.max(0, ...store.all().filter(s => s.id.startsWith(prefix)).map(s => Number(s.id.slice(3)))) + 1
+    return structuredClone(store.add({ id: `${prefix}-${String(next).padStart(2, '0')}`, ...data, status: 'working', kpi: { late: 0, transferredOut: 0 } }))
+  },
 }
 
 // Số đơn đang xử lý của một người (dùng để gợi ý người ít việc nhất):

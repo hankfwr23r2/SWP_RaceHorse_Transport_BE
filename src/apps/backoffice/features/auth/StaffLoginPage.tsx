@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
+import { accountsApi } from '@shared/services/accounts'
+import type { StaffRole } from '@shared/types/role'
 import { LOGIN_KEYWORDS } from '@shared/services/mock/staff'
 import { AuthShell, authStyles as s } from '@shared/ui/AuthShell'
 import { HOME_OF } from '../../layouts/staffMenus'
@@ -12,9 +14,18 @@ function LoginForm({ managerOnly }: { managerOnly: boolean }) {
   const navigate = useNavigate()
   const [error, setError] = useState('')
 
-  const submit = (e: FormEvent<HTMLFormElement>) => {
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const email = (new FormData(e.currentTarget).get('email') as string).toLowerCase()
+    const data = new FormData(e.currentTarget)
+    const email = (data.get('email') as string).trim().toLowerCase()
+    // Tài khoản đã có trong hệ thống: kiểm tra khóa và mật khẩu, vào đúng vai trò của tài khoản
+    const auth = await accountsApi.authenticate(email, (data.get('password') as string) ?? '', 'staff')
+    if (!auth.ok) return setError(auth.reason)
+    if (auth.account) {
+      const role = auth.account.role as StaffRole
+      login({ role, name: auth.account.name, username: auth.account.email })
+      return navigate(HOME_OF[role])
+    }
     // Cổng Manager: mọi tài khoản đều vào trang Manager (như manager_login.html cũ)
     const match = managerOnly ? LOGIN_KEYWORDS[0] : LOGIN_KEYWORDS.find(([key]) => email.includes(key))
     if (!match) return setError('Email không hợp lệ hoặc không thuộc hệ thống nội bộ. (Gợi ý: email cần chứa manager, driver, escort, ops hoặc specialist)')
@@ -32,7 +43,7 @@ function LoginForm({ managerOnly }: { managerOnly: boolean }) {
       </div>
       <div className="form-group">
         <label htmlFor="password">Mật khẩu</label>
-        <input className="form-control" id="password" type="password" placeholder="••••••••" required />
+        <input className="form-control" id="password" name="password" type="password" placeholder="••••••••" required />
       </div>
       <p className="text-right small" style={{ marginBottom: 16 }}><a href="#" className="text-orange">Quên mật khẩu?</a></p>
       <button type="submit" className="btn btn-primary btn-full btn-lg">{managerOnly ? 'Đăng nhập Quản lý' : 'Đăng nhập'}</button>

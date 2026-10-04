@@ -24,6 +24,7 @@ export const seedStaff = (): StaffMember[] => [
 
 // Tài khoản đăng nhập giả lập: email chứa từ khóa vai trò (giữ đúng cách của Staffs/staff_login.js)
 export const LOGIN_KEYWORDS: [keyword: string, role: StaffRole, name: string][] = [
+  ['admin', 'admin', 'Quản trị viên'],
   ['manager', 'manager', 'Quản lý'],
   ['driver', 'driver', 'Nguyễn Văn Hùng'],
   ['escort', 'escort', 'Võ Thị Lan'],

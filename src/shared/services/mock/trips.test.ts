@@ -28,12 +28,12 @@ describe('chuyến mẫu', () => {
     expect(status('TR-9051')).toBe('awaiting_routing')
     expect(status('TR-9018')).toBe('assigned')
   })
-  it('đơn đã chốt lộ trình có đủ xe, tài xế theo xe, hộ tống', () => {
+  it('đơn đã chốt lộ trình có đủ xe, tài xế, hộ tống', () => {
     trips.filter(t => ['assigned', 'in_transit'].includes(tripStatus(t, orderOf(t.orderId)) ?? '')).forEach(t => {
       t.legs.forEach(l => {
         const v = vehicles.find(x => x.id === l.vehicleId)
         expect(v, `${t.id} chặng ${l.no}`).toBeTruthy()
-        expect(l.driverId).toBe(v!.driverId)
+        expect(crew.find(c => c.id === l.driverId && c.role === 'driver'), `${t.id} tài xế`).toBeTruthy()
         expect(crew.find(c => c.id === l.escortId && c.role === 'escort'), `${t.id} hộ tống`).toBeTruthy()
       })
     })

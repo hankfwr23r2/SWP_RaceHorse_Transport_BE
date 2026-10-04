@@ -11,9 +11,9 @@ const BASE: Record<App, string> = { customer: '', backoffice: '/backoffice' }
 // Tài khoản mẫu để đăng nhập (giả lập: email chứa từ khóa vai trò)
 const ACCOUNT: Record<Role, string> = {
   customer: 'email bất kỳ ở trang Đăng nhập khách',
-  manager: 'manager@equine.vn', specialist: 'specialist@equine.vn', coordinator: 'ops@equine.vn', driver: 'driver@equine.vn', escort: 'escort@equine.vn',
+  admin: 'admin@equine.vn', manager: 'manager@equine.vn', specialist: 'specialist@equine.vn', coordinator: 'ops@equine.vn', driver: 'driver@equine.vn', escort: 'escort@equine.vn',
 }
-const ORDER: (Role | 'public')[] = ['public', 'customer', 'manager', 'specialist', 'coordinator', 'driver', 'escort']
+const ORDER: (Role | 'public')[] = ['public', 'customer', 'admin', 'manager', 'specialist', 'coordinator', 'driver', 'escort']
 
 interface Entry { app: App; route: AppRoute }
 

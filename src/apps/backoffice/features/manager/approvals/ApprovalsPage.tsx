@@ -9,13 +9,14 @@ import { bookingsApi } from '@shared/services/bookings'
 import { crewApi, vehiclesApi } from '@shared/services/fleet'
 import { useLoad } from '@shared/services/useLoad'
 import type { Booking } from '@shared/types/booking'
-import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { Modal } from '@shared/ui/Modal'
 import { QuoteSheet } from '@shared/ui/QuoteSheet'
 import { useToast } from '@shared/ui/toast'
-import { HorseConfigList, TripSummary, EmptyCard, ListLayout, OrderCard } from '../../../shared/BookingParts'
+import { HorseConfigList, TripSummary } from '../../../shared/BookingParts'
+import { ListPage, idCell, routeCell, statusCell, type Column } from '../../../shared/ListPage'
 import { placeShort } from '../../../shared/place'
 import s from '../../../shared/booking.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 type Tab = 'todo' | 'sent'
 interface AdjRow { kind: 'surcharge' | 'discount'; label: string; amount: string }
@@ -69,7 +70,7 @@ function QuoteModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
         <div key={i} className={s.adj}>
           <input className="form-control" aria-label="Nội dung điều chỉnh" placeholder={r.kind === 'discount' ? 'VD: Khách hàng thân thiết' : 'VD: Phụ phí chuyến gấp'} value={r.label} onChange={e => set(i, { label: e.target.value })} />
           <div style={{ display: 'flex', gap: 6 }}>
-            <select className="form-control" aria-label="Loại điều chỉnh" value={r.kind} onChange={e => set(i, { kind: e.target.value as AdjRow['kind'] })} style={{ width: 110 }}><option value="surcharge">Phụ phí</option><option value="discount">Chiết khấu</option></select>
+            <FormSelect className="form-control" aria-label="Loại điều chỉnh" value={r.kind} onChange={e => set(i, { kind: e.target.value as AdjRow['kind'] })} style={{ width: 110 }}><option value="surcharge">Phụ phí</option><option value="discount">Chiết khấu</option></FormSelect>
             <input className="form-control" aria-label="Số tiền" inputMode="numeric" placeholder="Số tiền" value={r.amount ? digits(r.amount).toLocaleString('en-US') : ''} onChange={e => set(i, { amount: String(digits(e.target.value) || '') })} />
           </div>
           <button className={s.iconBtn} aria-label="Xóa dòng" onClick={() => setRows(x => x.filter((_, j) => j !== i))}><i className="fa-solid fa-trash" /></button>
@@ -90,27 +91,23 @@ export default function ApprovalsPage() {
   const list = all ?? []
   const todo = list.filter(b => b.status === 'pending_commercial')
   const sent = list.filter(b => b.quote)
-  const shown = tab === 'todo' ? todo : sent
-
+  const columns: Column<Booking>[] = [
+    { head: 'Mã đơn', cell: b => idCell(b) },
+    { head: 'Khách hàng', cell: b => b.customer, nowrap: true },
+    { head: 'Tuyến', cell: b => routeCell(placeShort(b.origin.name), placeShort(b.dest.name)) },
+    { head: 'Khởi hành', cell: b => formatDate(b.departAt), nowrap: true },
+    { head: 'Ngựa / xe', cell: b => `${b.horses.length} con · ${b.trips?.length ?? 0} xe`, nowrap: true },
+    { head: 'Trạng thái', cell: b => statusCell(b.status) },
+    ...(tab === 'sent' ? [{ head: 'Gửi lúc', cell: (b: Booking) => (b.quote ? formatDateTime(b.quote.sentAt) : '-'), nowrap: true }, { head: 'Báo giá', cell: (b: Booking) => (b.quote ? <>{formatVND(b.quote.total)}<div className="sub-text">Cọc {formatVND(b.quote.deposit)}</div></> : '-'), right: true }] : []),
+    { head: 'Thao tác', cell: b => (tab === 'todo' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen(b)}>Duyệt báo giá</button> : null), right: true },
+  ]
   return (
-    <div className="page">
-      <div className="wrap">
-        <div className="page-header">
-          <h1>Duyệt báo giá</h1>
-          <p>Đơn đã có kết quả thẩm định y tế, phương án xe và lộ trình. Duyệt báo giá để gửi khách, khách có {QUOTE_VALID_HOURS} giờ đặt cọc 30%.</p>
-        </div>
-        <ListLayout<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Chờ duyệt báo giá', todo.length], ['sent', 'Đã gửi báo giá', sent.length]]}>
-          {shown.map(b => (
-            <OrderCard key={b.id} id={b.id} customer={b.customer} route={`${placeShort(b.origin.name)} → ${placeShort(b.dest.name)}`} kind={b.type === 'international' ? `Quốc tế · ${b.gate}` : 'Trong nước'}
-              badge={<BookingStatusBadge status={b.status} audience="staff" />}
-              meta={[['fa-calendar-day', 'Khởi hành', formatDate(b.departAt)], ['fa-horse-head', 'Ngựa', `${b.horses.length} con`], ['fa-truck', 'Số xe', `${b.trips?.length ?? 0}`], ...(tab === 'sent' && b.quote ? [['fa-paper-plane', 'Gửi lúc', formatDateTime(b.quote.sentAt)] as [string, string, string]] : [])]}
-              side={tab === 'sent' && b.quote ? <div style={{ textAlign: 'right' }}><b>{formatVND(b.quote.total)}</b><div className={s.sub}>Cọc {formatVND(b.quote.deposit)}</div></div> : undefined}
-              action={tab === 'todo' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen(b)}>Duyệt báo giá</button> : undefined} />
-          ))}
-          {all && !shown.length && <EmptyCard text={tab === 'todo' ? 'Không có đơn nào chờ duyệt báo giá.' : 'Chưa gửi báo giá nào.'} />}
-        </ListLayout>
-      </div>
+    <>
+      <ListPage title="Duyệt báo giá" subtitle={`Duyệt để gửi khách; khách có ${QUOTE_VALID_HOURS} giờ đặt cọc 30%.`} tabs={[['todo', 'Chờ duyệt báo giá', todo.length], ['sent', 'Đã gửi báo giá', sent.length]]} tab={tab} onTab={setTab} hot={['todo']}
+        rows={tab === 'todo' ? todo : sent} rowKey={b => b.id} columns={columns} haystack={b => [b.id, b.customer, b.origin.name, b.dest.name]} dateOf={b => b.departAt} loaded={!!all}
+        emptyText={tab === 'todo' ? 'Không có đơn nào chờ duyệt báo giá.' : 'Chưa gửi báo giá nào.'}
+        summary={r => (tab === 'sent' ? <>Tổng báo giá: <b>{formatVND(r.reduce((n, b) => n + (b.quote?.total ?? 0), 0))}</b></> : null)} />
       {open && <QuoteModal b={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload() }} />}
-    </div>
+    </>
   )
 }

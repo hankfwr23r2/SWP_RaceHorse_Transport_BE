@@ -11,9 +11,10 @@ import { ImageThumb } from '@shared/ui/ImageThumb'
 import { Modal } from '@shared/ui/Modal'
 import { ReadMore } from '@shared/ui/ReadMore'
 import { useToast } from '@shared/ui/toast'
-import { EmptyCard, ListLayout, OrderCard } from '../../../shared/BookingParts'
+import { ListPage, idCell, routeCell, type Column } from '../../../shared/ListPage'
 import { placeShort } from '../../../shared/place'
 import s from '../../../shared/booking.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 type Tab = 'todo' | 'waiting' | 'active' | 'done'
 type Item = { b: Booking; i: Incident }
@@ -38,7 +39,7 @@ function PlanModal({ item, onClose, onDone }: { item: Item; onClose: () => void;
       <p><b>Báo từ hiện trường:</b> {i.note || 'Không có ghi chú.'} <ImageThumb name={i.photo} size={40} /></p>
       {i.rejection && <div className="alert alert-danger"><i className="fa-solid fa-rotate-left" /><div><b>Quản lý trả về:</b> {i.rejection.reason}</div></div>}
       <div className="form-group"><label htmlFor="pa">Phương án</label>
-        <select id="pa" className="form-control" value={action} onChange={e => setAction(e.target.value as IncidentAction)}>{actions.map(a => <option key={a} value={a}>{INCIDENT_ACTION[a]}</option>)}</select></div>
+        <FormSelect id="pa" className="form-control" value={action} onChange={e => setAction(e.target.value as IncidentAction)}>{actions.map(a => <option key={a} value={a}>{INCIDENT_ACTION[a]}</option>)}</FormSelect></div>
       <div className="form-group"><label htmlFor="pn">Ghi chú (cơ sở tiếp nhận, số điện thoại, tuyến ngắn nhất)</label><input id="pn" className="form-control" value={note} onChange={e => setNote(e.target.value)} /></div>
       <div className={s.form2}>
         <div className="form-group"><label htmlFor="pe">ETA mới đến đích</label><input id="pe" type="datetime-local" className="form-control" value={eta} onChange={e => setEta(e.target.value)} /></div>
@@ -61,25 +62,24 @@ export default function CoordinatorIncidentsPage() {
     active: mine.filter(x => x.i.status === 'active'),
     done: mine.filter(x => x.i.status === 'resolved'),
   }
-  const shown = groups[tab].sort((a, z) => z.i.reportedAt - a.i.reportedAt)
+  const shown = [...groups[tab]].sort((a, z) => z.i.reportedAt - a.i.reportedAt)
+  const columns: Column<Item>[] = [
+    { head: 'Mã đơn', cell: ({ b }) => idCell(b) },
+    { head: 'Khách hàng', cell: ({ b }) => b.customer, minWidth: 120 },
+    { head: 'Tuyến', cell: ({ b }) => routeCell(placeShort(b.origin.name), placeShort(b.dest.name)) },
+    { head: 'Sự cố', minWidth: 130, cell: ({ i }) => <><b>{INCIDENT_KIND[i.kind].label}</b><div className="sub-text">xe {i.tripId}</div></> },
+    { head: 'Báo lúc', cell: ({ i }) => formatDateTime(i.reportedAt), nowrap: true },
+    { head: 'Hạn mức', cell: ({ i }) => (i.plan ? formatVND(i.plan.budget) : '-'), right: true },
+    { head: 'Ghi chú', minWidth: 180, cell: ({ i }) => <span style={{ display: 'inline-block', maxWidth: 200, color: i.rejection ? 'var(--red)' : undefined }}>{i.rejection ? `Quản lý trả về: ${i.rejection.reason}` : i.note || '-'}</span> },
+    { head: 'Thao tác', cell: ({ b, i }) => (i.status === 'reported' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen({ b, i })}>{i.rejection ? 'Lập lại phương án' : 'Lập phương án'}</button> : null), right: true },
+  ]
   return (
-    <div className="page">
-      <div className="wrap">
-        <div className="page-header">
-          <h1>Xử lý sự cố</h1>
-          <p>Tài xế hoặc hộ tống bấm SOS thì sự cố hiện ở đây. Lập phương án và trình Quản lý duyệt.</p>
-        </div>
-        <ListLayout<Tab> value={tab} onChange={setTab} tabs={[['todo', 'Cần lập phương án', groups.todo.length], ['waiting', 'Chờ Quản lý duyệt', groups.waiting.length], ['active', 'Đang xử lý', groups.active.length], ['done', 'Đã xử lý xong', groups.done.length]]}>
-          {shown.map(({ b, i }) => (
-            <OrderCard key={i.id} id={b.id} customer={b.customer} route={`${placeShort(b.origin.name)} → ${placeShort(b.dest.name)}`} kind={INCIDENT_KIND[i.kind].label} alert={i.status === 'reported'}
-              meta={[['fa-truck', 'Xe', i.tripId], ['fa-clock', 'Báo lúc', formatDateTime(i.reportedAt)], ...(i.plan ? [['fa-wallet', 'Hạn mức đề nghị', formatVND(i.plan.budget)] as [string, string, string]] : [])]}
-              note={i.rejection ? <span style={{ color: 'var(--red)' }}>Quản lý trả về: {i.rejection.reason}</span> : i.note || undefined}
-              action={i.status === 'reported' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen({ b, i })}>{i.rejection ? 'Lập lại phương án' : 'Lập phương án'}</button> : undefined} />
-          ))}
-          {all && !shown.length && <EmptyCard text="Không có sự cố nào ở mục này." />}
-        </ListLayout>
-      </div>
+    <>
+      <ListPage title="Xử lý sự cố" subtitle="Tài xế hoặc hộ tống bấm SOS thì sự cố hiện ở đây. Lập phương án và trình Quản lý duyệt."
+        tabs={[['todo', 'Cần lập phương án', groups.todo.length], ['waiting', 'Chờ Quản lý duyệt', groups.waiting.length], ['active', 'Đang xử lý', groups.active.length], ['done', 'Đã xử lý xong', groups.done.length]]} tab={tab} onTab={setTab} hot={['todo']}
+        rows={shown} rowKey={x => x.i.id} columns={columns} haystack={x => [x.b.id, x.b.customer, x.b.origin.name, x.b.dest.name, x.i.tripId]} dateOf={x => x.i.reportedAt} dateLabel="Báo lúc" loaded={!!all}
+        emptyText="Không có sự cố nào ở mục này." hotRow={x => x.i.status === 'reported'} />
       {open && <PlanModal item={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload() }} />}
-    </div>
+    </>
   )
 }

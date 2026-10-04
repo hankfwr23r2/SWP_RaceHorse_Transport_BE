@@ -14,6 +14,7 @@ import { ImageThumb } from '@shared/ui/ImageThumb'
 import { useToast } from '@shared/ui/toast'
 import { History, TripSummary } from '../../../shared/BookingParts'
 import s from '../../../shared/booking.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 const STATUS_LABEL: Record<ClearanceStatus, string> = { todo: 'Chưa làm', doing: 'Đang làm', done: 'Xong' }
 
@@ -25,9 +26,9 @@ function ItemRow({ b, item, editable, run }: { b: Booking; item: ClearanceItem; 
     <div className={s.horse}>
       <div className={s.horseTop}>
         <div><div className={s.horseName}>{CLEARANCE_DOC[item.type].label}</div><div className={s.horseMeta}>{CLEARANCE_DOC[item.type].hint}</div></div>
-        <select className="form-control" style={{ width: 140 }} aria-label={`Trạng thái ${CLEARANCE_DOC[item.type].short}`} disabled={!editable} value={item.status} onChange={e => patch({ status: e.target.value as ClearanceStatus }, `${CLEARANCE_DOC[item.type].short}: ${STATUS_LABEL[e.target.value as ClearanceStatus].toLowerCase()}`)}>
+        <FormSelect className="form-control" style={{ width: 140 }} aria-label={`Trạng thái ${CLEARANCE_DOC[item.type].short}`} disabled={!editable} value={item.status} onChange={e => patch({ status: e.target.value as ClearanceStatus }, `${CLEARANCE_DOC[item.type].short}: ${STATUS_LABEL[e.target.value as ClearanceStatus].toLowerCase()}`)}>
           {(Object.keys(STATUS_LABEL) as ClearanceStatus[]).map(k => <option key={k} value={k}>{STATUS_LABEL[k]}</option>)}
-        </select>
+        </FormSelect>
       </div>
       <div className="form-group" style={{ margin: '8px 0 0' }}>
         <input className="form-control" aria-label={`Ghi chú ${CLEARANCE_DOC[item.type].short}`} placeholder="Ghi chú tiến độ (khách và quản lý đều thấy)" disabled={!editable} value={note} onChange={e => setNote(e.target.value)} onBlur={() => { if (note !== item.note) patch({ note }, 'Đã lưu ghi chú') }} />
@@ -75,10 +76,10 @@ function Work({ b, onDone }: { b: Booking; onDone: () => void }) {
         <p className={s.hint} style={{ marginBottom: 10 }}>Giấy làm bên ngoài hệ thống (cơ quan thú y, hải quan). Cập nhật trạng thái và ảnh chụp để khách xem tiến độ.</p>
         <div style={{ display: 'grid', gap: 10 }}>{c.items.map(i => <ItemRow key={i.type} b={b} item={i} editable={editable && !busy} run={run} />)}</div>
         {editable && extra.length > 0 && (
-          <select className="form-control" style={{ maxWidth: 420, marginTop: 12 }} aria-label="Thêm hạng mục giấy" value="" onChange={e => { const t = e.target.value as ClearanceDocType; if (t) run(() => bookingsApi.addClearanceItem(b.id, session!.name, t), `Đã thêm ${CLEARANCE_DOC[t].short}`) }}>
+          <FormSelect className="form-control" style={{ maxWidth: 420, marginTop: 12 }} aria-label="Thêm hạng mục giấy" value="" onChange={e => { const t = e.target.value as ClearanceDocType; if (t) run(() => bookingsApi.addClearanceItem(b.id, session!.name, t), `Đã thêm ${CLEARANCE_DOC[t].short}`) }}>
             <option value="">+ Thêm hạng mục khi cần…</option>
             {extra.map(t => <option key={t} value={t}>{CLEARANCE_DOC[t].label}</option>)}
-          </select>
+          </FormSelect>
         )}
       </div>
 

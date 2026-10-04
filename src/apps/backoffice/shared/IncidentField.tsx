@@ -9,6 +9,7 @@ import { CaptureField } from '@shared/ui/CaptureField'
 import { ImageThumb } from '@shared/ui/ImageThumb'
 import { Panel } from './field'
 import s from './field.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 export type Run = (fn: () => Promise<unknown>, msg: string) => Promise<void>
 
@@ -50,7 +51,7 @@ function ExpenseForm({ b, inc, run }: { b: Booking; inc: Incident; run: Run }) {
   return (
     <>
       <div className="form-group" style={{ margin: 0 }}><label htmlFor="ex-cat">Loại chi phí</label>
-        <select id="ex-cat" className="form-control" style={{ minHeight: 48 }} value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)}>{(Object.keys(EXPENSE_CATEGORY) as ExpenseCategory[]).map(k => <option key={k} value={k}>{EXPENSE_CATEGORY[k]}</option>)}</select></div>
+        <FormSelect id="ex-cat" className="form-control" style={{ minHeight: 48 }} value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)}>{(Object.keys(EXPENSE_CATEGORY) as ExpenseCategory[]).map(k => <option key={k} value={k}>{EXPENSE_CATEGORY[k]}</option>)}</FormSelect></div>
       <CaptureField label="Ảnh hóa đơn / biên lai (chụp trước)" required value={photo} onChange={setPhoto} />
       <div className="form-group" style={{ margin: 0 }}><label htmlFor="ex-label">Nội dung</label><input id="ex-label" className="form-control" style={{ minHeight: 48 }} value={label} onChange={e => setLabel(e.target.value)} /></div>
       <div className="form-group" style={{ margin: 0 }}><label htmlFor="ex-amount">Số tiền trên hóa đơn (VNĐ){!photo && ' — chụp ảnh trước để mở khóa'}</label><input id="ex-amount" inputMode="numeric" className="form-control" style={{ minHeight: 48 }} disabled={!photo} value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ''))} /></div>

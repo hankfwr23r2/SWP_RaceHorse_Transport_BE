@@ -18,6 +18,7 @@ import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { useToast } from '@shared/ui/toast'
 import { HorseConfigList, History, ReviewChips, TripSummary } from '../../../shared/BookingParts'
 import s from '../../../shared/booking.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocal = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }
@@ -31,30 +32,36 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
   const { session } = useAuth()
   const international = b.type === 'international'
   const busy = useMemo(() => busyResources(all, b.departAt, b.id), [all, b.departAt, b.id])
+  const drivers = crew.filter(c => c.role === 'driver')
   const escorts = crew.filter(c => c.role === 'escort')
 
   // ----- xe, nhân sự, ngựa -----
   const [trips, setTrips] = useState<Draft[]>((b.trips ?? []).map(t => ({ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds })))
   const [note, setNote] = useState(b.plan?.note ?? '')
   const [working, setWorking] = useState(false)
+  const [reason, setReason] = useState<string | null>(null) // không null = đang nhập lý do từ chối đơn
   const setTrip = (i: number, patch: Partial<Draft>) => setTrips(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)))
   const moveHorse = (horseId: string, to: number) => setTrips(ts => ts.map((t, j) => ({ ...t, horseIds: j === to ? [...t.horseIds.filter(x => x !== horseId), horseId] : t.horseIds.filter(x => x !== horseId) })))
   const usedVehicles = new Set(trips.map(t => t.vehicleId))
+  const usedDrivers = new Set(trips.map(t => t.driverId))
   const usedEscorts = new Set(trips.map(t => t.escortId))
   const capacityOf = (id: string) => vehicles.find(v => v.id === id)?.capacity ?? 0
   const tripErrors = trips.flatMap((t, i) => {
     const out: string[] = []
     if (t.horseIds.length > capacityOf(t.vehicleId)) out.push(`Xe ${i + 1} chỉ có ${capacityOf(t.vehicleId)} ngăn, đang xếp ${t.horseIds.length} ngựa.`)
     if (!t.horseIds.length) out.push(`Xe ${i + 1} chưa có ngựa nào.`)
+    if (!t.driverId) out.push(`Xe ${i + 1} chưa chọn tài xế.`)
+    if (!t.escortId) out.push(`Xe ${i + 1} chưa chọn nhân viên hộ tống.`)
     return out
   })
 
-  // Thêm một xe còn rảnh (kèm hộ tống rảnh) rồi chuyển ngựa sang; bỏ một xe thì ngựa của xe đó chuyển sang xe đầu tiên còn lại
+  // Thêm một xe còn rảnh (kèm tài xế và hộ tống rảnh) rồi chuyển ngựa sang; bỏ một xe thì ngựa của xe đó chuyển sang xe đầu tiên còn lại
   const addTrip = () => {
-    const v = vehicles.find(x => x.status !== 'maintenance' && vehicleDocsOk(x, international) && !busy.vehicles.has(x.id) && !busy.crew.has(x.driverId) && !usedVehicles.has(x.id))
+    const v = vehicles.find(x => vehicleDocsOk(x, international) && !busy.vehicles.has(x.id) && !usedVehicles.has(x.id))
+    const d = drivers.find(c => !busy.crew.has(c.id) && !usedDrivers.has(c.id))
     const e = escorts.find(c => !busy.crew.has(c.id) && !usedEscorts.has(c.id))
-    if (!v || !e) { toast('Không còn xe hoặc nhân viên hộ tống rảnh để thêm.', 'error'); return }
-    setTrips(ts => [...ts, { vehicleId: v.id, driverId: v.driverId, escortId: e.id, horseIds: [] }])
+    if (!v || !d || !e) { toast('Không còn xe, tài xế hoặc nhân viên hộ tống rảnh để thêm.', 'error'); return }
+    setTrips(ts => [...ts, { vehicleId: v.id, driverId: d.id, escortId: e.id, horseIds: [] }])
   }
   const removeTrip = (i: number) => setTrips(ts => {
     if (ts.length < 2) return ts
@@ -109,38 +116,55 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
     } catch (e) { toast(e instanceof Error ? e.message : 'Không xác nhận được', 'error'); setWorking(false) }
   }
 
+  const reject = async () => {
+    setWorking(true)
+    try {
+      await bookingsApi.rejectOrder(b.id, session!.name, 'coordinator', reason ?? '')
+      toast(`Đã từ chối ${b.id}, khách nhận được lý do`)
+      onDone()
+      navigate('/coordinator/fleet-plan')
+    } catch (e) { toast(e instanceof Error ? e.message : 'Không từ chối được', 'error'); setWorking(false) }
+  }
+
   return (
     <>
       <div className="card">
         <div className="card-header"><h3><i className="fa-solid fa-truck" /> {trips.length > 1 ? `${trips.length} xe của đơn` : 'Xe của đơn'}</h3><span style={{ display: 'flex', gap: 8 }}><button className="btn btn-outline btn-sm" onClick={addTrip}><i className="fa-solid fa-plus" /> Thêm xe</button><button className="btn btn-outline btn-sm" disabled={working} onClick={reassign}><i className="fa-solid fa-wand-magic-sparkles" /> Gán lại tự động</button></span></div>
-        <ReadMore className={s.hint} text={'Hệ thống đã chọn ít xe nhất và chia đều ngựa. Bạn có thể đổi xe, hộ tống hoặc chuyển ngựa sang xe khác. Tài xế đi theo xe. Xe bảo dưỡng, xe đã giữ cho đơn khác hoặc không đủ ngăn thì không chọn được.'} />
+        <ReadMore className={s.hint} text={'Hệ thống đã chọn ít xe nhất và chia đều ngựa. Bạn có thể đổi xe, tài xế, hộ tống hoặc chuyển ngựa sang xe khác. Xe, tài xế hoặc hộ tống đã giữ cho đơn khác, hoặc xe không đủ ngăn thì không chọn được.'} />
         {trips.map((t, i) => {
           const v = vehicles.find(x => x.id === t.vehicleId)
-          const driver = crew.find(c => c.id === t.driverId)
           return (
             <div key={i} className={s.pick} style={{ display: 'block', marginBottom: 12 }}>
               <div className={s.pickName} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>Xe {i + 1}{v ? ` · ${v.plate} (${VEHICLE_CLASS[vehicleClassOf(v.capacity)].label}, ${v.capacity} ngăn)` : ''}</span>{trips.length > 1 && <button className="btn btn-ghost btn-sm" onClick={() => removeTrip(i)}><i className="fa-solid fa-trash" /> Bỏ xe này</button>}</div>
-              <div className={s.form2} style={{ marginTop: 10 }}>
+              <div className={s.form2} style={{ marginTop: 10, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
                 <div className="form-group">
                   <label htmlFor={`veh${i}`}>Xe</label>
-                  <select id={`veh${i}`} className="form-control" value={t.vehicleId} onChange={e => { const nv = vehicles.find(x => x.id === e.target.value); if (nv) setTrip(i, { vehicleId: nv.id, driverId: nv.driverId }) }}>
+                  <FormSelect id={`veh${i}`} className="form-control" value={t.vehicleId} onChange={e => setTrip(i, { vehicleId: e.target.value })}>
                     {vehicles.map(x => {
-                      const why = x.status === 'maintenance' ? 'đang bảo dưỡng' : !vehicleDocsOk(x, international) ? 'thiếu giấy đăng kiểm / liên vận' : busy.vehicles.has(x.id) || busy.crew.has(x.driverId) ? 'đã giữ cho đơn khác' : usedVehicles.has(x.id) && x.id !== t.vehicleId ? 'đã chọn ở xe khác' : ''
+                      const why = !vehicleDocsOk(x, international) ? 'thiếu giấy đăng kiểm / liên vận' : busy.vehicles.has(x.id) ? 'đã giữ cho đơn khác' : usedVehicles.has(x.id) && x.id !== t.vehicleId ? 'đã chọn ở xe khác' : ''
                       return <option key={x.id} value={x.id} disabled={!!why}>{x.plate} · {x.capacity} ngăn{why ? ` (${why})` : ''}</option>
                     })}
-                  </select>
+                  </FormSelect>
+                </div>
+                <div className="form-group">
+                  <label htmlFor={`drv${i}`}>Tài xế</label>
+                  <FormSelect id={`drv${i}`} className="form-control" value={t.driverId} onChange={e => setTrip(i, { driverId: e.target.value })}>
+                    {drivers.map(c => {
+                      const why = busy.crew.has(c.id) ? 'đã giữ cho đơn khác' : usedDrivers.has(c.id) && c.id !== t.driverId ? 'đã chọn ở xe khác' : ''
+                      return <option key={c.id} value={c.id} disabled={!!why}>{c.name}{why ? ` (${why})` : ''}</option>
+                    })}
+                  </FormSelect>
                 </div>
                 <div className="form-group">
                   <label htmlFor={`esc${i}`}>Nhân viên hộ tống</label>
-                  <select id={`esc${i}`} className="form-control" value={t.escortId} onChange={e => setTrip(i, { escortId: e.target.value })}>
+                  <FormSelect id={`esc${i}`} className="form-control" value={t.escortId} onChange={e => setTrip(i, { escortId: e.target.value })}>
                     {escorts.map(c => {
                       const why = busy.crew.has(c.id) ? 'đã giữ cho đơn khác' : usedEscorts.has(c.id) && c.id !== t.escortId ? 'đã chọn ở xe khác' : ''
                       return <option key={c.id} value={c.id} disabled={!!why}>{c.name}{why ? ` (${why})` : ''}</option>
                     })}
-                  </select>
+                  </FormSelect>
                 </div>
               </div>
-              <p className={s.hint}>Tài xế (theo xe): {driver ? `${driver.name} · ${driver.phone}` : '—'}</p>
               <ul style={{ display: 'grid', gap: 6, marginTop: 8 }}>
                 {t.horseIds.map(hid => {
                   const h = b.horses.find(x => x.horseId === hid)
@@ -148,9 +172,9 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
                     <li key={hid} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                       <span><b>{h?.name}</b> <span className={s.sub}>Chip {h?.microchip}</span></span>
                       {trips.length > 1 && (
-                        <select className="form-control" style={{ width: 150 }} aria-label={`Chuyển ${h?.name} sang xe`} value={i} onChange={e => moveHorse(hid, Number(e.target.value))}>
+                        <FormSelect className="form-control" style={{ width: 150 }} aria-label={`Chuyển ${h?.name} sang xe`} value={i} onChange={e => moveHorse(hid, Number(e.target.value))}>
                           {trips.map((_, j) => <option key={j} value={j}>Xe {j + 1}</option>)}
-                        </select>
+                        </FormSelect>
                       )}
                     </li>
                   )
@@ -182,9 +206,9 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
           <div className="card-header"><h3><i className="fa-solid fa-flag" /> Cửa khẩu</h3><span className="sub-text">Khách không chọn cửa khẩu, bạn chọn theo lộ trình</span></div>
           <div className="form-group" style={{ maxWidth: 420, margin: 0 }}>
             <label htmlFor="gate" className="required">Cửa khẩu đi qua</label>
-            <select id="gate" className="form-control" value={gate} onChange={e => pickGate(e.target.value)}>
+            <FormSelect id="gate" className="form-control" value={gate} onChange={e => pickGate(e.target.value)}>
               {gates.map(g => <option key={g.name} value={g.name}>{g.name}{g.name === suggested ? ' (tối ưu: quãng đường ngắn nhất)' : ` · ${routeKm(b.origin, b.dest, g.name)} km`}</option>)}
-            </select>
+            </FormSelect>
             <div className="form-hint">Chốt lộ trình xong, cửa khẩu bị khóa. Đổi cửa khẩu thì hệ thống gợi ý lại các trạm trung chuyển.</div>
           </div>
         </div>
@@ -224,8 +248,18 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
         {warnings.length > 0 && <div className="alert alert-warning" style={{ marginBottom: 12 }}><i className="fa-solid fa-triangle-exclamation" /><ul>{warnings.map(e => <li key={e}>{e}</li>)}</ul></div>}
         <div className={s.actionBar}>
           <div className={s.hint}>{errors.length ? 'Sửa các lỗi trên để xác nhận.' : 'Xác nhận để chuyển quản lý duyệt báo giá (khi Kiểm dịch viên cũng đã duyệt y tế).'}</div>
-          <button className="btn btn-primary" disabled={!!errors.length || working} onClick={confirm}><i className="fa-solid fa-circle-check" /> Xác nhận xe và lộ trình</button>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" disabled={working} onClick={() => setReason(reason === null ? '' : null)}><i className="fa-solid fa-ban" /> Không duyệt, từ chối đơn</button>
+            <button className="btn btn-primary" disabled={!!errors.length || working} onClick={confirm}><i className="fa-solid fa-circle-check" /> Xác nhận xe và lộ trình</button>
+          </span>
         </div>
+        {reason !== null && (
+          <div className="form-group" style={{ marginTop: 12 }}>
+            <label htmlFor="rj" className="required">Lý do từ chối (khách sẽ thấy)</label>
+            <textarea id="rj" className="form-control" rows={2} value={reason} onChange={e => setReason(e.target.value)} />
+            <button className="btn btn-danger" style={{ marginTop: 8 }} disabled={working || !reason.trim()} onClick={reject}>Xác nhận từ chối đơn</button>
+          </div>
+        )}
       </div>
     </>
   )

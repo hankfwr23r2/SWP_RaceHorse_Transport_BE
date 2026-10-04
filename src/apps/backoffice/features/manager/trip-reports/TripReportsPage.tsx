@@ -70,11 +70,11 @@ export default function TripReportsPage() {
   const [fileName, setFileName] = useState('')
   const list = reports.filter(r => !query || [r.id, r.customer, r.route].join(' ').toLowerCase().includes(query.toLowerCase()))
   const { rows, bar } = usePagination(list)
-  const current = reports.find(r => r.id === selected) ?? reports[0]
+  const current = reports.find(r => r.id === selected)
 
   const exportPdf = () => {
     const prev = document.title
-    document.title = fileName.trim() || current.id // tên file gợi ý khi lưu PDF
+    document.title = fileName.trim() || current?.id || 'bao-cao' // tên file gợi ý khi lưu PDF
     setExporting(false)
     setTimeout(() => { window.print(); document.title = prev }, 50)
   }
@@ -83,28 +83,26 @@ export default function TripReportsPage() {
     <div className="page">
       <div className={`wrap ${s.wrap}`}>
         <div className="breadcrumb">Hệ thống Vận hành / <span className="text-orange font-semibold">Báo cáo Chuyến đi</span></div>
-        <div className="page-header"><h1>Báo cáo Chuyến đi &amp; Nhật ký</h1><p>Xem xét các nhật ký vận chuyển đã hoàn thành, theo dõi sức khỏe ngựa và phản hồi của khách hàng.</p></div>
-        <div className={s.layout}>
-          <div className={`card ${s.list}`}>
-            <div className={m.toolbar}><h3 className="font-bold">Báo cáo Chuyến đi</h3></div>
-            <SearchBox value={query} onChange={setQuery} placeholder="Tìm mã đơn, khách hàng..." />
-            <div className="table-wrap" style={{ marginTop: 12 }}>
-              <table className="data-table">
-                <thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Hoàn thành</th></tr></thead>
-                <tbody>{rows.map(r => (
-                  <tr key={r.id} className={r.id === current?.id ? s.selected : ''} onClick={() => setSelected(r.id)} style={{ cursor: 'pointer' }}>
-                    <td className="font-semibold nowrap" style={{ color: r.id === current?.id ? 'var(--orange)' : undefined }}>{r.id}</td>
-                    <td className="text-muted">{r.customer}</td>
-                    <td className="text-muted nowrap">{formatDate(r.completedAt)}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-            {bar}
-          </div>
-          {current && <ReportDetail r={current} onExport={() => { setFileName(current.id); setExporting(true) }} />}
+        <div className="page-header"><h1>Chuyến đi</h1><p>Nhật ký, sức khỏe ngựa và đánh giá của khách.</p></div>
+        <div className={s.searchWrap}><SearchBox value={query} onChange={setQuery} placeholder="Tìm mã đơn, khách hàng, tuyến..." /></div>
+        <div className={s.grid}>
+          {rows.map(r => (
+            <button key={r.id} className={s.reportCard} onClick={() => setSelected(r.id)}>
+              <b className={s.cardId}>{r.id}</b>
+              <span className={s.cardRoute}>{r.route}</span>
+              <span className="text-muted">{r.customer}</span>
+              <span className={s.cardFoot}><span className="text-muted"><i className="fa-solid fa-flag-checkered" aria-hidden="true" /> {formatDate(r.completedAt)}</span><span className={s.cardStars} aria-label={`${r.rating} trên 5 sao`}><i className="fa-solid fa-star" aria-hidden="true" /> {r.rating}/5</span></span>
+            </button>
+          ))}
         </div>
+        {!rows.length && <div className="card" style={{ marginTop: 12 }}><p>Không có báo cáo nào khớp.</p></div>}
+        {bar}
       </div>
+      {current && selected && (
+        <Modal wide title={`Báo cáo chuyến ${current.id}`} onClose={() => setSelected(undefined)}>
+          <ReportDetail r={current} onExport={() => { setFileName(current.id); setExporting(true) }} />
+        </Modal>
+      )}
       {exporting && (
         <Modal title="Xuất báo cáo PDF" onClose={() => setExporting(false)}
           footer={<><button className="btn btn-ghost" onClick={() => setExporting(false)}>Hủy</button><button className="btn btn-primary" disabled={!fileName.trim()} onClick={exportPdf}><i className="fa-solid fa-file-pdf" /> Xuất PDF</button></>}>

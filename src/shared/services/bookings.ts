@@ -321,6 +321,21 @@ export const bookingsApi = {
     return activated
   },
 
+  // Manager không nhận đơn lúc tiếp nhận, hoặc Coordinator không duyệt phương án xe và lộ trình: đơn đóng, khách nhận lý do và đặt lại.
+  rejectOrder: async (id: string, by: string, role: 'manager' | 'coordinator', reason: string): Promise<Booking> => {
+    const b = must(id)
+    if (role === 'manager') expect(b, 'pending_intake', 'Chỉ từ chối được đơn đang chờ tiếp nhận.')
+    else expect(b, 'under_review', 'Chỉ từ chối được đơn đang thẩm định.')
+    if (!reason.trim()) throw new Error('Cần ghi lý do từ chối.')
+    const out = structuredClone(store.update(id, {
+      status: 'rejected', rejection: { at: Date.now(), by, role, reason: reason.trim() },
+      history: log(b, by, `Từ chối đơn${role === 'coordinator' ? ' (không duyệt xe và lộ trình)' : ''}: ${reason.trim()}`),
+    }))
+    notify(out, ['customer'], `Đơn ${id} không được nhận`, `Nhà xe không nhận đơn: ${reason.trim()}`)
+    if (role === 'coordinator') notify(out, ['manager', 'specialist'], `Đơn ${id} bị từ chối`, `Điều phối viên không duyệt xe và lộ trình: ${reason.trim()}`)
+    return out
+  },
+
   // Coordinator: xem lại phương án tự gán (nút "Gán lại"), không lưu
   assignPreview: async (id: string): Promise<AutoAssignResult> => runAutoAssign(must(id)),
 
@@ -359,26 +374,28 @@ export const bookingsApi = {
     const international = b.type === 'international'
     if (!input.trips.length) throw new Error('Chưa có xe nào.')
     if (input.trips.some(t => !t.horseIds.length)) throw new Error('Mỗi xe phải chở ít nhất một ngựa.')
-    const vehicles = await vehiclesApi.list()
+    const [vehicles, crew] = await Promise.all([vehiclesApi.list(), crewApi.list()])
     const busy = busyResources(store.all(), b.departAt, id)
     const placed = input.trips.flatMap(t => t.horseIds)
     if (placed.length !== b.horses.length || b.horses.some(h => placed.filter(x => x === h.horseId).length !== 1)) throw new Error('Mỗi ngựa phải nằm trên đúng một xe.')
     if (new Set(input.trips.map(t => t.vehicleId)).size !== input.trips.length) throw new Error('Một xe không được chọn hai lần.')
+    if (new Set(input.trips.map(t => t.driverId)).size !== input.trips.length) throw new Error('Mỗi xe cần một tài xế riêng.')
     if (new Set(input.trips.map(t => t.escortId)).size !== input.trips.length) throw new Error('Mỗi xe cần một nhân viên hộ tống riêng.')
     input.trips.forEach(t => {
       const v = vehicles.find(x => x.id === t.vehicleId)
       if (!v) throw new Error('Chưa chọn xe.')
-      if (v.status === 'maintenance') throw new Error(`Xe ${v.plate} đang bảo dưỡng, chọn xe khác.`)
       if (!vehicleDocsOk(v, international)) throw new Error(`Xe ${v.plate} thiếu giấy đăng kiểm${international ? ' hoặc giấy phép liên vận' : ''}, chọn xe khác.`)
       if (t.horseIds.length > v.capacity) throw new Error(`Xe ${v.plate} chỉ có ${v.capacity} ngăn, đang xếp ${t.horseIds.length} ngựa.`)
-      if (busy.vehicles.has(v.id) || busy.crew.has(v.driverId)) throw new Error(`Xe ${v.plate} đã được giữ cho đơn khác có ngày đi gần ngày này.`)
+      if (busy.vehicles.has(v.id)) throw new Error(`Xe ${v.plate} đã được giữ cho đơn khác có ngày đi gần ngày này.`)
+      if (!t.driverId || !crew.some(c => c.id === t.driverId && c.role === 'driver')) throw new Error('Chưa chọn tài xế.')
+      if (busy.crew.has(t.driverId)) throw new Error('Tài xế đã được giữ cho đơn khác có ngày đi gần ngày này.')
       if (!t.escortId) throw new Error('Chưa chọn nhân viên hộ tống.')
       if (busy.crew.has(t.escortId)) throw new Error('Nhân viên hộ tống đã được giữ cho đơn khác có ngày đi gần ngày này.')
     })
     if (international && !gatesFor(b.origin, b.dest).some(g => g.name === input.gate)) throw new Error('Chưa chọn cửa khẩu hợp lệ cho tuyến này.')
     const { errors } = validateRoutePlan(input.route, international)
     if (errors.length) throw new Error(errors[0])
-    const trips: VehicleTrip[] = input.trips.map((t, i) => ({ ...t, driverId: vehicles.find(v => v.id === t.vehicleId)!.driverId, tripId: tripIdFor(id, i + 1), acks: {} }))
+    const trips: VehicleTrip[] = input.trips.map((t, i) => ({ ...t, tripId: tripIdFor(id, i + 1), acks: {} }))
     const next = { ...b, plan: { at: Date.now(), by, note: input.note } }
     const out = structuredClone(store.update(id, {
       trips, route: { ...input.route, completedAt: Date.now(), by }, plan: next.plan, gate: international ? input.gate : undefined,

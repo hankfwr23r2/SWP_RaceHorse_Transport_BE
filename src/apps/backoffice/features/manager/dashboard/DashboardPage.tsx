@@ -1,11 +1,16 @@
 // Bảng điều khiển Quản lý. Chuyển từ Manager/manager_dashboard.html (Chart.js → SVG).
 // Số tổng tính từ số liệu tháng (bản cũ ghi cứng 46,5 / 31,2 / 15,3 tỷ, không khớp tổng 12 tháng).
 import { Link } from 'react-router'
-import { formatClock, formatDate, formatVND } from '@shared/lib/format'
+import { useState } from 'react'
 import { useStaggerIn } from '@shared/motion/motion'
-import { reportsApi, type TripReport } from '@shared/services/reports'
+import { bookingsApi } from '@shared/services/bookings'
 import { useLoad } from '@shared/services/useLoad'
-import { partStyles as m } from '../../../shared/parts'
+import type { Booking } from '@shared/types/booking'
+import { OrderBoard } from './OrderBoard'
+import { OrderDetailModal } from './OrderDetailModal'
+import { CalendarModal } from './CalendarModal'
+import { ScheduleStrip } from './ScheduleStrip'
+import bd from './Board.module.css'
 import { FinanceChart, type MonthPoint } from './FinanceChart'
 import s from './Dashboard.module.css'
 
@@ -23,39 +28,50 @@ const OTD: [key: 'on_time' | 'early' | 'late', label: string, count: number, col
 const sum = (a: number[]) => a.reduce((t, x) => t + x, 0)
 const ty = (v: number) => `${v.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} Tỷ`
 
-function OtdBadge({ r }: { r: TripReport }) {
-  if (r.otd === 'on_time') return <span className="badge badge-success">Đúng giờ</span>
-  const d = r.otdMinutes >= 60 ? `${r.otdMinutes / 60}h` : `${r.otdMinutes}p`
-  return r.otd === 'early' ? <span className="badge badge-info">Sớm ({d})</span> : <span className="badge badge-danger">Trễ ({d})</span>
-}
-
 export default function DashboardPage() {
-  const { data: reports = [] } = useLoad(reportsApi.list)
+  const { data: all } = useLoad(bookingsApi.list)
+  const [open, setOpenId] = useState<string | null>(null)
+  const [calendar, setCalendar] = useState(false)
+  const [text, setText] = useState('')
+  const keyword = text.trim().toLowerCase()
+  const orders = (all ?? []).filter(b => !keyword || [b.id, b.customer, b.origin.name, b.dest.name].some(v => v.toLowerCase().includes(keyword)))
+  const setOpen = (b: Booking) => setOpenId(b.id)
+  const opened = (all ?? []).find(b => b.id === open)
   const revenue = sum(REVENUE), cost = sum(COST), profit = revenue - cost
   const trips = sum(OTD.map(o => o[2]))
   const otdRate = ((OTD[0][2] + OTD[1][2]) / trips) * 100
   const ref = useStaggerIn('.stat-card, .card', [])
 
   const stats: [string, string, string, string][] = [
-    ['Tổng Doanh Thu (2026)', ty(revenue), 'Tăng 12% so với năm trước', 'fa-sack-dollar'],
-    ['Tổng Chi Phí Vận Hành', ty(cost), 'Tăng 5% (do sự cố)', 'fa-receipt'],
-    ['Lợi Nhuận Ròng', ty(profit), `Biên lợi nhuận đạt ${Math.round((profit / revenue) * 100)}%`, 'fa-chart-line'],
-    ['On-Time Delivery (OTD)', `${otdRate.toFixed(1)}%`, `${OTD[0][2] + OTD[1][2]}/${trips} chuyến không trễ`, 'fa-stopwatch'],
+    ['Doanh thu', ty(revenue), 'Tăng 12% so với năm trước', 'fa-sack-dollar'],
+    ['Chi phí vận hành', ty(cost), 'Tăng 5% (do sự cố)', 'fa-receipt'],
+    ['Lợi nhuận', ty(profit), `Biên lợi nhuận đạt ${Math.round((profit / revenue) * 100)}%`, 'fa-chart-line'],
+    ['Giao đúng giờ', `${otdRate.toFixed(1)}%`, `${OTD[0][2] + OTD[1][2]}/${trips} chuyến không trễ`, 'fa-stopwatch'],
   ]
 
   return (
     <div className="page">
       <div ref={ref} className={`wrap ${s.wrap}`}>
-        <div className="page-header"><h1>Bảng điều khiển Quản lý</h1><p>Tổng quan về Doanh thu và Trạng thái Nhân sự của toàn bộ hệ thống.</p></div>
+        <div className="page-header"><h1>Tổng quan</h1></div>
+        <ScheduleStrip orders={orders} onOpen={setOpen} onCalendar={() => setCalendar(true)} />
+        <div className={bd.boardHead}>
+          <h2 className={s.sectionTitle} style={{ margin: 0 }}>Tất cả đơn</h2>
+          <div className={bd.boardTools}>
+            <label className={bd.search}><i className="fa-solid fa-magnifying-glass" aria-hidden="true" /><input className="form-control" placeholder="Tìm theo mã đơn, khách hàng, tuyến…" value={text} onChange={e => setText(e.target.value)} /></label>
+            <span className={bd.seg}><span className={bd.segOn}><i className="fa-solid fa-table-columns" /> Kanban</span><Link to="/manager/progress"><i className="fa-solid fa-table-list" /> Bảng</Link></span>
+          </div>
+        </div>
+        <OrderBoard orders={orders} onOpen={setOpen} />
+        <h2 className={s.sectionTitle}>Số liệu năm 2026</h2>
         <div className="stat-grid">
           {stats.map(([label, value, note, icon]) => (
             <div key={label} className="stat-card"><div className="stat-label"><i className={`fa-solid ${icon}`} /> {label}</div><div className="stat-value">{value}</div><div className="sub-text">{note}</div></div>
           ))}
         </div>
         <div className={s.grid}>
-          <div className="card"><div className="card-header"><h3><i className="fa-solid fa-chart-column" /> Doanh Thu &amp; Chi Phí Vận Hành (2026, tỷ VND)</h3></div><FinanceChart data={MONTHS} /></div>
+          <div className="card"><div className="card-header"><h3><i className="fa-solid fa-chart-column" /> Doanh thu và chi phí (tỷ VND)</h3></div><FinanceChart data={MONTHS} /></div>
           <div className="card">
-            <div className="card-header"><h3><i className="fa-solid fa-stopwatch" /> Chỉ số Hiệu suất Hoàn thành (OTD)</h3></div>
+            <div className="card-header"><h3><i className="fa-solid fa-stopwatch" /> Giao đúng giờ</h3></div>
             <div className={s.otdBar} role="img" aria-label={OTD.map(o => `${o[1]} ${o[2]} chuyến`).join(', ')}>
               {OTD.map(([k, label, n, color]) => <div key={k} title={`${label}: ${n} chuyến`} style={{ flexGrow: n, background: color }} />)}
             </div>
@@ -66,23 +82,10 @@ export default function DashboardPage() {
             </ul>
           </div>
         </div>
-        <div className="card">
-          <div className="card-header"><h3><i className="fa-solid fa-truck-fast" /> Hiệu suất Chuyến đi Gần đây</h3><Link to="/manager/trip-reports" className="text-orange small">Xem tất cả báo cáo →</Link></div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Mã chuyến</th><th>Tuyến đường</th><th>Thời gian hoàn thành</th><th>Trạng thái (OTD)</th><th>Chi phí sự cố (nếu có)</th></tr></thead>
-              <tbody>{reports.slice(0, 4).map(r => (
-                <tr key={r.id}>
-                  <td className={m.idCell}>#{r.tripId}</td><td>{r.route}</td>
-                  <td className="nowrap">{formatClock(r.completedAt)} {formatDate(r.completedAt).slice(0, 5)}<div className="sub-text">Dự kiến: {formatClock(r.plannedAt)}</div></td>
-                  <td><OtdBadge r={r} /></td>
-                  <td>{r.incidentCost ? `${formatVND(r.incidentCost)} (${r.incidentNote})` : '-'}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        </div>
+        <Link to="/manager/trip-reports" className="text-orange small">Xem báo cáo chuyến đi →</Link>
       </div>
+      {calendar && <CalendarModal orders={all ?? []} onClose={() => setCalendar(false)} onOpen={b => { setCalendar(false); setOpen(b) }} />}
+      {opened && <OrderDetailModal b={opened} onClose={() => setOpenId(null)} />}
     </div>
   )
 }

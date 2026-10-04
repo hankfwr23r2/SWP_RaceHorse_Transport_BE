@@ -139,6 +139,9 @@ export interface VehicleTrip {
 export interface Waybill { no: string; issuedAt: number }
 export interface PlanConfirmed { at: number; by: string; note: string }
 
+// Nhà xe từ chối đơn: Manager (lúc tiếp nhận) hoặc Coordinator (không duyệt phương án xe, lộ trình)
+export interface Rejection { at: number; by: string; role: 'manager' | 'coordinator'; reason: string }
+
 export interface Cancellation { at: number; reason: string; rate: number; refund: number; forceMajeure: boolean }
 
 export interface Payment { paidAt: number; amount: number; reference: string }
@@ -200,4 +203,5 @@ export interface Booking {
   settlement?: Settlement
   rating?: Rating
   cancellation?: Cancellation
+  rejection?: Rejection
 }

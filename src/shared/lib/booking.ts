@@ -180,7 +180,8 @@ export function autoAssign(horseIds: string[], vehicles: Vehicle[], crew: CrewMe
   const n = horseIds.length
   if (!n) return fail('Đơn chưa có ngựa.')
   const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id)
-  const free = vehicles.filter(v => v.status !== 'maintenance' && vehicleDocsOk(v, international) && !busy.vehicles.has(v.id) && !busy.crew.has(v.driverId))
+  const free = vehicles.filter(v => vehicleDocsOk(v, international) && !busy.vehicles.has(v.id))
+  const drivers = crew.filter(c => c.role === 'driver' && !busy.crew.has(c.id)).sort(byId)
   const escorts = crew.filter(c => c.role === 'escort' && !busy.crew.has(c.id)).sort(byId)
   const single = [...free].filter(v => v.capacity >= n).sort((a, b) => a.capacity - b.capacity || byId(a, b))[0]
   const chosen: Vehicle[] = []
@@ -194,6 +195,7 @@ export function autoAssign(horseIds: string[], vehicles: Vehicle[], crew: CrewMe
     }
     if (seats < n) return fail(`Đội xe rảnh chỉ chở được ${seats}/${n} ngựa vào ngày này.`)
   }
+  if (drivers.length < chosen.length) return fail(`Cần ${chosen.length} tài xế rảnh, hiện có ${drivers.length}.`)
   if (escorts.length < chosen.length) return fail(`Cần ${chosen.length} hộ tống rảnh, hiện có ${escorts.length}.`)
   const groups: string[][] = chosen.map(() => [])
   let i = 0
@@ -202,7 +204,7 @@ export function autoAssign(horseIds: string[], vehicles: Vehicle[], crew: CrewMe
     groups[i % chosen.length].push(id)
     i++
   }
-  return { ok: true, trips: chosen.map((v, k) => ({ vehicleId: v.id, driverId: v.driverId, escortId: escorts[k].id, horseIds: groups[k] })) }
+  return { ok: true, trips: chosen.map((v, k) => ({ vehicleId: v.id, driverId: drivers[k].id, escortId: escorts[k].id, horseIds: groups[k] })) }
 }
 
 export const tripIdFor = (bookingId: string, index: number) => `TRP-${bookingId.slice(-4)}-${index}`
@@ -265,7 +267,7 @@ export const ORDER_GROUPS: Record<OrderGroup, { label: string; icon: string; hin
   supplement: { label: 'Yêu cầu bổ sung', icon: 'fa-file-circle-exclamation', hint: 'Kiểm dịch viên cần bạn bổ sung hồ sơ ngựa' },
   moving: { label: 'Đang di chuyển', icon: 'fa-truck-fast', hint: 'Xe đang đến điểm đón hoặc đang chở ngựa' },
   settle: { label: 'Chờ quyết toán', icon: 'fa-receipt', hint: 'Ngựa đã giao, đang đối soát chi phí hoặc chờ bạn thanh toán và đánh giá' },
-  closed: { label: 'Hết hạn / đã hủy', icon: 'fa-ban', hint: 'Báo giá hết hạn hoặc đơn đã hủy' },
+  closed: { label: 'Hết hạn / hủy / từ chối', icon: 'fa-ban', hint: 'Báo giá hết hạn, đơn đã hủy hoặc nhà xe từ chối đơn' },
   done: { label: 'Đã hoàn thành', icon: 'fa-flag-checkered', hint: 'Ngựa đã được giao' },
 }
 export function orderGroupOf(b: { status: BookingStatus; medical?: { status: string } }): OrderGroup {
@@ -276,9 +278,51 @@ export function orderGroupOf(b: { status: BookingStatus; medical?: { status: str
     case 'en_route_to_pickup': case 'in_transit': case 'incident_reported': case 'pending_emergency_approval': case 'emergency_plan_active': return 'moving'
     case 'delivered_pending_settlement': case 'expenses_submitted': case 'settlement_issued': case 'payment_overdue': return 'settle'
     case 'completed': return 'done'
-    case 'quote_expired': case 'cancelled': return 'closed'
+    case 'quote_expired': case 'cancelled': case 'rejected': return 'closed'
   }
 }
+
+// Tab của "Đơn hàng của tôi" (khách): mỗi đơn đúng một tab, xếp theo thứ tự các giai đoạn
+export type OrderTab = 'confirm' | 'supplement' | 'pay' | 'prepare' | 'moving' | 'settle' | 'done' | 'closed'
+export function orderTabOf(b: Pick<Booking, 'status' | 'medical' | 'balance' | 'settlement'>): OrderTab {
+  switch (b.status) {
+    case 'pending_intake': case 'under_review': return b.medical?.status === 'resubmit' && b.status === 'under_review' ? 'supplement' : 'confirm'
+    case 'pending_commercial': return 'confirm'
+    case 'awaiting_payment': return 'pay'
+    case 'waybill_issued': case 'clearance_in_progress': case 'clearance_done': return 'prepare'
+    case 'ready_for_pickup': return b.balance ? 'prepare' : 'pay'
+    case 'en_route_to_pickup': return b.balance ? 'moving' : 'pay'
+    case 'in_transit': case 'incident_reported': case 'pending_emergency_approval': case 'emergency_plan_active': return 'moving'
+    case 'delivered_pending_settlement': case 'expenses_submitted': return 'settle'
+    case 'settlement_issued': case 'payment_overdue': return b.settlement?.total ? 'pay' : 'settle'
+    case 'completed': return 'done'
+    case 'quote_expired': case 'cancelled': case 'rejected': return 'closed'
+  }
+}
+
+// Cột của bảng Kanban trên trang Tổng quan của Manager: mỗi đơn đang chạy đúng một cột (đơn đã đóng không hiện)
+export type BoardCol = 'intake' | 'review' | 'quote' | 'deposit' | 'prepare' | 'moving' | 'settle' | 'done'
+export function managerBoardOf(s: BookingStatus): BoardCol | undefined {
+  switch (s) {
+    case 'pending_intake': return 'intake'
+    case 'under_review': return 'review'
+    case 'pending_commercial': return 'quote'
+    case 'awaiting_payment': return 'deposit'
+    case 'waybill_issued': case 'clearance_in_progress': case 'clearance_done': case 'ready_for_pickup': case 'en_route_to_pickup': return 'prepare'
+    case 'in_transit': case 'incident_reported': case 'pending_emergency_approval': case 'emergency_plan_active': return 'moving'
+    case 'delivered_pending_settlement': case 'expenses_submitted': case 'settlement_issued': case 'payment_overdue': return 'settle'
+    case 'completed': return 'done'
+    case 'quote_expired': case 'cancelled': case 'rejected': return undefined
+  }
+}
+
+// Số đơn đang chờ Manager (menu và trang Tổng quan). `moving` chỉ để theo dõi, không phải việc cần xử lý.
+export const managerCounts = (list: Pick<Booking, 'status' | 'incidents' | 'medical'>[]) => ({
+  intake: list.filter(b => b.status === 'pending_intake').length,
+  quote: list.filter(b => b.status === 'pending_commercial').length,
+  incident: list.reduce((n, b) => n + (b.incidents ?? []).filter(i => i.status === 'pending_approval').length + (b.status === 'expenses_submitted' ? 1 : 0), 0),
+  moving: list.filter(b => orderGroupOf(b) === 'moving').length,
+})
 
 // Nhóm Đã duyệt chia nhỏ theo việc khách cần làm về thanh toán
 export type ApprovedSub = 'await_deposit' | 'deposited' | 'pay_at_pickup' | 'ready'

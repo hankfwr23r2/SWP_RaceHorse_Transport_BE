@@ -35,7 +35,7 @@ export default function Step4ReviewPage() {
   // Đã gửi: hiện popup xác nhận, khách chọn xem đơn vừa đặt hoặc chi tiết đơn
   if (sent) {
     if (!placed) return null
-    const toList = () => navigate('/orders?group=new')
+    const toList = () => navigate('/orders?group=confirm')
     return (
       <Modal onClose={toList} title={<><i className="fa-solid fa-circle-check" style={{ color: 'var(--green)' }} /> Đã gửi đơn {placed.id}</>} subtitle="Đơn của bạn đã được ghi nhận"
         footer={<><button className="btn btn-ghost" onClick={() => navigate(`/orders/${placed.id}`)}>Xem chi tiết đơn</button><button className="btn btn-primary" onClick={toList}>Xem đơn vừa đặt</button></>}>

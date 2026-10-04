@@ -177,8 +177,12 @@ describe('tự gán khi tiếp nhận', () => {
   })
   it('thiếu xe thì ném lỗi và đơn vẫn chờ tiếp nhận', async () => {
     const created = await customerBookingsApi.create(CUSTOMER.name, draft())
-    for (const v of await vehiclesApi.list()) await vehiclesApi.update(v.id, { status: 'maintenance' })
-    expect(await fail(bookingsApi.activate(created.id, 'Quản lý', sp, co))).toMatch(/Chưa gán được xe/)
+    // Mọi xe thiếu giấy đăng kiểm thì không gán được xe nào; trả lại giấy sau khi thử
+    const saved = await vehiclesApi.list()
+    for (const v of saved) await vehiclesApi.update(v.id, { inspectionNo: '' })
+    const err = await fail(bookingsApi.activate(created.id, 'Quản lý', sp, co))
+    for (const v of saved) await vehiclesApi.update(v.id, { inspectionNo: v.inspectionNo })
+    expect(err).toMatch(/Chưa gán được xe/)
     expect((await bookingsApi.get(created.id))!.status).toBe('pending_intake')
     expect((await bookingsApi.get(created.id))!.trips).toBeUndefined()
   })
@@ -244,7 +248,6 @@ describe('sửa các lỗi nhỏ sau review', () => {
   })
   it('chốt phương án: xe thiếu giấy đăng kiểm bị từ chối; tuyến quốc tế còn cần giấy phép liên vận', async () => {
     const created = await customerBookingsApi.create(CUSTOMER.name, { ...(() => { const d = { type: 'domestic' as const, origin: { id: 'KHO-DN', name: 'Kho Đồng Nai', country: 'VN' as const }, dest: { id: 'CLB-SG', name: 'CLB', country: 'VN' as const }, departAt: Date.now() + 40 * 86_400_000, consignor: { name: 'a', phone: '0901000011', idNumber: '1', address: 'x' }, consignee: { name: 'b', phone: '0901000012', idNumber: '2', address: 'y' }, horses: [{ horseId: 'H-001', name: 'S', microchip: 'VN-985211', breed: 'Thoroughbred', sex: 'gelding' as const, stall: 'standard' as const, targetTemp: 22, feeding: '', water: '', careNote: '', insurance: { opted: false } }] }; return d })() })
-    await vehiclesApi.update('VH-014', { status: 'available' })
     const b = await bookingsApi.activate(created.id, 'Quản lý', { id: 'KD-01', name: SP }, { id: 'DP-01', name: 'Trần Minh' })
     const route = buildRoutePlan(b, Date.now() + 40 * 86_400_000)
     const t = b.trips![0]
@@ -256,7 +259,6 @@ describe('sửa các lỗi nhỏ sau review', () => {
 })
 
 describe('cửa khẩu do Coordinator chốt', () => {
-  beforeAll(async () => { for (const v of await vehiclesApi.list()) await vehiclesApi.update(v.id, { status: 'available' }) })
   const loc = (id: string, c: 'VN' | 'KH' | 'LA') => ({ id, name: COUNTRY_LOCATIONS[c].find(l => l.id === id)!.name, country: c })
   const input = () => ({
     type: 'international' as const, origin: loc('KHO-DN', 'VN'), dest: loc('KHO-PNH', 'KH'),
@@ -291,5 +293,22 @@ describe('cửa khẩu do Coordinator chốt', () => {
     const route = buildRoutePlan(b, Date.now() + 40 * 86_400_000)
     const t = b.trips![0]
     expect((await bookingsApi.confirmPlan(id, 'Trần Minh', { trips: [{ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds }], route, gate: 'Mộc Bài – Bavet', note: '' })).gate).toBeUndefined()
+  })
+})
+
+describe('từ chối đơn (Flow 1)', () => {
+  it('Manager chỉ từ chối được đơn chờ tiếp nhận và phải ghi lý do; khách thấy lý do', async () => {
+    expect(await fail(bookingsApi.rejectOrder('ORD-2026-0101', 'Quản lý', 'manager', '  '))).toMatch(/lý do/)
+    expect(await fail(bookingsApi.rejectOrder('ORD-2026-0102', 'Quản lý', 'manager', 'Không nhận'))).toMatch(/chờ tiếp nhận/)
+    const b = await bookingsApi.rejectOrder('ORD-2026-0101', 'Quản lý', 'manager', 'Tuyến chưa khai thác')
+    expect(b.status).toBe('rejected')
+    const view = await customerBookingsApi.get(CUSTOMER.name, 'ORD-2026-0101')
+    expect(view!.rejection).toMatchObject({ role: 'manager', reason: 'Tuyến chưa khai thác' })
+  })
+  it('Coordinator không duyệt xe và lộ trình: đơn bị từ chối, không tiếp nhận lại được', async () => {
+    expect(await fail(bookingsApi.rejectOrder('ORD-2026-0101', 'Điều phối', 'coordinator', 'x'))).toMatch(/đang thẩm định/)
+    const b = await bookingsApi.rejectOrder('ORD-2026-0102', 'Điều phối', 'coordinator', 'Không đủ xe ngày D')
+    expect(b.status).toBe('rejected')
+    expect(await fail(bookingsApi.rejectOrder('ORD-2026-0102', 'Điều phối', 'coordinator', 'x'))).toMatch(/đang thẩm định/)
   })
 })

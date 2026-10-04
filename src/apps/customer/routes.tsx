@@ -12,6 +12,7 @@ import Step3ServicesPage from './features/booking/Step3ServicesPage'
 import Step4ReviewPage from './features/booking/Step4ReviewPage'
 import OrdersPage from './features/orders/OrdersPage'
 import OrderDetailPage from './features/orders/OrderDetailPage'
+import HistoryPage from './features/orders/HistoryPage'
 
 const C = ['customer'] as AppRoute['roles']
 
@@ -26,6 +27,7 @@ export const routes: AppRoute[] = [
   { path: '/booking/services', page: Step3ServicesPage, roles: C, title: 'Đặt chuyến · Dịch vụ & bảo hiểm', layout: 'customer' },
   { path: '/booking/review', page: Step4ReviewPage, roles: C, title: 'Đặt chuyến · Xác nhận & gửi', layout: 'customer' },
   { path: '/orders', page: OrdersPage, roles: C, title: 'Đơn của tôi', layout: 'customer' },
+  { path: '/history', page: HistoryPage, roles: C, title: 'Lịch sử đơn', layout: 'customer' },
   { path: '/orders/:id', page: OrderDetailPage, roles: C, title: 'Chi tiết đơn', example: 'ORD-2026-0105', layout: 'customer' },
 ]
 

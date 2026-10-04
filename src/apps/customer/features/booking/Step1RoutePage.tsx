@@ -12,6 +12,7 @@ import { Flag } from '@shared/ui/Flag'
 import { BookingShell } from './BookingShell'
 import { countriesOf, useBookingDraft } from './draft'
 import s from './Booking.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 type Partner = 'KH' | 'LA'
 const PARTNERS: Partner[] = ['KH', 'LA']
@@ -140,18 +141,18 @@ export default function Step1RoutePage() {
               <div className={s.grid2}>
                 <div className="form-group">
                   <label htmlFor="origin" className="required">Điểm đón ({COUNTRIES[countries.origin].name})</label>
-                  <select id="origin" className={`form-control ${submitted && errors.origin ? 'invalid' : ''}`} value={originId} onChange={e => setOriginId(e.target.value)}>
+                  <FormSelect id="origin" className={`form-control ${submitted && errors.origin ? 'invalid' : ''}`} value={originId} onChange={e => setOriginId(e.target.value)}>
                     <option value="">— Chọn điểm đón —</option>
                     {locations(countries.origin, type === 'domestic' ? destId : undefined).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  </FormSelect>
                   {show(errors.origin)}
                 </div>
                 <div className="form-group">
                   <label htmlFor="dest" className="required">Điểm giao ({COUNTRIES[countries.dest].name})</label>
-                  <select id="dest" className={`form-control ${submitted && errors.dest ? 'invalid' : ''}`} value={destId} onChange={e => setDestId(e.target.value)}>
+                  <FormSelect id="dest" className={`form-control ${submitted && errors.dest ? 'invalid' : ''}`} value={destId} onChange={e => setDestId(e.target.value)}>
                     <option value="">— Chọn điểm giao —</option>
                     {locations(countries.dest, type === 'domestic' ? originId : undefined).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  </FormSelect>
                   {show(errors.dest)}
                 </div>
               </div>

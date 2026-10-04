@@ -37,6 +37,7 @@ export type BookingStatus =
   | 'delivered_pending_settlement' // Flow 4
   | 'expenses_submitted' | 'settlement_issued' | 'payment_overdue' | 'completed' // Flow 6
   | 'cancelled' // khách hủy đơn (PRD mục 8.3)
+  | 'rejected' // nhà xe từ chối đơn: Manager lúc tiếp nhận hoặc Coordinator không duyệt lộ trình (PRD mục 2.3, 2.4)
 export type Tone = 'info' | 'warning' | 'success' | 'danger' | 'muted' | 'orange'
 export const BOOKING_STATUS: Record<BookingStatus, { code: string; label: string; customerLabel: string; tone: Tone }> = {
   pending_intake: { code: 'Pending Manager Intake', label: 'Chờ quản lý tiếp nhận', customerLabel: 'Đã gửi, chờ tiếp nhận', tone: 'info' },
@@ -59,10 +60,20 @@ export const BOOKING_STATUS: Record<BookingStatus, { code: string; label: string
   payment_overdue: { code: 'Payment Overdue', label: 'Khách quá hạn thanh toán quyết toán', customerLabel: 'Quá hạn thanh toán', tone: 'danger' },
   completed: { code: 'Order Completed', label: 'Đã hoàn tất', customerLabel: 'Đã hoàn tất', tone: 'success' },
   cancelled: { code: 'Cancelled', label: 'Khách đã hủy đơn', customerLabel: 'Đã hủy', tone: 'muted' },
+  rejected: { code: 'Order Rejected', label: 'Nhà xe đã từ chối đơn', customerLabel: 'Đơn bị từ chối', tone: 'danger' },
+}
+
+// Nhãn ngắn của trạng thái cho tab và bảng của nhân viên (nhãn đầy đủ nằm ở tooltip)
+export const STATUS_SHORT: Record<BookingStatus, string> = {
+  pending_intake: 'Chờ tiếp nhận', under_review: 'Thẩm định', pending_commercial: 'Chờ duyệt giá', awaiting_payment: 'Chờ đặt cọc', quote_expired: 'Hết hạn',
+  waybill_issued: 'Có vận đơn', clearance_in_progress: 'Làm giấy tờ', clearance_done: 'Giấy tờ xong', ready_for_pickup: 'Sẵn sàng đón', en_route_to_pickup: 'Đến điểm đón',
+  in_transit: 'Vận chuyển', incident_reported: 'Báo sự cố', pending_emergency_approval: 'Chờ duyệt khẩn cấp', emergency_plan_active: 'Xử lý sự cố',
+  delivered_pending_settlement: 'Đã giao', expenses_submitted: 'Chờ đối soát', settlement_issued: 'Chờ khách trả', payment_overdue: 'Quá hạn trả', completed: 'Hoàn tất',
+  cancelled: 'Đã hủy', rejected: 'Bị từ chối',
 }
 
 // Thứ tự trạng thái theo luồng (đầu → cuối); đơn đã đóng (hết hạn, hủy) xếp cuối. Dùng để sắp danh sách đơn.
-const CLOSED: BookingStatus[] = ['quote_expired', 'cancelled']
+const CLOSED: BookingStatus[] = ['quote_expired', 'cancelled', 'rejected']
 const MAIN_FLOW = (Object.keys(BOOKING_STATUS) as BookingStatus[]).filter(s => !CLOSED.includes(s))
 export const statusRank = (s: BookingStatus): number => (CLOSED.includes(s) ? MAIN_FLOW.length + CLOSED.indexOf(s) : MAIN_FLOW.indexOf(s))
 
@@ -74,12 +85,12 @@ export const stepOf = (s: BookingStatus): number => ({
   clearance_done: 5, ready_for_pickup: 5, en_route_to_pickup: 5,
   in_transit: 6, incident_reported: 6, pending_emergency_approval: 6, emergency_plan_active: 6,
   delivered_pending_settlement: 7, expenses_submitted: 7, settlement_issued: 7, payment_overdue: 7,
-  completed: BOOKING_STEPS.length, cancelled: 0,
+  completed: BOOKING_STEPS.length, cancelled: 0, rejected: 1,
 }[s])
 
 // Tra cứu công khai ở trang chủ chỉ cho thấy 5 bước gọn
 export const PUBLIC_STEPS = ['Gửi đơn', 'Thẩm định', 'Đặt cọc', 'Chuẩn bị chuyến', 'Vận chuyển']
-export const publicStepOf = (s: BookingStatus): number => (s === 'pending_intake' || s === 'cancelled' ? 0 : s === 'under_review' || s === 'pending_commercial' ? 1 : s === 'awaiting_payment' || s === 'quote_expired' ? 2 : ['in_transit', 'incident_reported', 'pending_emergency_approval', 'emergency_plan_active', 'delivered_pending_settlement', 'expenses_submitted', 'settlement_issued', 'payment_overdue', 'completed'].includes(s) ? 4 : 3)
+export const publicStepOf = (s: BookingStatus): number => (s === 'pending_intake' || s === 'cancelled' || s === 'rejected' ? 0 : s === 'under_review' || s === 'pending_commercial' ? 1 : s === 'awaiting_payment' || s === 'quote_expired' ? 2 : ['in_transit', 'incident_reported', 'pending_emergency_approval', 'emergency_plan_active', 'delivered_pending_settlement', 'expenses_submitted', 'settlement_issued', 'payment_overdue', 'completed'].includes(s) ? 4 : 3)
 
 // ===== Sự cố và chi phí (Flow 5, PRD mục 6, 11.5) =====
 export type IncidentKind = 'horse_health' | 'vehicle_breakdown' | 'border_congestion'

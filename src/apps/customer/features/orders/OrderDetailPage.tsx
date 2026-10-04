@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { BOOKING_STEPS, HORSE_DOC, INCIDENT_COST_POLICY, INCIDENT_KIND, stepOf, VEHICLE_CLASS } from '@shared/config/booking-rules'
+import { BOOKING_STEPS, HORSE_DOC, INCIDENT_COST_POLICY, stepOf, VEHICLE_CLASS } from '@shared/config/booking-rules'
 import { BANK, HOTLINE, REFUND_POLICY } from '@shared/config/business-rules'
 import { COUNTRIES } from '@shared/config/network'
 import { CANCELLABLE, cancelRefund, insuranceFee, vehicleClassOf } from '@shared/lib/booking'
@@ -12,15 +12,15 @@ import { horsesApi } from '@shared/services/horses'
 import { useLoad } from '@shared/services/useLoad'
 import { SEX_LABEL, type HorseProfile } from '@shared/types/booking'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
-import { ImageThumb } from '@shared/ui/ImageThumb'
 import { Modal } from '@shared/ui/Modal'
 import { QuoteSheet } from '@shared/ui/QuoteSheet'
 import { TripTimeline } from '@shared/ui/TripTimeline'
 import { useToast } from '@shared/ui/toast'
 import { useNow } from '@shared/ui/useNow'
 import { HorseFormModal } from '../horses/HorseFormModal'
+import { IncidentsCard, SettlementCard } from './SettlementCard'
 import { ClearanceProgressCard } from './ClearanceProgressCard'
-import { POST_PAYMENT, ROUTE_VISIBLE, nextStep } from './nextStep'
+import { POST_PAYMENT, ROUTE_STAGE, ROUTE_VISIBLE, nextStep } from './nextStep'
 import s from './OrderDetail.module.css'
 
 const TONE: Record<string, string> = { info: s.nextInfo, orange: s.nextOrange, warning: s.nextWarning, danger: s.nextDanger, success: s.nextSuccess, muted: s.nextMuted }
@@ -28,8 +28,10 @@ const placeName = (n: string) => n.split(' — ')[0]
 
 function Progress({ b }: { b: CustomerBookingView }) {
   const at = stepOf(b.status)
-  const expired = b.status === 'quote_expired'
+  const expired = b.status === 'quote_expired' || b.status === 'rejected'
   return (
+    <>
+    <p className={s.stepNow2}>{at >= BOOKING_STEPS.length ? 'Đơn đã hoàn tất' : `Bước ${at + 1}/${BOOKING_STEPS.length}: ${BOOKING_STEPS[at]}`}</p>
     <ol className={s.progress} aria-label="Tiến độ đơn">
       {BOOKING_STEPS.map((label, i) => {
         const done = i < at
@@ -42,6 +44,7 @@ function Progress({ b }: { b: CustomerBookingView }) {
         )
       })}
     </ol>
+    </>
   )
 }
 
@@ -80,6 +83,13 @@ function PayCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; 
   const toast = useToast()
   const [ok, setOk] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [why, setWhy] = useState('')
+  // Khách không đồng ý báo giá: đóng đơn (Cancelled), chưa cọc nên miễn phí
+  const reject = async () => {
+    setBusy(true)
+    try { await customerBookingsApi.cancel(owner, b.id, `Từ chối báo giá${why.trim() ? `: ${why.trim()}` : ''}`); toast('Đã từ chối báo giá, đơn được đóng và không mất phí'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không từ chối được', 'error'); setBusy(false) }
+  }
   const pay = async () => {
     setBusy(true)
     try { await customerBookingsApi.payDeposit(owner, b.id); toast('Đã đặt cọc, nhà xe bắt đầu làm giấy tờ'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không thanh toán được', 'error'); setBusy(false); onDone() }
@@ -107,6 +117,13 @@ function PayCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; 
       <label className={s.ack}><input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} /><span>Tôi đã đọc và đồng ý điều khoản vận chuyển, đồng ý đặt cọc {formatVND(b.quote!.deposit)}.</span></label>
       <button className="btn btn-primary btn-lg btn-full" disabled={!ok || busy} onClick={pay}>{busy ? 'Đang xử lý…' : 'Thanh toán cọc'}</button>
       <p className="form-hint" style={{ textAlign: 'center' }}>Bản thử nghiệm: bấm thanh toán là ghi nhận đã nhận cọc.</p>
+      <button className="btn btn-ghost btn-full" style={{ marginTop: 8 }} disabled={busy} onClick={() => setRejecting(true)}><i className="fa-solid fa-ban" /> Không đồng ý, từ chối báo giá</button>
+      {rejecting && (
+        <Modal onClose={() => setRejecting(false)} title="Từ chối báo giá?" subtitle="Bạn chưa đặt cọc nên không mất phí. Đơn sẽ đóng, xe và nhân sự được nhả cho đơn khác."
+          footer={<><button className="btn btn-ghost" onClick={() => setRejecting(false)}>Xem lại báo giá</button><button className="btn btn-danger" disabled={busy} onClick={reject}>Xác nhận từ chối</button></>}>
+          <div className="form-group" style={{ margin: 0 }}><label htmlFor="rq">Lý do (không bắt buộc)</label><textarea id="rq" className="form-control" rows={3} placeholder="Ví dụ: giá cao hơn dự kiến" value={why} onChange={e => setWhy(e.target.value)} /></div>
+        </Modal>
+      )}
     </div>
   )
 }
@@ -129,7 +146,7 @@ function TripsCard({ team }: { team: TripTeam[] }) {
 }
 
 // Thanh toán 70% còn lại vào ngày bốc ngựa
-function BalanceCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; onDone: () => void }) {
+function BalanceCard({ b, owner, onDone, showAction = true }: { b: CustomerBookingView; owner: string; onDone: () => void; showAction?: boolean }) {
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   if (!b.quote || !POST_PAYMENT.includes(b.status)) return null
@@ -145,59 +162,9 @@ function BalanceCard({ b, owner, onDone }: { b: CustomerBookingView; owner: stri
         <div><span>Đặt cọc 30%</span><b>{formatVND(b.payment?.amount ?? b.quote.deposit)} · đã trả</b></div>
         <div><span>Còn lại 70% (ngày bốc ngựa)</span><b>{formatVND(b.quote.balance)}{b.balance ? ' · đã trả' : ''}</b></div>
       </div>
-      {canPay && <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 12 }} disabled={busy} onClick={pay}>{busy ? 'Đang xử lý…' : `Thanh toán ${formatVND(b.quote.balance)}`}</button>}
-      {!b.balance && !canPay && <p className="form-hint" style={{ marginTop: 10 }}>Nút thanh toán sẽ mở khi xe sẵn sàng đón ngựa.</p>}
-      {canPay && <p className="form-hint" style={{ textAlign: 'center' }}>Bản thử nghiệm: bấm thanh toán là ghi nhận đã nhận tiền.</p>}
-    </div>
-  )
-}
-
-// Diễn biến sự cố của xe (PRD mục 6.7): khách thấy nhóm, bước xử lý và ETA mới
-function IncidentsCard({ b }: { b: CustomerBookingView }) {
-  if (!b.incidents?.length) return null
-  const step = (i: NonNullable<CustomerBookingView['incidents']>[number]) => i.status === 'resolved' ? `Đã xử lý xong lúc ${formatDateTime(i.resolvedAt!)}, xe tiếp tục hành trình` : i.status === 'active' ? `Đang xử lý theo phương án đã duyệt${i.newEta ? `, thời gian dự kiến mới ${formatDateTime(i.newEta)}` : ''}` : 'Nhà xe đang lập và duyệt phương án, Quản lý sẽ gọi điện cho bạn'
-  return (
-    <div className="card">
-      <div className="card-header"><h3><i className="fa-solid fa-triangle-exclamation" /> Sự cố trên đường</h3></div>
-      {b.incidents.map(i => <p key={i.id} style={{ margin: '8px 0' }}><b>{INCIDENT_KIND[i.kind].label}</b> · báo lúc {formatDateTime(i.reportedAt)}<br /><span className="text-muted">{step(i)}. Ngựa được hộ tống chăm sóc liên tục.</span></p>)}
-    </div>
-  )
-}
-
-// Bảng quyết toán sau chuyến: chỉ các khoản khách chịu (kèm ảnh chứng từ), thanh toán và chấm điểm (Flow 6)
-function SettlementCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; onDone: () => void }) {
-  const toast = useToast()
-  const [busy, setBusy] = useState(false)
-  const [r, setR] = useState({ trip: 5, driver: 5, escort: 5, comment: '' })
-  const st = b.settlement
-  if (!st) return null
-  const open = b.status === 'settlement_issued' || b.status === 'payment_overdue'
-  const submit = async () => {
-    setBusy(true)
-    try { await customerBookingsApi.settle(owner, b.id, r); toast(st.total ? 'Đã thanh toán và gửi đánh giá. Đơn hoàn tất' : 'Đã gửi đánh giá. Đơn hoàn tất'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không thực hiện được', 'error'); setBusy(false) }
-  }
-  const stars = (key: 'trip' | 'driver' | 'escort', label: string) => (
-    <div className="form-group" style={{ margin: 0 }}><label htmlFor={`rt-${key}`}>{label}</label>
-      <select id={`rt-${key}`} className="form-control" value={r[key]} onChange={e => setR({ ...r, [key]: Number(e.target.value) })}>{[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{n} sao</option>)}</select></div>
-  )
-  return (
-    <div className="card">
-      <div className="card-header"><h3><i className="fa-solid fa-file-invoice-dollar" /> Bảng quyết toán</h3>{b.status === 'payment_overdue' && <span className="badge badge-danger">Quá hạn</span>}{b.status === 'completed' && <span className="badge badge-success">Đã hoàn tất</span>}</div>
-      <p className="form-hint">Giá chuyến đã cố định từ lúc báo giá, nhiên liệu và cầu đường không tính thêm. Dưới đây là các khoản phát sinh do ngựa mà bạn chịu theo chính sách.</p>
-      {st.items.length ? (
-        <div className={s.bank}>{st.items.map((it, i) => <div key={i}><span>{it.photo && <ImageThumb name={it.photo} size={32} />} {it.label}</span><b>{formatVND(it.amount)}</b></div>)}<div><span>Tổng phải trả</span><b>{formatVND(st.total)}</b></div></div>
-      ) : <p>Không có khoản nào phải trả thêm.</p>}
-      {open && st.total > 0 && <p className="form-hint" style={{ marginTop: 8 }}>Hạn thanh toán: {formatDateTime(st.dueAt)}. Quá hạn, tài khoản bị khóa đặt đơn mới.</p>}
-      {open && (
-        <>
-          <h4 style={{ margin: '16px 0 8px' }}>Đánh giá chuyến đi</h4>
-          <div className={s.grid}>{stars('trip', 'Chuyến đi')}{stars('driver', 'Độ êm ái, an toàn của xe (tài xế)')}{stars('escort', 'Chuyên nghiệp, sức khỏe ngựa (hộ tống)')}</div>
-          <div className="form-group"><label htmlFor="rt-note">Nhận xét</label><input id="rt-note" className="form-control" value={r.comment} onChange={e => setR({ ...r, comment: e.target.value })} /></div>
-          <button className="btn btn-primary btn-lg btn-full" disabled={busy} onClick={submit}>{busy ? 'Đang xử lý…' : st.total ? `Thanh toán ${formatVND(st.total)} và gửi đánh giá` : 'Xác nhận và gửi đánh giá'}</button>
-          {st.total > 0 && <p className="form-hint" style={{ textAlign: 'center' }}>Bản thử nghiệm: bấm thanh toán là ghi nhận đã nhận tiền.</p>}
-        </>
-      )}
-      {b.rating && <p style={{ marginTop: 12 }}>Bạn đã chấm: chuyến {b.rating.trip}/5, tài xế {b.rating.driver}/5, hộ tống {b.rating.escort}/5{b.rating.comment ? `. "${b.rating.comment}"` : ''}</p>}
+      {canPay && showAction && <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 12 }} disabled={busy} onClick={pay}>{busy ? 'Đang xử lý…' : `Thanh toán ${formatVND(b.quote.balance)}`}</button>}
+      {!b.balance && !canPay && showAction && <p className="form-hint" style={{ marginTop: 10 }}>Nút thanh toán sẽ mở khi xe sẵn sàng đón ngựa.</p>}
+      {canPay && showAction && <p className="form-hint" style={{ textAlign: 'center' }}>Bản thử nghiệm: bấm thanh toán là ghi nhận đã nhận tiền.</p>}
     </div>
   )
 }
@@ -272,6 +239,9 @@ function RouteCard({ b }: { b: CustomerBookingView }) {
   )
 }
 
+type Tab = 'journey' | 'docs' | 'pay' | 'history' | 'info'
+const TAB_LABEL: Record<Tab, string> = { journey: 'Hành trình', docs: 'Giấy tờ', pay: 'Thanh toán', history: 'Lịch sử', info: 'Thông tin đơn' }
+
 export default function OrderDetailPage() {
   const { id = '' } = useParams()
   const { session } = useAuth()
@@ -279,6 +249,7 @@ export default function OrderDetailPage() {
   const now = useNow()
   const { data: b, reload } = useLoad(() => customerBookingsApi.get(owner, id), [owner, id])
   const [cancelling, setCancelling] = useState(false)
+  const [picked, setPicked] = useState<Tab | null>(null)
   const { data: team = [] } = useLoad(() => customerBookingsApi.team(owner, id), [owner, id, b?.status])
   const reloadAll = () => reload()
   // Đang chạy: cập nhật định kỳ để thấy mốc check-in mới
@@ -287,6 +258,11 @@ export default function OrderDetailPage() {
 
   if (b === undefined) return <div className="page"><div className="wrap"><p className="text-muted">Đang tải…</p></div></div>
   const next = nextStep(b, now)
+  const hasJourney = (b.trips ?? []).some(t => t.run) || (ROUTE_VISIBLE.includes(b.status) && !!b.route)
+  const tabs: Tab[] = [...(hasJourney ? ['journey' as const] : []), ...(POST_PAYMENT.includes(b.status) ? ['docs' as const] : []), ...(b.quote ? ['pay' as const] : []), 'history', 'info']
+  // Tab mặc định theo giai đoạn: đang đi đường thì Hành trình, đang làm giấy thì Giấy tờ, còn lại Thanh toán / Thông tin
+  const auto: Tab = ROUTE_STAGE.includes(b.status) ? 'journey' : POST_PAYMENT.includes(b.status) ? 'docs' : b.quote ? 'pay' : 'info'
+  const tab = picked && tabs.includes(picked) ? picked : tabs.includes(auto) ? auto : 'info'
   // Hạng của từng xe khi đã chốt (đơn nhiều xe liệt kê hết), chưa chốt thì theo số ngựa
   const clsLabel = (team.length ? team.map(t => t.vehicle.stalls) : [Math.max(b.horses.length, 1)]).map(n => VEHICLE_CLASS[vehicleClassOf(n)].label).join(' + ')
   const events = [
@@ -300,91 +276,123 @@ export default function OrderDetailPage() {
     ...(b.settlement ? [{ time: b.settlement.issuedAt, text: 'Nhà xe phát hành bảng quyết toán' }] : []),
     ...(b.settlement?.paid ? [{ time: b.settlement.paid.paidAt, text: 'Hoàn tất quyết toán và đánh giá, đóng đơn' }] : []),
   ].sort((x, y) => x.time - y.time)
+  const route = `${placeName(b.origin.name)} → ${placeName(b.dest.name)}`
+  const payOpen = b.status === 'settlement_issued' || b.status === 'payment_overdue'
+  const canPayBalance = !b.balance && (b.status === 'ready_for_pickup' || b.status === 'en_route_to_pickup')
+  const needResubmit = b.status === 'under_review' && b.medical?.status === 'resubmit'
 
   return (
     <div className="page">
       <div className="wrap">
         <div className="breadcrumb"><Link to="/portal">Trang chủ</Link> / <Link to="/orders">Đơn của tôi</Link> / <span className="text-orange font-semibold">{b.id}</span></div>
-        <div className={`page-header ${s.titleRow}`}><h1>Đơn {b.id}</h1><BookingStatusBadge status={b.status} /></div>
+        <div className={`page-header ${s.titleRow}`}><div><h1>Đơn {b.id}</h1><p>{route} · khởi hành {formatDate(b.departAt)} · {b.horses.length} ngựa</p></div><BookingStatusBadge status={b.status} /></div>
 
-        <div className={s.layout}>
-          <div className={s.main}>
-            <Progress b={b} />
-            <div className={`${s.next} ${TONE[next.tone]}`} role="status">
-              <i className={`fa-solid ${next.icon}`} aria-hidden="true" />
-              <div><h2>{next.title}</h2><p>{next.text}</p></div>
+        <div className={s.main}>
+          <Progress b={b} />
+
+          {/* Việc của bạn bây giờ: thẻ nổi + form hành động ngay bên dưới */}
+          <div className={`${s.next} ${TONE[next.tone]}`} role="status">
+            <i className={`fa-solid ${next.icon}`} aria-hidden="true" />
+            <div className={s.nextBody}>
+              <span className={s.nextTag}>{next.actionNeeded ? 'Việc của bạn bây giờ' : 'Bạn không cần làm gì lúc này'}</span>
+              <h2>{next.title}</h2><p>{next.text}</p>
+              {b.status === 'rejected' && <Link to="/booking/route" className="btn btn-primary"><i className="fa-solid fa-plus" /> Đặt chuyến mới</Link>}
+              {next.cta && <a href="#viec-cua-ban" className="btn btn-primary" onClick={e => { e.preventDefault(); document.getElementById('viec-cua-ban')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>{next.cta} <i className="fa-solid fa-arrow-down" /></a>}
             </div>
+          </div>
+          {(needResubmit || b.status === 'awaiting_payment' || canPayBalance || payOpen) && (
+            <div id="viec-cua-ban" className={s.main}>
+              {needResubmit && <Resubmit b={b} owner={owner} onDone={reloadAll} />}
+              {b.status === 'awaiting_payment' && b.quote && <PayCard b={b} owner={owner} onDone={reloadAll} />}
+              {canPayBalance && <BalanceCard b={b} owner={owner} onDone={reloadAll} />}
+              {payOpen && <SettlementCard b={b} owner={owner} onDone={reloadAll} />}
+            </div>
+          )}
 
-            {b.status === 'under_review' && b.medical?.status === 'resubmit' && <Resubmit b={b} owner={owner} onDone={reloadAll} />}
+          <div className={s.tabs} role="tablist" aria-label="Chi tiết đơn">
+            {tabs.map(k => <button key={k} role="tab" aria-selected={tab === k} className={`${s.tab} ${tab === k ? s.tabOn : ''}`} onClick={() => setPicked(k)}>{TAB_LABEL[k]}</button>)}
+          </div>
 
-            {(b.trips ?? []).some(t => t.run) && (
+          {tab === 'journey' && (
+            <>
+              {(b.trips ?? []).some(t => t.run) && (
+                <div className="card">
+                  <div className="card-header"><h3><i className="fa-solid fa-location-dot" /> Hành trình</h3>{b.status === 'in_transit' && <span className="badge badge-info">Đang chạy</span>}</div>
+                  {b.trips!.filter(t => t.run).map((t, i) => (
+                    <div key={t.tripId}>
+                      {b.trips!.length > 1 && <p className="form-hint" style={{ margin: '8px 0' }}><b>Xe {b.trips!.indexOf(t) + 1}</b> · {t.tripId}</p>}
+                      <TripTimeline trip={t} now={now} />
+                      {i < b.trips!.filter(x => x.run).length - 1 && <hr style={{ margin: '14px 0' }} />}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <IncidentsCard b={b} />
+              {ROUTE_VISIBLE.includes(b.status) && b.route && <RouteCard b={b} />}
+              <TripsCard team={team} />
+            </>
+          )}
+
+          {tab === 'docs' && <ClearanceProgressCard b={b} owner={owner} onDone={reloadAll} />}
+
+          {tab === 'pay' && (
+            <>
+              {POST_PAYMENT.includes(b.status) && <BalanceCard b={b} owner={owner} onDone={reloadAll} showAction={false} />}
+              {!payOpen && <SettlementCard b={b} owner={owner} onDone={reloadAll} />}
+              {b.quote && (
+                <div className="card">
+                  <div className="card-header"><h3><i className="fa-solid fa-file-invoice-dollar" /> Báo giá</h3></div>
+                  <QuoteSheet {...b.quote} expiresAt={b.status === 'awaiting_payment' ? b.quote.expiresAt : undefined} />
+                </div>
+              )}
+              <IncidentPolicy />
+            </>
+          )}
+
+          {tab === 'history' && (
+            <>
               <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-location-dot" /> Hành trình</h3>{b.status === 'in_transit' && <span className="badge badge-info">Đang chạy</span>}</div>
-                {b.trips!.filter(t => t.run).map((t, i) => (
-                  <div key={t.tripId}>
-                    {b.trips!.length > 1 && <p className="form-hint" style={{ margin: '8px 0' }}><b>Xe {b.trips!.indexOf(t) + 1}</b> · {t.tripId}</p>}
-                    <TripTimeline trip={t} now={now} />
-                    {i < b.trips!.filter(x => x.run).length - 1 && <hr style={{ margin: '14px 0' }} />}
+                <div className="card-header"><h3><i className="fa-solid fa-clock-rotate-left" /> Lịch sử đơn</h3></div>
+                <ol className={s.timeline}>
+                  {events.map(e => <li key={e.time + e.text} className={s.tl}><span className={s.tlDot}><i className="fa-solid fa-check" aria-hidden="true" /></span><div>{e.text}<div className={s.tlTime}>{formatDateTime(e.time)}</div></div></li>)}
+                </ol>
+              </div>
+            </>
+          )}
+
+          {tab === 'info' && (
+            <>
+              <div className="card">
+                <div className="card-header"><h3><i className="fa-solid fa-route" /> Chuyến đi</h3></div>
+                <dl className={s.grid}>
+                  <div><dt>Loại chuyến</dt><dd>{b.type === 'international' ? `Quốc tế (${COUNTRIES[b.origin.country].name} → ${COUNTRIES[b.dest.country].name})` : 'Trong nước'}</dd></div>
+                  <div><dt>Ngày khởi hành</dt><dd>{formatDate(b.departAt)}</dd></div>
+                  <div><dt>Điểm đón</dt><dd>{placeName(b.origin.name)}</dd></div>
+                  <div><dt>Điểm giao</dt><dd>{placeName(b.dest.name)}</dd></div>
+                  {b.gate && <div><dt>Cửa khẩu (đã khóa)</dt><dd>{b.gate}</dd></div>}
+                  <div><dt>Người gửi</dt><dd>{b.consignor.name}</dd></div>
+                  <div><dt>Người nhận</dt><dd>{b.consignee.name}</dd></div>
+                </dl>
+              </div>
+              <div className="card">
+                <div className="card-header"><h3><i className="fa-solid fa-horse-head" /> {b.horses.length} ngựa · xe {clsLabel}</h3></div>
+                {b.horses.map(h => (
+                  <div key={h.horseId} className={s.horseRow}>
+                    <div><b>{h.name}</b> <small>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</small></div>
+                    <div style={{ textAlign: 'right' }}>{h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {h.targetTemp}°C</div>
+                    <small>{h.insurance.opted ? `Mua bảo hiểm, phí ${formatVND(insuranceFee(h.breed))}` : 'Từ chối bảo hiểm (trách nhiệm hạn chế)'}</small>
                   </div>
                 ))}
               </div>
-            )}
-            {ROUTE_VISIBLE.includes(b.status) && b.route && <RouteCard b={b} />}
-            {POST_PAYMENT.includes(b.status) && <ClearanceProgressCard b={b} owner={owner} onDone={reloadAll} />}
-            {ROUTE_VISIBLE.includes(b.status) && <TripsCard team={team} />}
-            <BalanceCard b={b} owner={owner} onDone={reloadAll} />
-            <IncidentsCard b={b} />
-            <SettlementCard b={b} owner={owner} onDone={reloadAll} />
-
-            {b.quote && (
               <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-file-invoice-dollar" /> Báo giá</h3></div>
-                <QuoteSheet {...b.quote} expiresAt={b.status === 'awaiting_payment' ? b.quote.expiresAt : undefined} />
+                <div className="card-header"><h3><i className="fa-solid fa-rotate-left" /> Hủy đơn và hoàn cọc</h3></div>
+                <table className={s.policy}><tbody>{REFUND_POLICY.map(([c, r]) => <tr key={c}><td>{c}</td><td>{r}</td></tr>)}</tbody></table>
+                {CANCELLABLE.includes(b.status) && <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setCancelling(true)}><i className="fa-solid fa-ban" /> Hủy đơn này</button>}
               </div>
-            )}
+            </>
+          )}
 
-            {b.status === 'awaiting_payment' && b.quote && <PayCard b={b} owner={owner} onDone={reloadAll} />}
-            {b.quote && <IncidentPolicy />}
-
-            <div className="card">
-              <div className="card-header"><h3><i className="fa-solid fa-route" /> Chuyến đi</h3></div>
-              <dl className={s.grid}>
-                <div><dt>Loại chuyến</dt><dd>{b.type === 'international' ? `Quốc tế (${COUNTRIES[b.origin.country].name} → ${COUNTRIES[b.dest.country].name})` : 'Trong nước'}</dd></div>
-                <div><dt>Ngày khởi hành</dt><dd>{formatDate(b.departAt)}</dd></div>
-                <div><dt>Điểm đón</dt><dd>{placeName(b.origin.name)}</dd></div>
-                <div><dt>Điểm giao</dt><dd>{placeName(b.dest.name)}</dd></div>
-                {b.gate && <div><dt>Cửa khẩu (đã khóa)</dt><dd>{b.gate}</dd></div>}
-                <div><dt>Người gửi</dt><dd>{b.consignor.name}</dd></div>
-                <div><dt>Người nhận</dt><dd>{b.consignee.name}</dd></div>
-              </dl>
-            </div>
-
-            <div className="card">
-              <div className="card-header"><h3><i className="fa-solid fa-horse-head" /> {b.horses.length} ngựa · xe {clsLabel}</h3></div>
-              {b.horses.map(h => (
-                <div key={h.horseId} className={s.horseRow}>
-                  <div><b>{h.name}</b> <small>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</small></div>
-                  <div style={{ textAlign: 'right' }}>{h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {h.targetTemp}°C</div>
-                  <small>{h.insurance.opted ? `Mua bảo hiểm, phí ${formatVND(insuranceFee(h.breed))}` : 'Từ chối bảo hiểm (trách nhiệm hạn chế)'}</small>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <aside className={s.side}>
-            <div className="card">
-              <div className="card-header"><h3><i className="fa-solid fa-clock-rotate-left" /> Diễn biến</h3></div>
-              <ol className={s.timeline}>
-                {events.map(e => <li key={e.time + e.text} className={s.tl}><span className={s.tlDot}><i className="fa-solid fa-check" aria-hidden="true" /></span><div>{e.text}<div className={s.tlTime}>{formatDateTime(e.time)}</div></div></li>)}
-              </ol>
-            </div>
-            <div className="card">
-              <div className="card-header"><h3><i className="fa-solid fa-rotate-left" /> Hủy đơn và hoàn cọc</h3></div>
-              <table className={s.policy}><tbody>{REFUND_POLICY.map(([c, r]) => <tr key={c}><td>{c}</td><td>{r}</td></tr>)}</tbody></table>
-              {CANCELLABLE.includes(b.status) && <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setCancelling(true)}><i className="fa-solid fa-ban" /> Hủy đơn này</button>}
-              <p className="form-hint" style={{ marginTop: 10 }}>Cần hỗ trợ? Gọi <a href={`tel:${HOTLINE.replace(/\s/g, '')}`} className="text-orange font-semibold">{HOTLINE}</a>.</p>
-            </div>
-          </aside>
+          <p className="form-hint">Cần hỗ trợ? Gọi <a href={`tel:${HOTLINE.replace(/\s/g, '')}`} className="text-orange font-semibold">{HOTLINE}</a>.</p>
         </div>
       </div>
       {cancelling && <CancelModal b={b} owner={owner} onClose={() => setCancelling(false)} onDone={() => { setCancelling(false); reloadAll() }} />}

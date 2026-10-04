@@ -50,10 +50,10 @@ describe('xe và ngựa trên xe', () => {
       expect(placed.slice().sort(), b.id).toEqual(b.horses.map(h => h.horseId).sort())
       expect(new Set(b.trips!.map(t => t.vehicleId)).size, b.id).toBe(b.trips!.length)
       expect(new Set(b.trips!.map(t => t.escortId)).size, b.id).toBe(b.trips!.length)
+      expect(new Set(b.trips!.map(t => t.driverId)).size, b.id).toBe(b.trips!.length)
       b.trips!.forEach((t, i) => {
         const v = vehicles.find(x => x.id === t.vehicleId)!
         expect(t.horseIds.length, `${b.id} ${t.tripId}`).toBeLessThanOrEqual(v.capacity)
-        expect(t.driverId, `${b.id} ${t.tripId}`).toBe(v.driverId)
         expect(t.tripId, b.id).toBe(`TRP-${b.id.slice(-4)}-${i + 1}`)
       })
     })

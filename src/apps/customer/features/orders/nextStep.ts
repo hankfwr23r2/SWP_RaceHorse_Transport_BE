@@ -1,7 +1,7 @@
 // "Bước tiếp theo" của đơn phía khách: mỗi trạng thái nói rõ khách đang chờ ai, hoặc cần làm gì.
 import { HOUR } from '@shared/config/business-rules'
 import type { Tone } from '@shared/config/booking-rules'
-import { clearanceProgress, currentCheckpoint } from '@shared/lib/booking'
+import { clearanceProgress, currentCheckpoint, orderGroupOf } from '@shared/lib/booking'
 import { formatDateTime, formatVND, timeLeftText } from '@shared/lib/format'
 import type { CustomerBookingView } from '@shared/services/bookings'
 
@@ -18,12 +18,13 @@ export interface NextStep {
   title: string
   text: string
   actionNeeded: boolean // khách phải làm gì đó
+  cta?: string // tên nút việc khách cần làm (chỉ khi actionNeeded)
 }
 
 // Xe đang chạy đầu tiên (đơn nhiều xe): mốc hiện tại của xe đó
 const activeTrip = (b: CustomerBookingView) => b.trips?.find(t => t.run?.startedAt && !t.run.deliveredAt)
 
-export function nextStep(b: CustomerBookingView, now: number): NextStep {
+function baseStep(b: CustomerBookingView, now: number): NextStep {
   switch (b.status) {
     case 'pending_intake':
       return { tone: 'info', icon: 'fa-inbox', title: 'Đang chờ Quản lý tiếp nhận', text: 'Quản lý sẽ giao Kiểm dịch viên và Điều phối viên thẩm định đơn của bạn.', actionNeeded: false }
@@ -72,6 +73,8 @@ export function nextStep(b: CustomerBookingView, now: number): NextStep {
     }
     case 'completed':
       return { tone: 'success', icon: 'fa-circle-check', title: 'Đơn đã hoàn tất', text: 'Cảm ơn bạn. Lịch sử chuyến đã được ghi vào hồ sơ ngựa.', actionNeeded: false }
+    case 'rejected':
+      return { tone: 'danger', icon: 'fa-circle-xmark', title: 'Nhà xe không nhận đơn này', text: `${b.rejection?.role === 'coordinator' ? 'Điều phối viên không xếp được xe và lộ trình' : 'Quản lý không tiếp nhận đơn'}. Lý do: ${b.rejection?.reason ?? 'không nêu'}. Bạn có thể chỉnh lại và đặt chuyến mới.`, actionNeeded: false }
     case 'cancelled':
       return { tone: 'muted', icon: 'fa-ban', title: 'Đơn đã hủy', text: b.cancellation ? (b.payment ? `Hoàn ${formatVND(b.cancellation.refund)} về tài khoản bạn dùng để thanh toán.` : 'Đơn hủy khi chưa đặt cọc, không phát sinh phí.') : 'Đơn đã hủy.', actionNeeded: false }
     case 'delivered_pending_settlement': {
@@ -79,4 +82,23 @@ export function nextStep(b: CustomerBookingView, now: number): NextStep {
       return { tone: 'success', icon: 'fa-flag-checkered', title: 'Đã giao ngựa an toàn', text: `Ngựa đã được bàn giao cho người nhận${at ? ` lúc ${formatDateTime(at)}` : ''}. Giá đã cố định nên bạn không phải trả thêm, trừ khi có khoản phát sinh liên quan đến ngựa (nếu có, chúng tôi sẽ gửi bảng quyết toán).`, actionNeeded: false }
     }
   }
+}
+
+// Đơn đã giao đang chờ nghiệm thu, hoặc đã nghiệm thu xong
+export const isAcceptance = (b: CustomerBookingView) => orderGroupOf(b) === 'settle' || (b.status === 'completed' && !!b.settlement)
+
+// Tên nút theo việc khách cần làm, dùng ở danh sách đơn và chi tiết đơn
+function ctaOf(b: CustomerBookingView): string {
+  switch (b.status) {
+    case 'under_review': return 'Bổ sung hồ sơ'
+    case 'awaiting_payment': return 'Đặt cọc 30%'
+    case 'ready_for_pickup': case 'en_route_to_pickup': return 'Thanh toán 70%'
+    case 'settlement_issued': case 'payment_overdue': return b.settlement?.total ? 'Thanh toán quyết toán' : 'Đánh giá chuyến đi'
+    default: return 'Xử lý ngay'
+  }
+}
+
+export function nextStep(b: CustomerBookingView, now: number): NextStep {
+  const n = baseStep(b, now)
+  return n.actionNeeded ? { ...n, cta: ctaOf(b) } : n
 }

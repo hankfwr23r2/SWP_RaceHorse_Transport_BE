@@ -24,3 +24,5 @@
 .otdList li span:last-child { text-align: right; }
 
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+
+.sectionTitle { font-size: 1.05rem; margin: 0 0 12px; color: var(--navy); }

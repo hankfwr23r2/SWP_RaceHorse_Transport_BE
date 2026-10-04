@@ -21,15 +21,16 @@ const ICON: Record<BookingStatus, string> = {
   payment_overdue: 'fa-circle-exclamation',
   completed: 'fa-circle-check',
   cancelled: 'fa-ban',
+  rejected: 'fa-circle-xmark',
 }
 const CLASS: Record<Tone, string> = { info: 'badge-info', warning: 'badge-warning', success: 'badge-success', danger: 'badge-danger', muted: 'badge-muted', orange: 'badge-orange' }
 
 // Nhãn trạng thái đơn. Khách thấy nhãn dễ hiểu; nội bộ thấy nhãn nghiệp vụ, mã gốc theo PRD nằm ở tooltip.
-export function BookingStatusBadge({ status, audience = 'customer' }: { status: BookingStatus; audience?: 'customer' | 'staff' }) {
+export function BookingStatusBadge({ status, audience = 'customer', text }: { status: BookingStatus; audience?: 'customer' | 'staff'; text?: string }) {
   const s = BOOKING_STATUS[status]
   return (
-    <span className={`badge ${CLASS[s.tone]}`} title={s.code}>
-      <i className={`fa-solid ${ICON[status]}`} aria-hidden="true" /> {audience === 'customer' ? s.customerLabel : s.label}
+    <span className={`badge ${CLASS[s.tone]}`} title={text ? `${s.label} (${s.code})` : s.code}>
+      <i className={`fa-solid ${ICON[status]}`} aria-hidden="true" /> {text ?? (audience === 'customer' ? s.customerLabel : s.label)}
     </span>
   )
 }

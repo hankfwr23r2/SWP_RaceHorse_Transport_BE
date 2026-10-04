@@ -2,6 +2,7 @@
 import type { AppRoute } from '@shared/routing/types'
 import { SitemapPage } from '../sitemap/SitemapPage'
 import { ManagerLoginPage, StaffLoginPage } from './features/auth/StaffLoginPage'
+import AccountsPage from './features/admin/accounts/AccountsPage'
 import IntakePage from './features/manager/intake/IntakePage'
 import ApprovalsPage from './features/manager/approvals/ApprovalsPage'
 import ProgressPage from './features/manager/progress/ProgressPage'
@@ -23,6 +24,7 @@ import CrewDetailPage from './features/coordinator/crew/CrewDetailPage'
 import DriverPage from './features/driver/DriverPage'
 import EscortPage from './features/escort/EscortPage'
 
+const A: AppRoute['roles'] = ['admin']
 const M: AppRoute['roles'] = ['manager']
 const SP: AppRoute['roles'] = ['specialist']
 const CO: AppRoute['roles'] = ['coordinator']
@@ -30,6 +32,9 @@ const CO: AppRoute['roles'] = ['coordinator']
 export const routes: AppRoute[] = [
   { path: '/login', page: StaffLoginPage, roles: [], title: 'Đăng nhập nội bộ', layout: 'bare' },
   { path: '/manager/login', page: ManagerLoginPage, roles: [], title: 'Đăng nhập Quản lý', layout: 'bare' },
+
+  { path: '/admin/accounts', page: AccountsPage, roles: A, title: 'Tài khoản hệ thống', layout: 'staff' },
+  { path: '/admin/accounts/:role', page: AccountsPage, roles: A, title: 'Tài khoản theo loại', example: 'locked', layout: 'staff' },
 
   { path: '/manager', page: DashboardPage, roles: M, title: 'Bảng điều khiển', layout: 'staff' },
   { path: '/manager/intake', page: IntakePage, roles: M, title: 'Tiếp nhận đơn hàng', layout: 'staff' },

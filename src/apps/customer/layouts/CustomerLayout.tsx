@@ -13,6 +13,7 @@ const MENU: [string, string][] = [
   ['/horses', 'Hồ sơ ngựa'],
   ['/booking/route', 'Đặt chuyến mới'],
   ['/orders', 'Đơn của tôi'],
+  ['/history', 'Lịch sử đơn'],
 ]
 
 const isActive = (to: string, path: string) =>

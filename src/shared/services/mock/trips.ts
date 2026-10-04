@@ -7,7 +7,7 @@
 import { atTime } from '../../lib/dates'
 import { legsFromStops } from '../../lib/trip'
 import type { Order } from '../../types/order'
-import { seedCrew, seedVehicles } from './fleet'
+import { seedCrew, seedDriverOf, seedVehicles } from './fleet'
 import { seedOrders } from './orders'
 import { seedOtherOrders } from './orders-others'
 
@@ -30,7 +30,7 @@ function legsOf(o: Order): Leg[] {
   const crew = seedCrew()
   const v = o.review && vehicles.find(x => o.review!.vehicle.startsWith(x.plate))
   const escort = o.review && crew.find(c => c.role === 'escort' && o.review!.grooms.startsWith(c.name))
-  return legsFromStops(o.stops, o.from, o.to).map(([from, to], i) => leg(i + 1, from, to, v?.id ?? '', v?.driverId ?? '', escort?.id ?? ''))
+  return legsFromStops(o.stops, o.from, o.to).map(([from, to], i) => leg(i + 1, from, to, v?.id ?? '', v ? seedDriverOf(v.id) : '', escort?.id ?? ''))
 }
 
 // Đơn đã qua bước lập lộ trình mà chưa có chuyến ghi sẵn

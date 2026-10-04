@@ -7,6 +7,7 @@ import { SEX_LABEL, type HorseDoc, type HorseProfile, type Sex } from '@shared/t
 import { FileField } from '@shared/ui/FileField'
 import { Modal } from '@shared/ui/Modal'
 import s from './Horses.module.css'
+import { FormSelect } from '@shared/ui/FormSelect'
 
 type Errors = Partial<Record<'name' | 'microchip' | 'color' | 'birthYear' | HorseDocType | `${HorseDocType}Expiry`, string>>
 
@@ -91,11 +92,11 @@ export function HorseFormModal({ owner, horse, onClose, onSaved }: Props) {
             </div>
             <div className="form-group">
               <label htmlFor="h-breed">Giống</label>
-              <select id="h-breed" className="form-control" value={breed} onChange={e => setBreed(e.target.value)}>{BREEDS.map(b => <option key={b}>{b}</option>)}</select>
+              <FormSelect id="h-breed" className="form-control" value={breed} onChange={e => setBreed(e.target.value)}>{BREEDS.map(b => <option key={b}>{b}</option>)}</FormSelect>
             </div>
             <div className="form-group">
               <label htmlFor="h-sex">Giới tính</label>
-              <select id="h-sex" className="form-control" value={sex} onChange={e => setSex(e.target.value as Sex)}>{(Object.keys(SEX_LABEL) as Sex[]).map(k => <option key={k} value={k}>{SEX_LABEL[k]}</option>)}</select>
+              <FormSelect id="h-sex" className="form-control" value={sex} onChange={e => setSex(e.target.value as Sex)}>{(Object.keys(SEX_LABEL) as Sex[]).map(k => <option key={k} value={k}>{SEX_LABEL[k]}</option>)}</FormSelect>
             </div>
             <div className="form-group">
               <label htmlFor="h-color" className="required">Màu lông</label>

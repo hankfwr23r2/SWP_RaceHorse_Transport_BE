@@ -7,7 +7,7 @@ import { blankClearance, settlementOf, buildCheckpoints, buildRoutePlan, finaliz
 import { daysFromToday } from '../../lib/dates'
 import type { Booking, BookingHorse, Clearance, ClearanceStatus, HorseDoc, Incident, HorseProfile, Party, PlaceRef, Sex, TripRun, VehicleTrip, WelfareLog } from '../../types/booking'
 import { CUSTOMER } from './orders'
-import { seedCrew, seedVehicles } from './fleet'
+import { seedCrew, seedDriverOf, seedVehicles } from './fleet'
 
 const NOW = Date.now()
 const doc = (daysAgo: number, expiresInDays?: number): HorseDoc => ({
@@ -61,9 +61,9 @@ export const seedBookings = (): Booking[] => {
   const medicalOk = (at: number, by: string) => ({ status: 'approved' as const, at, by })
   const planDone = (by: string, hoursAgo = 20) => ({ at: NOW - hoursAgo * HOUR, by, note: '' })
 
-  // Các xe của đơn: [mã xe, mã Escort, số thứ tự ngựa trong đơn]. Tài xế đi theo xe.
+  // Các xe của đơn: [mã xe, mã Escort, số thứ tự ngựa trong đơn]. Tài xế do Điều phối chọn.
   const mkTrips = (id: string, specs: [string, string, number[]][], hs: BookingHorse[], over: (i: number) => Partial<VehicleTrip> = () => ({})): VehicleTrip[] =>
-    specs.map(([vid, eid, idx], i) => ({ tripId: tripIdFor(id, i + 1), vehicleId: vid, driverId: vehicle(vid).driverId, escortId: eid, horseIds: idx.map(k => hs[k].horseId), acks: {}, ...over(i) }))
+    specs.map(([vid, eid, idx], i) => ({ tripId: tripIdFor(id, i + 1), vehicleId: vid, driverId: seedDriverOf(vid), escortId: eid, horseIds: idx.map(k => hs[k].horseId), acks: {}, ...over(i) }))
   const tripEtd = (departIn: number) => daysFromToday(departIn, 5)
   // Lộ trình dùng chung: chia chặng đều, trạm trung chuyển do hệ thống gợi ý theo cửa khẩu
   const routeFor = (b: Pick<Booking, 'type' | 'origin' | 'dest' | 'gate'>, etd: number, by: string, hoursAgo = 20): NonNullable<Booking['route']> => {

@@ -8,6 +8,10 @@ import { AppHeader, appHeaderStyles as h } from '@shared/ui/AppHeader'
 import { TranslateToggle } from '@shared/ui/TranslateToggle'
 import { HOME_OF, STAFF_MENUS } from './staffMenus'
 import s from './StaffLayout.module.css'
+import m from './StaffShell.module.css'
+import './manager-theme.css'
+import { StaffSidebar } from './StaffSidebar'
+import { StaffTopbar } from './StaffTopbar'
 
 function Header() {
   const { session, logout } = useAuth()
@@ -16,13 +20,26 @@ function Header() {
   return (
     <AppHeader
       homeHref={role ? HOME_OF[role] : '/login'} badge={role && ROLE_LABEL[role]}
-      links={role ? STAFF_MENUS[role] : []} userName={session?.name}
+      links={role ? STAFF_MENUS[role].map(([to, label]): [string, string] => [to, label]) : []} userName={session?.name}
       onLogout={() => { logout(); navigate('/login') }}
     />
   )
 }
 
 export function StaffLayout({ children }: { children: ReactNode }) {
+  const { session } = useAuth()
+  if (session?.role === 'admin' || session?.role === 'manager' || session?.role === 'specialist' || session?.role === 'coordinator') {
+    return (
+      <div className={`mgr ${m.shell}`}>
+        <StaffTopbar />
+        <div className={m.body}>
+          <StaffSidebar />
+          <main className={m.main}><PageTransition>{children}</PageTransition></main>
+        </div>
+        <TranslateToggle />
+      </div>
+    )
+  }
   return (
     <>
       <Header />
