@@ -14,11 +14,12 @@
 7. Flow 6 — Bàn giao, quyết toán phát sinh & đóng đơn
 8. Ngoại lệ: người nhận từ chối, khách chậm thanh toán, khách hủy đơn
 9. Dịch vụ thủ tục kiểm dịch & hải quan trọn gói
-10. Hạng xe & gán xe tự động
+10. Hạng xe & chọn xe, tài xế, hộ tống
 11. Gói cước, biểu phí & chính sách chi phí sự cố
 12. Hồ sơ, giấy tờ & SOP check-in
 13. Trạng thái đơn hàng
 14. Điểm cần chốt
+15. Báo cáo của Manager (doanh thu, chi phí vận hành, hiệu suất)
 
 ---
 
@@ -32,7 +33,7 @@
 ### 1.2. Chuỗi quy trình
 
 ```
-Flow 1  Tạo đơn, gán xe, báo giá → hệ thống tự gán xe/Driver/Escort, Coordinator lập lộ trình, báo giá cố định, khách cọc 30% → Vận đơn
+Flow 1  Tạo đơn, chọn xe, báo giá → Coordinator tự chọn xe/Driver/Escort và lập lộ trình, báo giá cố định, khách cọc 30% → Vận đơn
 Flow 2  Thủ tục kiểm dịch & HQ   → Specialist làm giấy ngoài hệ thống, cập nhật tiến độ có ảnh cho khách và Manager
 Flow 3  Lệnh điều xe & bàn giao   → hệ thống tự phát Lệnh điều xe (mỗi xe một lệnh) ngay sau cọc, đẩy xuống app Driver/Escort
 Flow 4  Nhật ký lộ trình         → ngày D khách trả 70% còn lại, check-in từng mốc có ảnh, nhật ký an sinh, thông quan, giao ngựa
@@ -48,9 +49,9 @@ D = ngày khởi hành.
 |---|---|
 | Khách hàng (Customer) | Khai Hồ sơ ngựa, đặt đơn, đặt cọc, theo dõi tiến độ giấy tờ và chuyến đi, trả số dư ngày D, giao hồ sơ gốc của ngựa cho tài xế, thanh toán khoản phát sinh (nếu có), đánh giá. **Không** làm thủ tục thông quan, không tải giấy thông quan |
 | Quản trị viên (Admin) | Quản lý **tài khoản hệ thống**: tạo tài khoản nhân viên (Manager, Specialist, Coordinator, Driver, Escort, Admin), sửa thông tin, khóa / mở khóa tài khoản (kể cả khách hàng), đặt lại mật khẩu, xem lịch sử thao tác. **Không** tham gia nghiệp vụ vận chuyển |
-| Logistics Manager | Tiếp nhận đơn, duyệt báo giá (gồm xe và lộ trình), xem trang Tiến độ đơn (tổng quan trạng thái và bước tiến độ của mọi đơn, chỉ xem, không đi vào chi tiết giấy tờ), duyệt phương án và ngân sách khẩn cấp, **người duy nhất liên hệ làm việc với Khách hàng khi có sự cố**, duyệt khoản phát sinh, xử lý ngoại lệ |
+| Logistics Manager | Tiếp nhận đơn, duyệt báo giá (gồm xe và lộ trình), xem trang Tiến độ đơn (trạng thái, bước tiến độ của mọi đơn và chi tiết giấy tờ, lộ trình, xe, nhân sự, chỉ xem), duyệt phương án và ngân sách khẩn cấp, **người duy nhất liên hệ làm việc với Khách hàng khi có sự cố**, duyệt khoản phát sinh, xử lý ngoại lệ |
 | Transport Specialist (Kiểm dịch viên) | **Người gác cổng duy nhất** về hồ sơ ngựa, kiểm dịch và hải quan. Duyệt Hồ sơ ngựa ở Flow 1. **Trực tiếp làm** giấy kiểm dịch, hải quan và giấy pháp lý chuyến đi (làm bên ngoài hệ thống), chụp ảnh và cập nhật tiến độ lên hệ thống. Không can thiệp thao tác sơ cứu lâm sàng |
-| Fleet & Route Coordinator (Điều phối viên) | Xem và chỉnh phương án xe, Driver, Escort mà hệ thống tự gán; lập lộ trình chi tiết; nhập bộ giấy cho Driver; giám sát chuyến; lập phương án sự cố |
+| Fleet & Route Coordinator (Điều phối viên) | **Tự chọn** xe, Driver, Escort cho từng chuyến và chia ngựa lên xe (hệ thống khóa người và xe trùng lịch); lập lộ trình chi tiết; nhập bộ giấy cho Driver; giám sát chuyến; lập phương án sự cố |
 | Driver (Tài xế) | Lái xe, check-in từng mốc có ảnh chụp trực tiếp, thu và trả bản gốc chứng từ, xuất trình giấy tại cửa khẩu, ký biên bản giao nhận, kê khai chi phí có chứng từ, báo sự cố |
 | Escort (Nhân viên chăm sóc) | **Người duy nhất** khám lâm sàng, sơ cứu và xử lý sức khỏe ngựa tại hiện trường; quét microchip; ghi nhật ký an sinh |
 
@@ -65,7 +66,7 @@ D = ngày khởi hành.
 ### 1.4. Nguyên tắc vận hành bắt buộc
 
 1. **Charter độc quyền:** các xe của một đơn chỉ chở ngựa của đơn đó. Không ghép ngựa của đơn khác (bảo đảm an toàn sinh học). **Một đơn có thể có nhiều xe** (mục 10.2).
-2. **Định biên cứng:** mỗi xe đúng **01 Driver + 01 Escort**. Hệ thống tự gán, Coordinator được sửa. **Tài xế không gắn cố định với xe**: xe, Driver và Escort là ba danh sách riêng, Coordinator chọn từng thứ khi lập lộ trình.
+2. **Định biên cứng:** mỗi xe đúng **01 Driver + 01 Escort**. Coordinator tự chọn, hệ thống không gán tự động. **Tài xế không gắn cố định với xe**: xe, Driver và Escort là ba danh sách riêng, Coordinator chọn từng thứ khi lập lộ trình.
 3. **Lead time 30 ngày:** khách đặt trước ngày khởi hành tối thiểu 30 ngày (phục vụ cách ly, xét nghiệm dịch tễ, làm thủ tục).
 4. **Nhà xe làm thủ tục:** khách chỉ cần biết ngựa được chở tới nơi. Giấy kiểm dịch, hải quan và giấy pháp lý chuyến đi do nhà xe (Specialist) làm; khách xem lại thông tin (mục 9).
 5. **Báo giá cố định, không phụ thu:** phí nào cố định được thì cố định; phí không cố định được (nhiên liệu, BOT) ước tính theo lộ trình và đưa thẳng vào báo giá; nhà xe chịu chênh lệch. Chỉ phát sinh thêm khi có sự cố thuộc phần khách chịu (mục 11.5) hoặc dịch vụ khách chọn thêm.
@@ -74,7 +75,7 @@ D = ngày khởi hành.
 8. **Khách chỉ nộp Hồ sơ ngựa:** khách tải Hồ sơ ngựa (hộ chiếu, sổ tiêm, xét nghiệm) lúc tạo đơn. Mọi giấy pháp lý và thông quan do nhà xe làm. **Bản gốc** hồ sơ ngựa được đối soát và thu tại điểm đón trước khi xe xuất phát.
 9. **Chuyên môn thú y:** chỉ Escort khám lâm sàng và sơ cứu tại hiện trường.
 10. **Thẩm quyền:** chỉ Logistics Manager duyệt thay đổi phương án di chuyển, ngân sách khẩn cấp và trực tiếp làm việc với khách khi có sự cố.
-11. **Xe cứu hộ (Rescue Van)** trong tuyến quốc tế chỉ là phương tiện trung chuyển khẩn cấp đến Holding Stable / phòng khám thú y, không phải xe thay thế để chạy tiếp qua biên giới.
+11. **Xe cứu hộ** chỉ sửa xe tại chỗ xe gặp sự cố, không phải xe thay thế để chạy tiếp qua biên giới. Ngựa được đưa riêng tới trạm nghỉ gần nhất.
 12. **Evidence-First:** chưa có ảnh chứng từ hợp lệ thì ô nhập số tiền bị khóa (áp dụng cho chi phí sự cố, mục 7.3).
 13. **Lộ trình lập một lần:** Coordinator lập lộ trình chi tiết ngay ở Flow 1. Lộ trình chỉ sửa khi có sự cố (Flow 5).
 14. **Thanh toán hai đợt:** cọc 30% để có Vận đơn; 70% còn lại trả ngày D. Chưa trả đủ thì xe không được bắt đầu hành trình.
@@ -93,7 +94,7 @@ Mọi vai trò có chuông thông báo trên thanh menu (số chưa đọc, bấ
 | Manager gửi báo giá | Khách |
 | Báo giá hết hạn | Khách, Manager |
 | Khách đặt cọc | Manager, Specialist, Coordinator; Driver và Escort của từng xe nhận "chuyến mới" |
-| Specialist tiếp nhận Vận đơn; hoàn tất giấy tờ | Khách; khách và Manager (báo tin, không có trang chi tiết giấy tờ) |
+| Specialist tiếp nhận Vận đơn; hoàn tất giấy tờ | Khách; khách và Manager (báo tin) |
 | Nhà xe từ chối đơn (Manager lúc tiếp nhận, hoặc Coordinator không duyệt lộ trình) | Khách (kèm lý do); nếu do Coordinator thì thêm Manager và Specialist |
 | Khách báo sai thông tin giấy tờ | Specialist, Manager |
 | Khách trả 70% | Manager, Coordinator |
@@ -108,7 +109,7 @@ Mọi vai trò có chuông thông báo trên thanh menu (số chưa đọc, bấ
 ```
 [Khách hàng]            [Manager]              [Hệ thống]        [Specialist & Coordinator]
      |-- 1. Tạo đơn -------->|
-     |                       |-- 2. Tiếp nhận --> tự gán xe/Driver/Escort
+     |                       |-- 2. Tiếp nhận --> giao Specialist, Coordinator
      |                       |                                   |-- 3. Duyệt hồ sơ ngựa ∥ chỉnh xe, lập lộ trình
      |                       |<-- hoàn tất thẩm định ------------|
      |<-- 4. Báo giá --------|
@@ -136,7 +137,7 @@ Trang "Hồ sơ ngựa" trên Cổng khách hàng. Khách khai báo một lần;
 - **Tuyến đường & chủ thể:**
   - Phân loại tuyến: Nội địa hoặc Quốc tế liên vận CLV.
   - Người gửi (Consignor) và Người nhận (Consignee): tên, SĐT, CCCD/MST/Hộ chiếu, địa chỉ chi tiết.
-  - Hành trình: Điểm bốc → Điểm trả. Khách **không** chọn cửa khẩu: Coordinator chọn khi lập lộ trình (mục 2.4).
+  - Hành trình: Điểm bốc → Điểm trả. Khách **chọn trên bản đồ**: tìm theo tên, bấm điểm trên bản đồ hoặc trong danh sách. Chỉ các kho và CLB có trong hệ thống (không nhập địa chỉ tự do). Khách **không** chọn cửa khẩu: Coordinator chọn khi lập lộ trình (mục 2.4).
 - **Chọn ngựa (Horse Selector):**
   - Chỉ tích chọn được cá thể ở trạng thái Sẵn sàng đặt.
   - Cá thể Thiếu giấy: bấm "Sửa" để tải bổ sung giấy mới; dữ liệu cập nhật đè vào kho.
@@ -150,26 +151,23 @@ Trang "Hồ sơ ngựa" trên Cổng khách hàng. Khách khai báo một lần;
 - Khách **không** tải giấy thông quan, giấy kiểm dịch vận chuyển hay Import Permit; các giấy này do nhà xe làm (Flow 2).
 - Bấm "Gửi yêu cầu đặt đơn". → **Pending Manager Intake**.
 
-### 2.3. Bước 2 — Manager tiếp nhận, hệ thống tự gán xe và nhân sự
+### 2.3. Bước 2 — Manager tiếp nhận
 
 - Đơn vào hàng đợi của Manager. Manager kiểm tra tổng quan, bấm **"Tiếp nhận & Kích hoạt Thẩm định"**. → **Under Internal Review**.
 - **Từ chối đơn:** Manager có thể không nhận đơn, bắt buộc ghi lý do. → **Order Rejected**; xe và nhân sự không bị giữ; khách nhận lý do và đặt chuyến mới (đơn cũ đóng, không sửa lại).
-- Hệ thống tự động:
-  - Gán 01 **Specialist** cho đơn.
-  - Chọn xe, chia ngựa lên xe và gán **01 Driver + 01 Escort cho mỗi xe** theo quy tắc mục 10.2, dựa trên xe và nhân sự rảnh vào ngày D.
-  - Nếu không đủ xe hoặc nhân sự rảnh: việc tiếp nhận không thực hiện được, đơn giữ ở `Pending Manager Intake` và Manager nhận thông báo lỗi nêu rõ thiếu gì; báo giá không phát hành khi chưa gán đủ.
+- Manager giao 01 **Specialist** (duyệt hồ sơ ngựa) và 01 **Coordinator** (xe, nhân sự, lộ trình); hệ thống gợi ý người ít việc nhất; Manager chọn trong popup thẻ giống Coordinator chọn xe (mỗi thẻ hiện các đơn người đó đang phụ trách; người đang nghỉ bị khóa). **Hệ thống không tự gán xe, Driver, Escort**: Coordinator tự chọn ở bước sau, nên việc tiếp nhận không phụ thuộc đội xe rảnh.
 - Dữ liệu được đẩy song song đến Specialist và Coordinator.
 
 ### 2.4. Bước 3 — Thẩm định song song
 
 **Nhánh A — Specialist (duyệt hồ sơ ngựa):**
 - Hệ thống đẩy task "Duyệt hồ sơ ngựa" cho Specialist ngay khi đơn được tiếp nhận.
-- Đối chiếu tính xác thực của Hộ chiếu, số Microchip, Sổ tiêm và thời hạn xét nghiệm máu (EIA/EVA) theo quy định kiểm dịch.
+- Đối chiếu tính xác thực của Hộ chiếu, số Microchip, Sổ tiêm và thời hạn xét nghiệm máu (EIA/EVA) theo quy định kiểm dịch. Specialist **xem được từng giấy khách đã nộp** (tên tệp, ngày nộp, hạn, bấm ảnh để phóng to) ngay trên trang thẩm định, không phải hỏi lại khách.
 - Thao tác: **"Xác nhận Đạt Y tế (Approve Medical Check)"**, hoặc Yêu cầu bổ sung nếu giấy mờ / hết hạn.
 
 **Nhánh B — Coordinator (xe, nhân sự và lộ trình chi tiết):**
-- Xem phương án hệ thống đã gán (xe, Driver, Escort, ngựa trên từng xe); được **đổi** xe, Driver, Escort hoặc cách chia ngựa khi cần (mỗi xe chọn riêng xe, Driver và Escort). Hệ thống kiểm tra lại sức chứa, lịch rảnh, hạn Đăng kiểm và Giấy phép liên vận CLV (tuyến quốc tế) khi sửa.
-- **Lập lộ trình chi tiết ngay bước này** (một lần cho cả đơn; mỗi xe có thể có giờ chạy riêng): **chọn cửa khẩu** (tuyến quốc tế; hệ thống gợi ý cửa khẩu có tổng quãng đường ngắn nhất trong các cửa khẩu của nước đến), chọn các **trạm trung chuyển** dọc đường đi từ điểm đón qua cửa khẩu tới điểm trả (hệ thống gợi ý trạm gần đường đi nhất theo cửa khẩu đã chọn), giờ đón ngựa (ETD), giờ tới cửa khẩu (ETA). Đổi cửa khẩu thì hệ thống gợi ý lại các trạm. Quy tắc chia chặng ở mục 4.2. Lộ trình **không** quản lý trạm thú y dọc tuyến.
+- **Tự chọn** cho từng chuyến một xe, một Driver và một Escort (ba lựa chọn riêng), và chia ngựa lên các xe (đơn đông ngựa thì thêm xe). Khi chọn, hệ thống cho biết xe, Driver, Escort đó đang bận đơn nào và **khóa** người hoặc xe có đơn trùng lịch. Hệ thống kiểm tra lại sức chứa, lịch rảnh, hạn Đăng kiểm và Giấy phép liên vận CLV (tuyến quốc tế) khi sửa.
+- **Lập lộ trình chi tiết ngay bước này** (một lần cho cả đơn; mỗi xe có thể có giờ chạy riêng): **chọn cửa khẩu** (tuyến quốc tế; hệ thống gợi ý cửa khẩu có tổng quãng đường ngắn nhất trong các cửa khẩu của nước đến), chọn các **trạm trung chuyển** dọc đường đi từ điểm đón qua cửa khẩu tới điểm trả: Coordinator mở **bản đồ** hiện điểm đón, điểm trả, cửa khẩu và mọi trạm của hệ thống, bấm vào trạm để chọn và đặt **thời gian nghỉ** của trạm đó (hệ thống tự xếp thứ tự trạm và vẽ đường đi qua các điểm; nút gợi ý chọn sẵn các trạm gần đường đi nhất theo cửa khẩu đã chọn), giờ đón ngựa (ETD), giờ tới cửa khẩu (ETA). **Đường đi và thời gian lái lấy theo đường giao thông thật** (Google Routes API có tính giao thông theo giờ khởi hành; không có khóa hoặc lỗi thì dùng OSRM không tính giao thông; vẫn không được thì ước lượng theo quãng đường và tốc độ trung bình). Thời gian lái này cộng với thời gian nghỉ ở các trạm cho ra **giờ đến dự kiến** của từng chặng và của cả chuyến (khách thấy ở bước chờ đặt cọc). Đổi cửa khẩu thì hệ thống gợi ý lại các trạm. Quy tắc chia chặng ở mục 4.2. Lộ trình **không** quản lý trạm thú y dọc tuyến.
 - Thao tác: **"Xác nhận Phương án Xe & Lộ trình (Confirm Fleet & Route)"**, hoặc **"Không duyệt, từ chối đơn"** (bắt buộc ghi lý do) khi không xếp được xe, nhân sự hoặc lộ trình. → **Order Rejected**, xử lý như khi Manager từ chối (mục 2.3).
 
 Cả hai bộ phận duyệt xong, kết quả chuyển về Dashboard của Manager. → **Pending Final Commercial Approval**.
@@ -215,14 +213,17 @@ Báo giá **cố định, có bảng chi tiết từng khoản**, không phụ t
 ================================================================================
 ```
 
+Giấy tờ chỉ để Manager xem, **không gửi kèm khách**: bấm "Approve & Send Quotation" thì khách chỉ nhận chi tiết đơn và bảng giá. Trước khi duyệt, Manager **xem được bằng chứng do hai bộ phận đẩy lên**: giấy từng ngựa Specialist đã duyệt (ảnh, ngày nộp, hạn, kết luận), lộ trình Coordinator đã lập trên bản đồ (trạm, cửa khẩu, giờ đi / đến), và xe, Driver, Escort Coordinator đã chọn cho từng chuyến.
+
 Manager rà soát, điều chỉnh chiết khấu thương mại (nếu có), bấm **"Approve & Send Quotation"**. → **Awaiting Payment**.
 
 ### 2.6. Bước 5 — Khách đặt cọc và nhận Vận đơn
 
 - Khách có **48 giờ** để đặt cọc **30%** trên hệ thống. Quá hạn: đơn tự hủy (**Quote Expired**), xe và nhân sự được nhả cho đơn khác.
+- Ở bước chờ đặt cọc, khách thấy **ngày giờ khởi hành và ngày giờ đến nơi dự kiến** (giờ đến của chặng cuối trong lộ trình đã duyệt) trên thẻ đặt cọc, dòng thông báo của đơn và danh sách đơn. Đây là dự kiến, có thể đổi nếu gặp sự cố (Flow 5).
 - Khách không đồng ý báo giá thì bấm **Từ chối báo giá** (ghi lý do nếu muốn) thay vì chờ hết hạn: đơn → **Cancelled**, chưa cọc nên không mất phí, xe và nhân sự được nhả (mục 8.3).
 - Sau khi cọc, đơn chuyển sang giai đoạn **Vận đơn**: hệ thống cấp **mã Vận đơn**, giữ chỗ xe và nhân sự. Không có hợp đồng ký số.
-- Khách theo dõi trên app: danh sách xe và ngựa trên từng xe, tiến độ giấy tờ do Specialist cập nhật, lộ trình.
+- Khách theo dõi trên app: danh sách xe và ngựa trên từng xe, tiến độ giấy tờ do Specialist cập nhật, lộ trình, và **bản đồ theo dõi** (mục 5.7).
 - → **Waybill Issued** → Specialist tiếp nhận Vận đơn (Flow 2).
 
 ---
@@ -233,7 +234,7 @@ Manager rà soát, điều chỉnh chiết khấu thương mại (nếu có), b�
 
 - **Transport Specialist:** người gác cổng duy nhất, **trực tiếp làm** thủ tục kiểm dịch, hải quan và giấy pháp lý chuyến đi; báo tiến độ.
 - **Fleet & Route Coordinator:** nhập bộ giấy cho từng Driver để xuất trình tại hải quan (bản in, bản gốc nhà xe có); không làm thủ tục với cơ quan chức năng.
-- **Logistics Manager:** người đứng đầu, chỉ xem tổng quan trạng thái và tiến độ của đơn; không có trang theo dõi chi tiết giấy tờ. Xử lý ngoại lệ.
+- **Logistics Manager:** người đứng đầu, **chỉ xem, không sửa**: trạng thái và tiến độ của đơn, và ở trang Tiến độ đơn bấm "Xem giấy tờ, xe" để xem giấy kiểm dịch, hải quan Specialist đã làm (từng hạng mục, ảnh chụp, ghi chú), giấy ngựa đã duyệt, lộ trình trên bản đồ, xe, Driver, Escort. Xử lý ngoại lệ.
 - **Khách hàng:** chỉ xem tiến độ và thông tin đã nhập, báo sai nếu có (không chặn tiến độ).
 
 ### 3.2. Tiến trình
@@ -256,7 +257,7 @@ Giấy được chia **hai nhóm**:
    - Hải quan (chỉ quốc tế): Tờ khai hải quan điện tử; Import Permit; ATA Carnet, Hóa đơn thương mại (nếu có, xem mục 14).
    - Vận tải: PoA (Giấy ủy quyền áp tải); giấy phép liên vận CLV của xe (quốc tế).
 
-Mỗi hạng mục có trạng thái **Chưa làm / Đang làm / Xong**, ghi chú và ảnh chụp. Cần giấy nào ở giai đoạn nào thì Specialist bổ sung hạng mục đó. Specialist điền tờ khai thay khách; khách xem lại thông tin.
+Mỗi hạng mục chỉ có hai trạng thái: **Chưa nộp / Đã nộp** (nộp cho cơ quan chức năng), kèm ghi chú và ảnh chụp. Specialist **không chỉnh tay** trạng thái: tải ảnh giấy lên thì hạng mục tự chuyển **Đã nộp**; xóa hết ảnh thì về **Chưa nộp**. Cần giấy nào ở giai đoạn nào thì Specialist bổ sung hạng mục đó. Specialist điền tờ khai thay khách; khách xem lại thông tin.
 
 ### 3.4. Báo cáo tiến độ
 
@@ -283,7 +284,7 @@ Với tuyến quốc tế, hệ thống chỉ **ghi nhận từng ngựa đã c�
 
 - **Chia chặng (Staging Rule):** ngựa không di chuyển liên tục quá **3 – 4 giờ**. Chia thành các chặng ngắn xen điểm dừng tại trạm trung chuyển tối thiểu **30 – 45 phút**.
 - **Các điểm mốc:**
-  - **Trạm trung chuyển (Transit Station / checkpoint):** các điểm xe đi qua giữa điểm đón và điểm trả, theo cửa khẩu đã chọn. Có bóng mát, nguồn nước máy sạch để Escort kiểm tra thể trạng và cho ngựa uống nước; mỗi trạm Driver check-in và Escort ghi nhật ký an sinh.
+  - **Trạm trung chuyển (Transit Station / checkpoint):** các điểm xe đi qua giữa điểm đón và điểm trả, theo cửa khẩu đã chọn. Tại trạm Escort kiểm tra thể trạng và cho ngựa uống nước; mỗi trạm Driver check-in và Escort ghi nhật ký an sinh. Thời gian nghỉ do Coordinator đặt cho từng trạm (tối thiểu 30 phút).
   - **Không** gán trước trạm thú y khẩn cấp dọc tuyến; khi có sự cố sức khỏe ngựa, Coordinator định vị phòng khám gần nhất tại thời điểm đó (Flow 5).
   - **Cửa khẩu (Border Crossing):** ETA cửa khẩu rơi vào **07:30 – 16:30**, làm thủ tục thông quan và khám lâm sàng trong ngày.
 
@@ -376,6 +377,7 @@ Không có bước Manager duyệt riêng: nội dung Lệnh điều xe lấy t�
 - Khi vào khu vực kiểm soát biên giới, Driver chụp cổng / barie, bấm "Đã tới cửa khẩu [tên]". Hệ thống thông báo Customer và Coordinator.
 - Driver và Escort xuất trình bộ hồ sơ (do nhà xe chuẩn bị) cho cán bộ Thú y và Hải quan, đưa ngựa vào luồng khám lâm sàng.
 - Sau khi được đóng dấu thông quan: Driver chụp trang mộc đỏ kiểm dịch trên Health Cert và cuống ATA Carnet có dấu Hải quan (nếu có), bấm **Đã thông quan thành công (Customs Cleared)**. Xe qua barie tiếp tục sang nước bạn.
+- Sau thông quan xe vẫn **ở cửa khẩu** cho đến khi Driver bấm **Rời cửa khẩu, tiếp tục hành trình**; chưa bấm thì không xác nhận được mốc kế tiếp.
 - Customer nhận Push Notification: ngựa đã hoàn tất thông quan tại cửa khẩu [tên] lúc [giờ:phút].
 - Nếu cơ quan chức năng yêu cầu bổ sung hoặc giải trình, Driver kích hoạt liên lạc trực tuyến với Specialist và Manager để xử lý tức thời; khách không phải làm thủ tục.
 
@@ -395,6 +397,14 @@ Không có bước Manager duyệt riêng: nội dung Lệnh điều xe lấy t�
 5. Driver chụp biên bản có đủ chữ ký, tải lên, bấm **Hoàn tất giao ngựa (Complete Delivery)**.
 6. Customer nhận thông báo giao thành công và tải được ảnh biên bản. Đơn → **Delivered - Pending Settlement** khi **mọi xe** đã giao xong.
 
+### 5.7. Theo dõi vị trí xe trên bản đồ (thủ công, không GPS)
+
+Vị trí xe suy từ các xác nhận của Driver ở mục 5.1, không dùng GPS:
+
+- Driver xác nhận **tới** một mốc (điểm đón, trạm trung chuyển, cửa khẩu, điểm giao): xe nằm đúng chỗ mốc đó.
+- Driver bấm **tiếp tục hành trình** (bắt đầu hành trình, rời trạm, rời cửa khẩu): xe đang chạy, hiển thị **ở giữa** mốc vừa rời và mốc kế tiếp.
+- Khách xem bản đồ lộ trình (điểm đón, trạm, cửa khẩu, điểm giao, đoạn đã đi, xe), mỗi xe một biểu tượng. Driver thấy dòng trạng thái "Đang ở …" hoặc "Đang trên đường từ … tới …".
+
 ---
 
 ## 6. Flow 5 — Xử lý sự cố & điều chỉnh khẩn cấp
@@ -402,8 +412,8 @@ Không có bước Manager duyệt riêng: nội dung Lệnh điều xe lấy t�
 ### 6.1. Nguyên tắc bắt buộc
 
 - **Chuyên môn y tế:** Escort là người duy nhất khám lâm sàng, sơ cứu, xử lý sức khỏe ngựa tại hiện trường. Specialist chỉ phụ trách pháp lý, kiểm dịch và quy chế cửa khẩu.
-- **Cố định cửa khẩu:** không tự ý đổi cửa khẩu (do ràng buộc của Health Cert mộc đỏ và Tờ khai hải quan). Tắc nghẽn / chậm trễ ở biên giới xử lý bằng cách đưa ngựa về Holding Stable gần cửa khẩu nghỉ chờ thông quan, hoặc quay đầu về trại xuất phát nếu là sự cố bất khả kháng kéo dài.
-- **Rescue Van (tuyến CLV):** không phải xe thay thế để chạy tiếp qua biên giới (sai biển số so với hồ sơ hải quan và kiểm dịch). Chỉ là trung chuyển khẩn cấp đưa ngựa ra khỏi xe hỏng về Holding Stable / Vet Clinic, bảo đảm an sinh trong khi chờ xe chính khắc phục.
+- **Cố định cửa khẩu:** không tự ý đổi cửa khẩu (do ràng buộc của Health Cert mộc đỏ và Tờ khai hải quan). Khi đổi lộ trình vì tắc nghẽn, chỉ đổi đường đi tới điểm kế tiếp, vẫn qua đúng cửa khẩu đã chốt.
+- **Xe cứu hộ:** chỉ sửa xe tại chỗ xe gặp sự cố, không thay xe chạy tiếp (sai biển số so với hồ sơ hải quan và kiểm dịch). Ngựa được đưa riêng tới trạm nghỉ gần nhất để bảo đảm sức khỏe.
 - **Thẩm quyền:** Logistics Manager là cấp duy nhất duyệt thay đổi phương án di chuyển, duyệt ngân sách khẩn cấp và trực tiếp liên hệ khách.
 - **Lộ trình:** chỉ khi có sự cố mới sửa lộ trình đã lập ở Flow 1; sự cố ở xe nào thì sửa lộ trình của xe đó.
 - **Ai chịu chi phí:** theo chính sách mục 11.5.
@@ -412,13 +422,13 @@ Không có bước Manager duyệt riêng: nội dung Lệnh điều xe lấy t�
 
 | Nhóm sự cố | Phát hiện & xử lý tại chỗ | Lập phương án | Phê duyệt cuối |
 |---|---|---|---|
-| 1. Sức khỏe ngựa (đau bụng Colic, sốt, mất nước, chấn thương) | Escort sơ cứu, đánh giá lâm sàng, yêu cầu tấp xe vào trạm thú y gần nhất | Coordinator định vị và chỉ đường tới phòng khám thú y gần nhất | Manager duyệt dừng xe / chuyển viện; gọi khách thông báo tình trạng |
-| 2. Kỹ thuật phương tiện (hỏng điều hòa thùng, nổ lốp, sự cố động cơ) | Driver đặt cảnh báo an toàn; Escort mở quạt đối lưu dự phòng, xịt nước làm mát thùng | Coordinator điều cứu hộ cơ khí sửa tại chỗ, hoặc điều Rescue Van đưa ngựa về Holding Stable | Manager duyệt phương án |
-| 3. Tắc nghẽn cửa khẩu (tạm dừng tiếp nhận, tắc biên quá giờ) | Driver báo cáo, giữ nguyên vị trí, không tự chuyển hướng sang cửa khẩu khác | Specialist kiểm tra tiến độ mở luồng; Coordinator điều xe về Holding Stable gần đó | Manager duyệt lưu khoang qua đêm |
+| 1. Sức khỏe ngựa (đau bụng Colic, sốt, mất nước, chấn thương) | Escort sơ cứu, đánh giá lâm sàng | Coordinator lập lại lộ trình **đưa ngựa tới trạm nghỉ gần nhất** (trên bản đồ) | Manager duyệt; gọi khách thông báo tình trạng |
+| 2. Xe gặp sự cố (hỏng điều hòa thùng, nổ lốp, sự cố động cơ, tai nạn) | Driver đặt cảnh báo an toàn; Escort mở quạt đối lưu, xịt nước làm mát thùng | Coordinator **gọi cứu hộ gần chỗ xe nhất** để sửa tại chỗ, đồng thời **đưa ngựa tới trạm nghỉ gần nhất** | Manager duyệt phương án |
+| 3. Giao thông tắc nghẽn (kẹt xe, tắc đường, đường bị chặn) | Driver báo cáo, giữ nguyên vị trí | Coordinator chọn **lộ trình khác** (đường thay thế trên bản đồ) tới điểm kế tiếp, giữ nguyên cửa khẩu | Manager duyệt |
 
 ### 6.3. Bước 1 — Kích hoạt SOS
 
-- Driver / Escort mở App, bấm **Báo cáo Sự cố Khẩn cấp (SOS Alert)**, chọn nhóm sự cố (Sức khỏe ngựa / Kỹ thuật phương tiện / Tắc nghẽn cửa khẩu), chụp ảnh hoặc quay video ngắn, nhập ghi chú vắn tắt, bấm "Gửi Báo động Khẩn cấp".
+- Driver / Escort mở App, bấm **Báo cáo Sự cố Khẩn cấp (SOS Alert)**, chọn nhóm sự cố (Sức khỏe ngựa / Kỹ thuật phương tiện / Giao thông tắc nghẽn), chụp ảnh hoặc quay video ngắn, nhập ghi chú vắn tắt, bấm "Gửi Báo động Khẩn cấp". Hệ thống ghi vị trí xe lúc báo (bản thử mô phỏng theo tiến độ hành trình; có app thật thì lấy GPS).
 - Hệ thống báo động còi + nhấp nháy đỏ trên màn hình Coordinator và Manager. → **Incident Reported - Action Required**.
 
 ### 6.4. Bước 2 — Ứng phó hiện trường
@@ -428,17 +438,16 @@ Không có bước Manager duyệt riêng: nội dung Lệnh điều xe lấy t�
 
 ### 6.5. Bước 3 — Coordinator lập kế hoạch điều chỉnh
 
-- **Sức khỏe ngựa:** tìm phòng khám / trạm thú y gần nhất với vị trí xe; gọi báo trước cho bác sĩ trực triệu chứng của ngựa; lập tuyến ngắn nhất điều hướng xe đến trạm.
-- **Hỏng phương tiện:**
-  1. Ưu tiên số 1: liên hệ cứu hộ cơ khí gần nhất sửa tại hiện trường, giữ nguyên xe chính (đúng biển số trên hồ sơ hải quan). Trong lúc sửa, nguồn điện phụ trợ duy trì máy lạnh và quạt hút; ETA cửa khẩu được cập nhật cho khách.
-  2. Nếu xe chính hỏng nặng, **không sửa nhanh được trong 02 giờ:** điều Rescue Van đến sang ngựa; Rescue Van chỉ chở ngựa về Holding Stable hoặc phòng khám thú y. Rescue Van không chạy tiếp qua cửa khẩu. Xe chính sửa xong sẽ đến Holding Stable đón lại ngựa, tiếp tục hành trình bằng đúng phương tiện đã khai báo.
-  3. Xe chính hỏng hoàn toàn không khắc phục được (hoặc tai nạn): đơn chuyển sang **phương án hủy chuyến bất khả kháng**, đưa ngựa về điểm xuất phát. Đơn vị lập **Biên bản xác nhận sự cố bất khả kháng** gửi khách và xử lý bồi thường theo điều khoản vận chuyển.
-- **Tắc nghẽn biên giới / quá giờ Hải quan:** Specialist liên hệ cán bộ Kiểm dịch Thú y và Hải quan xác nhận thời gian mở luồng ngày hôm sau, rà soát hiệu lực Health Cert mộc đỏ (tuyệt đối không đề xuất đổi cửa khẩu). Coordinator điều xe về Holding Stable gần cửa khẩu nhất đã liên kết để ngựa nghỉ qua đêm.
+Coordinator lập phương án **trên bản đồ**, thấy vị trí xe, điểm đón, điểm trả, cửa khẩu; hệ thống tự vẽ đường bộ theo lựa chọn và gợi ý giờ đến mới (Coordinator sửa được):
+- **Sức khỏe ngựa:** chọn trạm nghỉ trong danh mục (gợi ý trạm gần xe nhất) và thời gian nghỉ ngựa (tối thiểu 30 phút); hệ thống vẽ đường đưa ngựa từ chỗ xe tới trạm.
+- **Xe gặp sự cố:** chọn điểm cứu hộ gần chỗ xe nhất (hệ thống gợi ý, kèm số điện thoại) để sửa tại chỗ giữ nguyên xe chính; đồng thời chọn trạm nghỉ đưa ngựa tới như trên. Xe sửa xong thì ngựa đủ sức mới đi tiếp.
+- **Giao thông tắc nghẽn:** hệ thống đưa các đường thay thế tới điểm kế tiếp (có thời gian lái, theo giao thông nếu có khóa Google); Coordinator chọn một đường. Cửa khẩu giữ nguyên.
+- Không có xe thay thế chạy tiếp; xe hỏng hoàn toàn không khắc phục được (hoặc tai nạn) thuộc phương án hủy chuyến bất khả kháng, chưa làm (mục 14.7).
 - Coordinator hoàn thành **Phiếu Kế hoạch Xử lý Sự cố (Incident Action Plan)** trình Manager. → **Pending Emergency Approval**.
 
 ### 6.6. Bước 4 — Manager duyệt phương án và làm việc với khách
 
-- Kiểm tra phương án (rẽ vào trạm thú y, điều Rescue Van đưa ngựa về Holding Stable, hoặc thuê chuồng đệm gần cửa khẩu).
+- Xem lại phương án trên bản đồ (trạm nghỉ, điểm cứu hộ, lộ trình mới) và giờ đến mới.
 - Phê duyệt hạn mức tài chính khẩn cấp (**Emergency Budget**) để Driver / Escort thanh toán tại chỗ.
 - Bấm **Phê duyệt Phương án Khẩn cấp (Approve Emergency Plan)**.
 - Manager **trực tiếp gọi khách**: giải thích nguyên nhân, cập nhật tình trạng an toàn của ngựa, thông báo phương án đã duyệt, ETA mới, và khoản nào khách phải chịu theo mục 11.5.
@@ -608,14 +617,11 @@ Căn cứ tiêu chuẩn chế tạo xe vận chuyển ngựa của các hãng l�
 | **Medium** | Xe tải trung | 4 đến 6 Stalls |
 | **Heavy** | Xe tải nặng | 9 Stalls |
 
-### 10.2. Gán xe tự động
+### 10.2. Chọn xe, tài xế, hộ tống
 
-- Mỗi đơn có **một hoặc nhiều xe**. Hệ thống tự chọn dựa trên xe và nhân sự rảnh vào ngày D:
-  1. Ưu tiên **ít xe nhất**: nếu có xe chứa đủ số ngựa thì dùng một xe.
-  2. Nếu không có xe nào chứa đủ, **chia đều** ngựa cho nhiều xe (ví dụ 6 ngựa mà không còn xe 6 chỗ: dùng 2 xe, mỗi xe 3 ngựa). Số ngựa trên mỗi xe không vượt sức chứa của xe.
-  3. Mỗi xe được gán **01 Driver + 01 Escort** rảnh (xe không có tài xế riêng; Driver và Escort chọn từ nhân sự rảnh vào ngày D).
-  4. Thiếu xe hoặc nhân sự: báo Manager, không phát hành báo giá.
-- Coordinator được **đổi** xe, người và cách chia ngựa; hệ thống kiểm tra lại sức chứa và lịch rảnh.
+- Mỗi đơn có **một hoặc nhiều xe**. **Coordinator tự chọn**; hệ thống không gán tự động. Khuyến nghị dùng **ít xe nhất**: nếu có xe chứa đủ số ngựa thì dùng một xe; đơn đông ngựa thì chia ngựa cho nhiều xe (ví dụ 6 ngựa mà không có xe 6 chỗ: 2 xe, mỗi xe 3 ngựa). Số ngựa trên mỗi xe không vượt sức chứa của xe.
+- Mỗi xe chọn **01 Driver + 01 Escort** (xe không có tài xế riêng). Ba lựa chọn này nằm ở ba popup riêng; mỗi thẻ hiện lịch các đơn khác mà xe hoặc người đó đang giữ.
+- **Khóa trùng lịch:** xe, Driver hoặc Escort đang giữ cho đơn khác có **ngày đi cách ngày đi này dưới 3 ngày** thì bị khóa, nêu rõ trùng với đơn nào. Xe thiếu giấy đăng kiểm (và giấy phép liên vận với tuyến quốc tế) cũng bị khóa. Một xe, Driver hoặc Escort không được chọn hai lần trong cùng một đơn. Hệ thống kiểm tra lại khi xác nhận phương án.
 - **Không quản lý bảo dưỡng xe.** Trạng thái của xe chỉ có hai: **Có đơn** (đang giữ chỗ cho một đơn chưa kết thúc) hoặc **Chưa có đơn**, hệ thống tự suy ra từ các đơn. Điều kiện để một xe được gán vẫn là xe rảnh vào ngày D và đủ giấy đăng kiểm (và giấy phép liên vận với tuyến quốc tế).
 - Mỗi ngựa thuộc đúng một xe. Dù xe còn chỗ trống, **không** ghép ngựa của đơn khác (Charter độc quyền).
 - Mỗi xe có chuyến riêng (mã chuyến, Lệnh điều xe, check-in, nhật ký an sinh, biên bản); đơn hoàn tất khi mọi xe giao xong.
@@ -651,8 +657,8 @@ Nguyên tắc: **liên quan đến ngựa thì khách chịu; liên quan đến 
 | Nhóm | Bên chịu | Ví dụ |
 |---|---|---|
 | Liên quan **ngựa** | **Khách** | Thuốc, viện phí thú y; chuồng đệm, cỏ và nước trong lúc chờ; ngựa ốm hoặc chấn thương; hồ sơ ngựa sai / hết hạn; người nhận từ chối; hồi hương; lưu xe do lỗi khách (mục 11.3) |
-| Liên quan **vận chuyển** | **Nhà xe** | Hỏng xe, cứu hộ cơ khí, Rescue Van, hỏng điều hòa thùng, tai nạn do xe hoặc tài xế, chậm do nhà xe, giấy do nhà xe làm sai, chênh lệch nhiên liệu và BOT |
-| **Tắc cửa khẩu** (bên ngoài) | **Nhà xe chịu toàn bộ** | Phí lưu xe, tiền chuồng, chăm sóc ngựa trong lúc chờ. Điều khoản: khách chấp nhận giao trễ khi tắc cửa khẩu và không yêu cầu bồi thường |
+| Liên quan **vận chuyển** | **Nhà xe** | Hỏng xe, cứu hộ cơ khí, hỏng điều hòa thùng, tai nạn do xe hoặc tài xế, chậm do nhà xe, giấy do nhà xe làm sai, chênh lệch nhiên liệu và BOT |
+| **Giao thông tắc nghẽn** (bên ngoài) | **Nhà xe chịu toàn bộ** | Phí đường tránh, chi phí chờ, chăm sóc ngựa trong lúc chờ. Điều khoản: khách chấp nhận giao trễ khi tắc nghẽn và không yêu cầu bồi thường |
 
 Chính sách hiển thị trong phiếu báo giá, dạng bấm để mở.
 
@@ -759,5 +765,25 @@ Các điểm dưới đây là **giả định tạm** cần chủ dự án xác
 5. **Chia chặng nội địa:** tuyến nội địa trong bộ địa điểm hiện có đều ngắn (dưới 4 giờ lái) nên thường không cần trạm trung chuyển; quy tắc 3–4 giờ vẫn áp dụng và có kiểm tra.
 6. **Giấy chỉ khách có (ATA Carnet, Hóa đơn thương mại):** nhà xe không tự lập được. Tạm thời: khách giao bản gốc cho Driver tại điểm đón, Specialist ghi nhận vào hạng mục giấy tờ. Cần chủ dự án chốt cách xử lý.
 7. **Flow 5, 6 đã dựng, còn các phần chưa làm:** hủy chuyến bất khả kháng khi xe hỏng hoàn toàn (mục 6.5), người nhận từ chối (mục 8.1), cầm giữ ngựa và chuyển hồ sơ Pháp lý sau 7 ngày (mục 8.2), nhiều sự cố cùng lúc trên một xe. Khi Payment Overdue hệ thống mới chặn đặt đơn mới, chưa khóa xem Kho Hồ sơ ngựa. Các trang cũ Bảng điều khiển, Báo cáo chuyến đi (Manager), Giám sát sự cố và Đội xe (Điều phối) vẫn chạy trên dữ liệu cũ.
-7a. **Giả định khi dựng Flow 5, 6:** hạn mức khẩn cấp Manager duyệt chỉ để đối chiếu, không chặn Driver / Escort kê chi phí vượt; mỗi khoản chi có bên chịu mặc định theo mục 11.5 và Manager sửa được lúc đối soát; Payment Overdue chỉ áp dụng khi bảng quyết toán có khoản phải trả; xe cứu hộ, sửa xe và sự cố tắc cửa khẩu thì mọi khoản mặc định nhà xe chịu; sự cố sức khỏe cần Escort xác nhận ngựa đủ sức trước khi Driver tiếp tục hành trình.
+7a. **Giả định khi dựng Flow 5, 6:** hạn mức khẩn cấp Manager duyệt chỉ để đối chiếu, không chặn Driver / Escort kê chi phí vượt; mỗi khoản chi có bên chịu mặc định theo mục 11.5 và Manager sửa được lúc đối soát; Payment Overdue chỉ áp dụng khi bảng quyết toán có khoản phải trả; cứu hộ, sửa xe và tắc nghẽn giao thông thì mọi khoản mặc định nhà xe chịu (chỉ thuốc, viện phí, phí trạm nghỉ do ngựa thì khách); sự cố sức khỏe ngựa và xe gặp sự cố cần Escort xác nhận ngựa đủ sức trước khi Driver tiếp tục hành trình, tắc nghẽn thì không. Danh mục điểm cứu hộ (`RESCUE_POINTS`) là số mẫu; vị trí xe lúc báo sự cố là mô phỏng; đường thay thế chỉ tính giữa vị trí xe và điểm kế tiếp (giới hạn của dịch vụ bản đồ).
+9. **Báo cáo (mục 15):** chi phí vận hành là giá vốn ước tính từ báo giá (giả định biên 5%), chưa có chi phí thực tế; doanh thu ghi nhận theo ngày đặt cọc (chưa theo ngày giao). Cần chủ dự án chốt cách ghi nhận doanh thu và chi phí thật.
 8. **Giao diện:** danh mục xe cần có số đăng kiểm (và giấy phép liên vận cho tuyến quốc tế), thiếu thì hệ thống không gán xe. Xem trước ảnh dạng popup chỉ hiện ảnh vừa chọn trong phiên (chưa có kho tệp), ảnh mẫu hiện ô thay thế.
+
+---
+
+## 15. Báo cáo của Manager
+
+Trang **Báo cáo doanh thu** của Manager (chỉ xem), chọn khoảng 7 / 30 / 90 ngày, so với kỳ liền trước cùng độ dài, có xuất CSV theo đơn.
+
+**Tài chính** (theo ngày đặt cọc của đơn):
+- **Doanh thu:** giá trị đơn đã đặt cọc (tổng báo giá cộng khoản phát sinh khách chịu ở Bảng quyết toán). Đơn đã hủy: chỉ tính phần tiền khách đã trả mà không được hoàn (mục 8.3). Đơn chưa cọc, bị từ chối hoặc hết hạn báo giá thì không có doanh thu.
+- **Chi phí vận hành:** giá vốn theo báo giá, tức bỏ biên lợi nhuận 5% khỏi các dòng cước, nhân sự, nhiên liệu và BOT (các dòng khoang, thủ tục, bảo hiểm tính nguyên) **cộng** chi phí sự cố nhà xe chịu (mục 11.5). Đơn hủy: chỉ tính chi phí sự cố nếu có.
+- **Lợi nhuận** = doanh thu − chi phí; **biên lợi nhuận** = lợi nhuận / doanh thu. **Đã thu** = cọc + 70% + khoản quyết toán khách đã trả − tiền hoàn.
+
+**Hiệu suất hoàn thành chuyến** (theo ngày xuất phát của từng xe):
+- **Tỷ lệ hoàn thành:** số xe đã giao ngựa / số xe đã xuất phát.
+- **Giao đúng giờ:** xe tới điểm giao không trễ quá 30 phút so với giờ dự kiến (cùng ngưỡng cờ Delayed Check-in, mục 5.5).
+- **Chuyến có sự cố:** số xe từng có sự cố / số xe đã xuất phát.
+- **Thời gian giao trung bình:** từ lúc bắt đầu hành trình đến lúc giao xong; kèm điểm đánh giá trung bình của khách.
+
+Số tiền là **số mẫu** theo biểu giá mẫu (mục 14.1). Chi phí thật (nhiên liệu, BOT thực tế, lương) chưa được ghi nhận nên chưa đối chiếu được với giá vốn ước tính theo báo giá.

@@ -33,7 +33,7 @@ function PublicNav() {
         <button className={s.dropBtn}>Tra cứu <i className="fa-solid fa-chevron-down" /></button>
         <div className={s.dropMenu}>
           <Link to="/?tab=order#tra-cuu">Tra cứu đơn hàng</Link>
-          <Link to="/?tab=fee#tra-cuu">Tra cứu cước vận chuyển</Link>
+          
           <Link to="/?tab=price#tra-cuu">Bảng giá</Link>
         </div>
       </div>
@@ -59,7 +59,7 @@ function Footer() {
         <div>
           <h4>Tra cứu</h4>
           <Link to="/?tab=order#tra-cuu">Tra cứu đơn hàng</Link>
-          <Link to="/?tab=fee#tra-cuu">Tra cứu cước</Link>
+          
           <Link to="/?tab=price#tra-cuu">Bảng giá</Link>
           <Link to="/#mang-luoi">Mạng lưới</Link>
         </div>

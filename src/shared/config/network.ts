@@ -91,3 +91,23 @@ export const TRANSIT_STATIONS: TransitStation[] = [
   { name: 'Trạm trung chuyển Vinh', area: 'Nghệ An', lat: 18.67, lng: 105.68 },
   { name: 'Trạm trung chuyển Viêng Chăn', area: 'Lào', lat: 17.97, lng: 102.6 },
 ]
+
+// Điểm cứu hộ giao thông và sửa xe dọc tuyến (số mẫu để chạy thử): Coordinator gọi điểm gần chỗ xe gặp sự cố nhất
+export interface RescuePoint extends GeoPoint { name: string; area: string; phone: string }
+export const RESCUE_POINTS: RescuePoint[] = [
+  { name: 'Cứu hộ Long Thành', area: 'Đồng Nai', phone: '0901 100 001', lat: 10.8, lng: 106.98 },
+  { name: 'Cứu hộ Long Khánh', area: 'Đồng Nai', phone: '0901 100 002', lat: 10.93, lng: 107.25 },
+  { name: 'Cứu hộ Biên Hòa', area: 'Đồng Nai', phone: '0901 100 003', lat: 10.94, lng: 106.84 },
+  { name: 'Cứu hộ Thủ Dầu Một', area: 'Bình Dương', phone: '0901 100 004', lat: 10.99, lng: 106.66 },
+  { name: 'Cứu hộ Đức Hòa', area: 'Long An', phone: '0901 100 005', lat: 10.9, lng: 106.42 },
+  { name: 'Cứu hộ Củ Chi', area: 'TP.HCM', phone: '0901 100 006', lat: 10.98, lng: 106.48 },
+  { name: 'Cứu hộ Trảng Bàng', area: 'Tây Ninh', phone: '0901 100 007', lat: 11.04, lng: 106.35 },
+  { name: 'Cứu hộ Mộc Bài', area: 'Tây Ninh', phone: '0901 100 008', lat: 11.08, lng: 106.18 },
+  { name: 'Cứu hộ Phan Thiết', area: 'Bình Thuận', phone: '0901 100 009', lat: 10.95, lng: 108.1 },
+  { name: 'Cứu hộ Tịnh Biên', area: 'An Giang', phone: '0901 100 010', lat: 10.59, lng: 104.94 },
+  { name: 'Cứu hộ Svay Rieng', area: 'Campuchia', phone: '+855 12 100 011', lat: 11.1, lng: 105.8 },
+  { name: 'Cứu hộ Neak Loeung', area: 'Campuchia', phone: '+855 12 100 012', lat: 11.27, lng: 105.27 },
+  { name: 'Cứu hộ Phnom Penh', area: 'Campuchia', phone: '+855 12 100 013', lat: 11.55, lng: 104.9 },
+  { name: 'Cứu hộ Lao Bảo', area: 'Quảng Trị', phone: '0901 100 014', lat: 16.63, lng: 106.6 },
+  { name: 'Cứu hộ Viêng Chăn', area: 'Lào', phone: '+856 20 100 015', lat: 17.97, lng: 102.62 },
+]

@@ -4,9 +4,9 @@ import {
   BREED_INSURED_VALUE, INSURANCE_RATE_BOOKING, DELAY_ALERT_MINUTES, MAX_CONTINUOUS_HOURS, MIN_REST_MINUTES, QUOTE_VALID_HOURS, REFUND_RATE, TARGET_LEG_HOURS, SINGLE_STALL_FEE, VEHICLE_CLASS, EXPENSE_CATEGORY, type BookingStatus, type ClearanceDocType, type ExpenseCategory, type IncidentAction, type IncidentKind, type Payer, type HorseDocType, type VehicleClass,
 } from '../config/booking-rules'
 import { DAY, HOUR, MIN_LEAD_DAYS } from '../config/business-rules'
-import { COUNTRY_LOCATIONS, GATES, PLACES, TRANSIT_STATIONS, type Gate } from '../config/network'
+import { COUNTRY_LOCATIONS, GATES, PLACES, TRANSIT_STATIONS, type GeoPoint, type Gate } from '../config/network'
 import { AVG_SPEED_KMH, BORDER_HOURS, DRIVE_HOURS_PER_DAY } from '../config/public-pricing'
-import type { CrewMember, Vehicle } from '../services/mock/fleet'
+import type { Vehicle } from '../services/mock/fleet'
 import type { StaffMember } from '../services/mock/staff'
 import type { Adjustment, Booking, BookingHorse, Checkpoint, Clearance, ClearanceItem, HorseProfile, PlaceRef, Quote, QuoteLine, SettlementItem, RestStop, RouteLeg, RoutePlan, TripRun, VehicleTrip, WelfareLog } from '../types/booking'
 import { atHour, dayKey, startOfDay } from './dates'
@@ -84,6 +84,30 @@ export function suggestTransitStations(origin: PlaceRef, dest: PlaceRef, gate: s
     return best.name
   })
 }
+// Xếp các trạm theo thứ tự xe đi qua: chiếu từng trạm lên đường đi điểm đón → (cửa khẩu) → điểm trả,
+// rồi sắp theo quãng đường dọc đường đi. Trả về trạm đã xếp và các điểm để vẽ đường (có cửa khẩu chen đúng chỗ).
+export function routeOutline<T extends GeoPoint>(origin: GeoPoint, gate: GeoPoint | undefined, dest: GeoPoint, stations: T[]): { stations: T[]; path: GeoPoint[] } {
+  const pts = gate ? [origin, gate, dest] : [origin, dest]
+  const kx = Math.cos((origin.lat * Math.PI) / 180) * 111, ky = 111 // km trên mỗi độ, đủ chính xác cho vài trăm km
+  const flat = (p: GeoPoint) => ({ x: (p.lng - origin.lng) * kx, y: (p.lat - origin.lat) * ky })
+  const seg = pts.slice(1).map((p, i) => { const a = flat(pts[i]), b = flat(p); return { a, b, len: Math.hypot(b.x - a.x, b.y - a.y) } })
+  const progress = (s: GeoPoint) => {
+    const q = flat(s)
+    let best = { d: Infinity, at: 0 }, before = 0
+    seg.forEach(({ a, b, len }) => {
+      const t = len ? Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / (len * len))) : 0
+      const d = Math.hypot(q.x - (a.x + (b.x - a.x) * t), q.y - (a.y + (b.y - a.y) * t))
+      if (d < best.d) best = { d, at: before + t * len }
+      before += len
+    })
+    return best.at
+  }
+  const ordered = stations.map(s => ({ s, at: progress(s) })).sort((x, y) => x.at - y.at)
+  const gateAt = gate ? seg[0].len : Infinity
+  const path: GeoPoint[] = [origin, ...ordered.filter(x => x.at < gateAt).map(x => x.s), ...(gate ? [gate] : []), ...ordered.filter(x => x.at >= gateAt).map(x => x.s), dest]
+  return { stations: ordered.map(x => x.s), path }
+}
+
 export const travelHours = (km: number, international: boolean) => km / AVG_SPEED_KMH + (international ? BORDER_HOURS : 0)
 export const tripDays = (km: number, international: boolean) => Math.max(1, Math.ceil(travelHours(km, international) / DRIVE_HOURS_PER_DAY))
 
@@ -119,7 +143,7 @@ export function quoteLines(b: QuoteInput, vehicles: Pick<Vehicle, 'capacity'>[])
 }
 
 // ===== Ước tính chi phí cho khách (Tra cứu cước / Bảng giá) =====
-// Số xe ước tính theo số ngựa: ít xe nhất theo hạng xe (9, 6, 2 ngăn). Khi đặt thật, hệ thống tự gán theo đội xe rảnh.
+// Số xe ước tính theo số ngựa: ít xe nhất theo hạng xe (9, 6, 2 ngăn). Khi đặt thật, Coordinator tự chọn xe theo đội xe rảnh.
 export function capacitiesFor(n: number): number[] {
   const out: number[] = []
   let left = n
@@ -167,55 +191,36 @@ export function busyResources(all: Booking[], departAt: number, exceptId?: strin
   return { vehicles, crew }
 }
 
-// ===== Gán xe tự động (PRD mục 10.2) =====
-export type AutoTrip = Pick<VehicleTrip, 'vehicleId' | 'driverId' | 'escortId' | 'horseIds'>
-export interface AutoAssignResult { ok: boolean; reason?: string; trips: AutoTrip[] }
-
-// Ít xe nhất; không xe nào đủ chỗ thì lấy các xe lớn nhất cho tới khi đủ chỗ, rồi chia đều (lần lượt từng ngựa, bỏ qua xe đã đầy).
+// ===== Chọn xe, tài xế, hộ tống (PRD mục 10.2): Coordinator tự chọn, hệ thống chỉ khóa người và xe trùng lịch =====
 // Xe phải có giấy đăng kiểm; tuyến quốc tế còn cần giấy phép liên vận (PRD mục 2.4)
 export const vehicleDocsOk = (v: Pick<Vehicle, 'inspectionNo' | 'transitPermit'>, international: boolean) => !!v.inspectionNo && (!international || !!v.transitPermit)
 
-export function autoAssign(horseIds: string[], vehicles: Vehicle[], crew: CrewMember[], busy: { vehicles: Set<string>; crew: Set<string> }, international = false): AutoAssignResult {
-  const fail = (reason: string): AutoAssignResult => ({ ok: false, reason, trips: [] })
-  const n = horseIds.length
-  if (!n) return fail('Đơn chưa có ngựa.')
-  const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id)
-  const free = vehicles.filter(v => vehicleDocsOk(v, international) && !busy.vehicles.has(v.id))
-  const drivers = crew.filter(c => c.role === 'driver' && !busy.crew.has(c.id)).sort(byId)
-  const escorts = crew.filter(c => c.role === 'escort' && !busy.crew.has(c.id)).sort(byId)
-  const single = [...free].filter(v => v.capacity >= n).sort((a, b) => a.capacity - b.capacity || byId(a, b))[0]
-  const chosen: Vehicle[] = []
-  if (single) chosen.push(single)
-  else {
-    let seats = 0
-    for (const v of [...free].sort((a, b) => b.capacity - a.capacity || byId(a, b))) {
-      chosen.push(v)
-      seats += v.capacity
-      if (seats >= n) break
-    }
-    if (seats < n) return fail(`Đội xe rảnh chỉ chở được ${seats}/${n} ngựa vào ngày này.`)
-  }
-  if (drivers.length < chosen.length) return fail(`Cần ${chosen.length} tài xế rảnh, hiện có ${drivers.length}.`)
-  if (escorts.length < chosen.length) return fail(`Cần ${chosen.length} hộ tống rảnh, hiện có ${escorts.length}.`)
-  const groups: string[][] = chosen.map(() => [])
-  let i = 0
-  for (const id of horseIds) {
-    while (groups[i % chosen.length].length >= chosen[i % chosen.length].capacity) i++
-    groups[i % chosen.length].push(id)
-    i++
-  }
-  return { ok: true, trips: chosen.map((v, k) => ({ vehicleId: v.id, driverId: drivers[k].id, escortId: escorts[k].id, horseIds: groups[k] })) }
+// Lịch của một xe / tài xế / hộ tống: các đơn khác đang giữ họ (kèm ngày đi và tuyến), để Coordinator biết họ bận gì
+export interface Booked { order: string; departAt: number; route: string; trip: string }
+export interface Schedules { vehicles: Map<string, Booked[]>; drivers: Map<string, Booked[]>; escorts: Map<string, Booked[]> }
+export function schedulesOf(all: Booking[], exceptId: string): Schedules {
+  const out: Schedules = { vehicles: new Map(), drivers: new Map(), escorts: new Map() }
+  const put = (m: Map<string, Booked[]>, id: string, x: Booked) => { if (id) m.set(id, [...(m.get(id) ?? []), x]) }
+  all.filter(o => o.id !== exceptId && HOLDING.includes(o.status)).forEach(o => (o.trips ?? []).forEach(t => {
+    const x: Booked = { order: o.id, departAt: o.departAt, route: `${o.origin.name.split(' — ')[0]} → ${o.dest.name.split(' — ')[0]}`, trip: t.tripId }
+    put(out.vehicles, t.vehicleId, x); put(out.drivers, t.driverId, x); put(out.escorts, t.escortId, x)
+  }))
+  return out
 }
+// Trùng lịch: đơn khác của họ có ngày đi cách ngày đi này dưới 3 ngày (cùng quy tắc với busyResources)
+export const clashOf = (booked: Booked[] | undefined, departAt: number) => (booked ?? []).find(x => Math.abs(x.departAt - departAt) < 3 * DAY)
 
 export const tripIdFor = (bookingId: string, index: number) => `TRP-${bookingId.slice(-4)}-${index}`
 export const waybillNoOf = (bookingId: string) => `VD-${bookingId.slice(-4)}`
 
 type Task = 'specialist' | 'coordinator'
 // Số đơn người này đang phải làm (chưa xong phần việc của mình)
-export const staffLoad = (staffId: string, task: Task, all: Booking[]) => all.filter(o =>
+// Các đơn đang giao cho nhân viên và chưa làm xong phần việc của họ
+export const staffJobs = (staffId: string, task: Task, all: Booking[]) => all.filter(o =>
   o.status === 'under_review' && (task === 'specialist'
     ? o.intake?.specialist.id === staffId && o.medical?.status !== 'approved'
-    : o.intake?.coordinator.id === staffId && !o.plan)).length
+    : o.intake?.coordinator.id === staffId && !o.plan))
+export const staffLoad = (staffId: string, task: Task, all: Booking[]) => staffJobs(staffId, task, all).length
 
 // Người đang làm việc, ít việc nhất lên đầu
 export function suggestStaff(staff: StaffMember[], task: Task, all: Booking[]) {
@@ -316,6 +321,9 @@ export function managerBoardOf(s: BookingStatus): BoardCol | undefined {
   }
 }
 
+// Ngày giờ đến nơi dự kiến = giờ đến của chặng cuối; chưa có lộ trình thì chưa biết
+export const arrivalOf = (route?: Pick<RoutePlan, 'legs'>) => route?.legs.length ? route.legs[route.legs.length - 1].arriveAt : undefined
+
 // Số đơn đang chờ Manager (menu và trang Tổng quan). `moving` chỉ để theo dõi, không phải việc cần xử lý.
 export const managerCounts = (list: Pick<Booking, 'status' | 'incidents' | 'medical'>[]) => ({
   intake: list.filter(b => b.status === 'pending_intake').length,
@@ -385,7 +393,7 @@ export function buildRoutePlan(b: Pick<Booking, 'type' | 'origin' | 'dest' | 'ga
   const driveHours = routeKm(b.origin, b.dest, b.gate) / AVG_SPEED_KMH
   const n = Math.max(1, Math.ceil(driveHours / TARGET_LEG_HOURS))
   const names = suggestTransitStations(b.origin, b.dest, b.gate, n - 1)
-  const rests: RestStop[] = names.map((name, i) => ({ afterLeg: i + 1, name, minutes: 45, facilities: 'Bóng mát, nguồn nước máy sạch' }))
+  const rests: RestStop[] = names.map((name, i) => ({ afterLeg: i + 1, name, minutes: 45 }))
   const legs = layoutLegs(b.origin.name, b.dest.name, etd, rests, driveHours)
   return { legs, rests, borderEta: international ? estimateBorderEta(legs) : undefined }
 }
@@ -467,6 +475,49 @@ export function transitProgress(t: { run?: TripRun }): { done: number; total: nu
 // "In Transit - Leg N": số trạm trung chuyển đã qua + 1
 export const legNumber = (t: { run?: TripRun }) => (t.run?.checkpoints.filter(c => c.type === 'rest' && c.doneAt).length ?? 0) + 1
 
+// Thông quan xong mà Driver chưa bấm tiếp tục hành trình (xe còn ở cửa khẩu). Mốc sau đã check-in rồi (dữ liệu cũ) thì coi như đã rời.
+export function pendingDeparture(t: { run?: TripRun }): Checkpoint | undefined {
+  const cps = t.run?.checkpoints
+  if (!cps || t.run?.deliveredAt) return undefined
+  const i = cps.findIndex(c => c.type === 'customs' && c.doneAt && !c.leftAt)
+  return i >= 0 && !cps.slice(i + 1).some(c => c.arrivedAt) ? cps[i] : undefined
+}
+// Xe đang ở đâu theo các xác nhận thủ công của Driver (không dùng GPS): đang dừng tại một mốc, hoặc đang chạy giữa hai mốc
+export type VehicleSpot = { kind: 'at'; index: number } | { kind: 'between'; from: number; to: number }
+export function vehicleSpot(t: { run?: TripRun }): VehicleSpot {
+  const cps = t.run?.checkpoints
+  if (!cps?.length) return { kind: 'at', index: 0 }
+  let i = -1
+  cps.forEach((c, k) => { if (c.arrivedAt) i = k })
+  if (i < 0) return { kind: 'at', index: 0 }
+  const c = cps[i], next = cps[i + 1]
+  const left = c.type === 'delivery' ? false : c.type === 'border' ? !!next?.doneAt || !!cps[i + 2]?.arrivedAt : c.type === 'customs' ? !!c.leftAt || !!next?.arrivedAt : !!c.doneAt
+  return left && next ? { kind: 'between', from: i, to: i + 1 } : { kind: 'at', index: i }
+}
+export function spotLabel(t: { run?: TripRun; departedAt?: number }): string {
+  const cps = t.run?.checkpoints, spot = vehicleSpot(t)
+  if (!cps?.length) return t.departedAt ? 'Đang trên đường tới điểm đón' : 'Chưa xuất phát'
+  if (!cps[0].arrivedAt) return 'Đang trên đường tới điểm đón'
+  const name = (c: Checkpoint) => (c.type === 'rest' ? c.place.replace(/^Trạm trung chuyển /, 'trạm ') : c.type === 'pickup' ? 'điểm đón' : c.type === 'delivery' ? 'điểm giao' : `cửa khẩu ${c.place}`)
+  if (spot.kind === 'at') return t.run?.deliveredAt ? 'Đã giao ngựa tại điểm giao' : `Đang ở ${name(cps[spot.index])}`
+  return `Đang trên đường từ ${name(cps[spot.from])} tới ${name(cps[spot.to])}`
+}
+// Toạ độ của một mốc trên bản đồ: điểm đón, trạm trung chuyển, cửa khẩu, điểm giao
+export function checkpointPoint(b: Pick<Booking, 'origin' | 'dest'>, cp: Checkpoint): GeoPoint | undefined {
+  if (cp.type === 'pickup') return findLocation(b.origin.id)
+  if (cp.type === 'delivery') return findLocation(b.dest.id)
+  if (cp.type === 'rest') return TRANSIT_STATIONS.find(s => s.name === cp.place)
+  return GATES.find(g => g.name === cp.place)
+}
+// Vị trí xe để vẽ: dừng tại mốc thì đúng chỗ đó, đang đi thì ở giữa hai mốc
+export function vehiclePoint(b: Pick<Booking, 'origin' | 'dest'>, t: { run?: TripRun }): GeoPoint | undefined {
+  const spot = vehicleSpot(t), cps = t.run?.checkpoints
+  if (!cps?.length) return findLocation(b.origin.id)
+  if (spot.kind === 'at') return checkpointPoint(b, cps[spot.index])
+  const a = checkpointPoint(b, cps[spot.from]), z = checkpointPoint(b, cps[spot.to])
+  return a && z ? { lat: (a.lat + z.lat) / 2, lng: (a.lng + z.lng) / 2 } : a ?? z
+}
+
 // Mốc chưa check-in mà đã quá giờ dự kiến từ 30 phút: Delayed Check-in cho Coordinator
 export function delayedCheckpoint(t: { run?: TripRun }, now = Date.now()) {
   if (!t.run?.startedAt || t.run.deliveredAt) return undefined
@@ -497,11 +548,62 @@ export const CANCELLABLE: Booking['status'][] = ['pending_intake', 'under_review
 export const openIncidentOf = (b: Pick<Booking, 'incidents'>, tripId: string) => b.incidents?.find(i => i.tripId === tripId && i.status !== 'resolved')
 // Ngựa thì khách chịu, vận chuyển thì nhà xe chịu; chuồng đệm do tắc cửa khẩu nhà xe chịu. Manager sửa được lúc đối soát.
 export function defaultPayer(kind: IncidentKind, category: ExpenseCategory): Payer {
-  if (kind === 'border_congestion') return 'carrier'
+  if (kind === 'traffic_jam') return 'carrier' // tắc đường là việc vận chuyển: nhà xe chịu toàn bộ (PRD 11.5)
   return category === 'vet_fee' || category === 'medicine' || category === 'holding_stable' ? 'customer' : 'carrier'
 }
+// Mỗi nhóm sự cố có đúng một cách xử lý, lập trên bản đồ
 export function incidentActionsFor(kind: IncidentKind): IncidentAction[] {
-  return kind === 'horse_health' ? ['vet_clinic'] : kind === 'vehicle_breakdown' ? ['repair_on_site', 'rescue_van'] : ['holding_stable']
+  return kind === 'horse_health' ? ['to_station'] : kind === 'vehicle_breakdown' ? ['rescue_and_station'] : ['reroute']
+}
+// Sức khỏe ngựa và xe gặp sự cố đều đưa ngựa tới trạm nghỉ, nên Escort phải xác nhận ngựa đủ sức mới đi tiếp; tắc đường thì không
+export const needsFitCheck = (kind: IncidentKind) => kind !== 'traffic_jam'
+
+// ----- Bản đồ sự cố: điểm gần nhất, đường đi còn lại, vị trí xe -----
+export function nearestTo<T extends GeoPoint>(from: GeoPoint, list: T[], n = list.length): (T & { km: number })[] {
+  return list.map(x => ({ ...x, km: haversineKm(from, x) })).sort((a, z) => a.km - z.km).slice(0, n)
+}
+// Chiếu một điểm lên đường gấp khúc: trả về đoạn gần nhất (chỉ số điểm đầu đoạn) và quãng đường tính từ điểm đầu đường
+export function projectOnPath(path: GeoPoint[], p: GeoPoint): { segment: number; at: number } {
+  const kx = Math.cos((path[0].lat * Math.PI) / 180) * 111, ky = 111
+  const flat = (q: GeoPoint) => ({ x: (q.lng - path[0].lng) * kx, y: (q.lat - path[0].lat) * ky })
+  const q = flat(p)
+  let best = { d: Infinity, segment: 0, at: 0 }, before = 0
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = flat(path[i]), b = flat(path[i + 1]), len = Math.hypot(b.x - a.x, b.y - a.y)
+    const t = len ? Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / (len * len))) : 0
+    const d = Math.hypot(q.x - (a.x + (b.x - a.x) * t), q.y - (a.y + (b.y - a.y) * t))
+    if (d < best.d) best = { d, segment: i, at: before + t * len }
+    before += len
+  }
+  return { segment: best.segment, at: best.at }
+}
+// Các điểm xe còn phải đi qua kể từ vị trí hiện tại (điểm kế tiếp, các trạm, cửa khẩu, điểm trả)
+export const pointsAhead = <T extends GeoPoint>(path: T[], p: GeoPoint): T[] => path.slice(projectOnPath(path, p).segment + 1)
+// Điểm nằm ở tỷ lệ f (0 – 1) quãng đường dọc đường gấp khúc
+export function pointAlong(path: GeoPoint[], f: number): GeoPoint {
+  const lens = path.slice(1).map((p, i) => haversineKm(path[i], p))
+  let want = lens.reduce((t, x) => t + x, 0) * Math.max(0, Math.min(1, f))
+  for (let i = 0; i < lens.length; i++) {
+    if (want <= lens[i] || i === lens.length - 1) { const k = lens[i] ? Math.min(1, want / lens[i]) : 0; return { lat: path[i].lat + (path[i + 1].lat - path[i].lat) * k, lng: path[i].lng + (path[i + 1].lng - path[i].lng) * k } }
+    want -= lens[i]
+  }
+  return path[0]
+}
+// Đường đi đã lập của đơn: điểm đón → trạm đã chọn → cửa khẩu → điểm trả
+export function bookingPath(b: Pick<Booking, 'origin' | 'dest' | 'gate' | 'route'>): GeoPoint[] {
+  const a = findLocation(b.origin.id), z = findLocation(b.dest.id)
+  if (!a || !z) return []
+  const gate = b.gate ? GATES.find(g => g.name === b.gate) : undefined
+  const stations = (b.route?.rests ?? []).flatMap(r => TRANSIT_STATIONS.filter(s => s.name === r.name))
+  return routeOutline(a, gate, z, stations).path
+}
+// Vị trí xe lúc báo sự cố (bản thử, mô phỏng): giữa mốc vừa qua và mốc kế tiếp của hành trình. Có app thật thì lấy từ GPS.
+export function incidentLocation(b: Pick<Booking, 'origin' | 'dest' | 'gate' | 'route'>, trip: VehicleTrip): GeoPoint {
+  const path = bookingPath(b)
+  if (path.length < 2) return findLocation(b.origin.id) ?? { lat: 10.78, lng: 106.7 }
+  const p = transitProgress(trip)
+  const f = p && p.total ? (p.done + 0.5) / p.total : 0.5
+  return pointAlong(path, Math.max(0.08, Math.min(0.92, f)))
 }
 // Chỉ các khoản khách chịu vào bảng quyết toán
 export function settlementOf(b: Pick<Booking, 'incidents'>): { items: SettlementItem[]; total: number } {

@@ -12,7 +12,7 @@ import { Flag } from '@shared/ui/Flag'
 import { BookingShell } from './BookingShell'
 import { countriesOf, useBookingDraft } from './draft'
 import s from './Booking.module.css'
-import { FormSelect } from '@shared/ui/FormSelect'
+import { PlacePicker } from '@shared/ui/PlacePicker'
 
 type Partner = 'KH' | 'LA'
 const PARTNERS: Partner[] = ['KH', 'LA']
@@ -141,18 +141,12 @@ export default function Step1RoutePage() {
               <div className={s.grid2}>
                 <div className="form-group">
                   <label htmlFor="origin" className="required">Điểm đón ({COUNTRIES[countries.origin].name})</label>
-                  <FormSelect id="origin" className={`form-control ${submitted && errors.origin ? 'invalid' : ''}`} value={originId} onChange={e => setOriginId(e.target.value)}>
-                    <option value="">— Chọn điểm đón —</option>
-                    {locations(countries.origin, type === 'domestic' ? destId : undefined).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </FormSelect>
+                  <PlacePicker id="origin" label={`Chọn điểm đón (${COUNTRIES[countries.origin].name})`} invalid={submitted && !!errors.origin} value={originId} onChange={setOriginId} options={locations(countries.origin, type === 'domestic' ? destId : undefined)} />
                   {show(errors.origin)}
                 </div>
                 <div className="form-group">
                   <label htmlFor="dest" className="required">Điểm giao ({COUNTRIES[countries.dest].name})</label>
-                  <FormSelect id="dest" className={`form-control ${submitted && errors.dest ? 'invalid' : ''}`} value={destId} onChange={e => setDestId(e.target.value)}>
-                    <option value="">— Chọn điểm giao —</option>
-                    {locations(countries.dest, type === 'domestic' ? originId : undefined).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </FormSelect>
+                  <PlacePicker id="dest" label={`Chọn điểm giao (${COUNTRIES[countries.dest].name})`} invalid={submitted && !!errors.dest} value={destId} onChange={setDestId} options={locations(countries.dest, type === 'domestic' ? originId : undefined)} />
                   {show(errors.dest)}
                 </div>
               </div>

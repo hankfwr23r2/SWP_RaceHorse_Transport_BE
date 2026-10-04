@@ -1,8 +1,9 @@
 // Service đơn đặt chuyến (Flow 1–4). Tên hàm theo REST để sau này thay bằng API Spring Boot.
 // Mỗi hàm là một thao tác nghiệp vụ; trạng thái chỉ đổi qua các hàm này để giữ đúng cổng chuyển bước của PRD.
-import { BOOKING_STATUS, CLEARANCE_DOC, EXPENSE_CATEGORY, INCIDENT_ACTION, INCIDENT_KIND, SETTLEMENT_GRACE_HOURS, publicStepOf, type ClearanceDocType, type ExpenseCategory, type IncidentAction, type IncidentKind, type Payer, type WelfareCondition } from '../config/booking-rules'
-import { CANCELLABLE, openIncidentOf, defaultPayer, incidentActionsFor, settlementOf, autoAssign, blankClearance, buildCheckpoints, busyResources, cancelRefund, canCompleteClearance, vehicleDocsOk, currentCheckpoint, gatesFor, deriveStatus, finalizeQuote, isQuoteExpired, manifestDocuments, nextBookingId, quoteLines, reviewDone, tripIdFor, validateRoutePlan, waybillNoOf, type AutoAssignResult } from '../lib/booking'
-import type { Adjustment, Booking, Incident, Rating, ClearanceItem, ClearanceStatus, HistoryEntry, MedicalReview, RoutePlan, StaffRef, TripRun, VehicleTrip, WelfareLog } from '../types/booking'
+import { BOOKING_STATUS, CLEARANCE_DOC, EXPENSE_CATEGORY, INCIDENT_ACTION, INCIDENT_KIND, MIN_REST_MINUTES, SETTLEMENT_GRACE_HOURS, publicStepOf, type ClearanceDocType, type ExpenseCategory, type IncidentAction, type IncidentKind, type Payer, type WelfareCondition } from '../config/booking-rules'
+import { CANCELLABLE, openIncidentOf, defaultPayer, incidentActionsFor, incidentLocation, pendingDeparture, needsFitCheck, settlementOf, blankClearance, buildCheckpoints, busyResources, cancelRefund, canCompleteClearance, vehicleDocsOk, currentCheckpoint, gatesFor, deriveStatus, finalizeQuote, isQuoteExpired, manifestDocuments, nextBookingId, quoteLines, reviewDone, tripIdFor, validateRoutePlan, waybillNoOf } from '../lib/booking'
+import { TRANSIT_STATIONS } from '../config/network'
+import type { Adjustment, Booking, Incident, IncidentPlan, Rating, ClearanceItem, HistoryEntry, MedicalReview, RoutePlan, StaffRef, TripRun, VehicleTrip, WelfareLog } from '../types/booking'
 import { formatVND } from '../lib/format'
 import { crewApi, vehiclesApi } from './fleet'
 import { horsesApi } from './horses'
@@ -277,12 +278,6 @@ export const customerBookingsApi = {
   },
 }
 
-// Các xe được gán cho đơn: chạy autoAssign trên đội xe và nhân sự rảnh vào ngày D
-const runAutoAssign = async (b: Booking): Promise<AutoAssignResult> => {
-  const [vehicles, crew] = await Promise.all([vehiclesApi.list(), crewApi.list()])
-  return autoAssign(b.horses.map(h => h.horseId), vehicles, crew, busyResources(store.all(), b.departAt, b.id), b.type === 'international')
-}
-
 const incidentById = (b: Booking, incidentId: string) => {
   const i = b.incidents?.find(x => x.id === incidentId)
   if (!i) throw new Error(`Không tìm thấy sự cố ${incidentId}.`)
@@ -303,21 +298,18 @@ export const bookingsApi = {
   list: async (): Promise<Booking[]> => { applySystemRules(); return structuredClone(store.all()).sort((a, b) => a.createdAt - b.createdAt) },
   get: async (id: string): Promise<Booking | undefined> => { applySystemRules(); return structuredClone(store.get(id)) },
 
-  // Manager: tiếp nhận, hệ thống tự gán xe và nhân sự, giao Kiểm dịch viên và Điều phối viên. Không gán đủ thì đơn giữ nguyên chờ tiếp nhận.
+  // Manager: tiếp nhận, giao Kiểm dịch viên và Điều phối viên. Xe, tài xế, hộ tống do Điều phối viên chọn khi lập lộ trình.
   activate: async (id: string, by: string, specialist: StaffRef, coordinator: StaffRef): Promise<Booking> => {
     const b = must(id)
     expect(b, 'pending_intake', 'Đơn này đã được tiếp nhận.')
-    const r = await runAutoAssign(b)
-    if (!r.ok) throw new Error(`Chưa gán được xe: ${r.reason}`)
-    const trips: VehicleTrip[] = r.trips.map((t, i) => ({ ...t, tripId: tripIdFor(id, i + 1), acks: {} }))
     const activated = structuredClone(store.update(id, {
-      status: 'under_review', trips, clearance: blankClearance(b.type),
+      status: 'under_review', clearance: blankClearance(b.type),
       intake: { at: Date.now(), by, specialist, coordinator },
       medical: { status: 'pending' },
-      history: log(b, by, `Tiếp nhận, hệ thống tự gán ${trips.length} xe. Giao ${specialist.name} (kiểm dịch) và ${coordinator.name} (điều phối)`),
+      history: log(b, by, `Tiếp nhận. Giao ${specialist.name} (kiểm dịch) và ${coordinator.name} (điều phối)`),
     }))
     notify(activated, ['specialist'], `Nhiệm vụ mới: thẩm định hồ sơ ngựa đơn ${id}`, `Quản lý giao bạn thẩm định hồ sơ ${b.horses.length} ngựa.`, { specialist: LINK.specialist(id) })
-    notify(activated, ['coordinator'], `Nhiệm vụ mới: chốt xe và lộ trình đơn ${id}`, `Hệ thống đã gán ${trips.length} xe. Xem lại, chỉnh nếu cần rồi xác nhận.`)
+    notify(activated, ['coordinator'], `Nhiệm vụ mới: chốt xe và lộ trình đơn ${id}`, `Chọn xe, tài xế, hộ tống cho ${b.horses.length} ngựa và lập lộ trình rồi xác nhận.`)
     return activated
   },
 
@@ -335,9 +327,6 @@ export const bookingsApi = {
     if (role === 'coordinator') notify(out, ['manager', 'specialist'], `Đơn ${id} bị từ chối`, `Điều phối viên không duyệt xe và lộ trình: ${reason.trim()}`)
     return out
   },
-
-  // Coordinator: xem lại phương án tự gán (nút "Gán lại"), không lưu
-  assignPreview: async (id: string): Promise<AutoAssignResult> => runAutoAssign(must(id)),
 
   // Specialist: xác nhận đạt y tế
   approveMedical: async (id: string, by: string): Promise<Booking> => {
@@ -383,7 +372,7 @@ export const bookingsApi = {
     if (new Set(input.trips.map(t => t.escortId)).size !== input.trips.length) throw new Error('Mỗi xe cần một nhân viên hộ tống riêng.')
     input.trips.forEach(t => {
       const v = vehicles.find(x => x.id === t.vehicleId)
-      if (!v) throw new Error('Chưa chọn xe.')
+      if (!v) throw new Error('Chưa chọn xe cho tất cả các chuyến.')
       if (!vehicleDocsOk(v, international)) throw new Error(`Xe ${v.plate} thiếu giấy đăng kiểm${international ? ' hoặc giấy phép liên vận' : ''}, chọn xe khác.`)
       if (t.horseIds.length > v.capacity) throw new Error(`Xe ${v.plate} chỉ có ${v.capacity} ngăn, đang xếp ${t.horseIds.length} ngựa.`)
       if (busy.vehicles.has(v.id)) throw new Error(`Xe ${v.plate} đã được giữ cho đơn khác có ngày đi gần ngày này.`)
@@ -440,19 +429,20 @@ export const bookingsApi = {
     return out
   },
 
-  // Specialist: cập nhật một hạng mục giấy tờ (trạng thái, ghi chú, ảnh chụp)
-  updateClearanceItem: async (id: string, by: string, type: ClearanceDocType, patch: { status?: ClearanceStatus; note?: string; photos?: string[] }): Promise<Booking> => {
+  // Specialist: cập nhật một hạng mục giấy tờ (ghi chú, ảnh chụp). Trạng thái không chỉnh tay: có ảnh = Đã nộp, chưa có ảnh = Chưa nộp.
+  updateClearanceItem: async (id: string, by: string, type: ClearanceDocType, patch: { note?: string; photos?: string[] }): Promise<Booking> => {
     const b = must(id)
     if (!STAFF_ON_CLEARANCE.includes(b.status) || !b.clearance) throw new Error('Đơn không ở bước làm giấy tờ.')
     const item = b.clearance.items.find(i => i.type === type)
     if (!item) throw new Error('Hạng mục này không có trong đơn.')
-    const next: ClearanceItem = { ...item, ...patch, updatedAt: Date.now(), by }
+    const merged = { ...item, ...patch }
+    const next: ClearanceItem = { ...merged, status: merged.photos.length ? 'done' : 'todo', updatedAt: Date.now(), by }
     const items = b.clearance.items.map(i => (i.type === type ? next : i))
     const firstTouch = b.status === 'waybill_issued'
     return structuredClone(store.update(id, {
       status: 'clearance_in_progress',
       clearance: { ...b.clearance, items, acceptedAt: b.clearance.acceptedAt ?? Date.now(), acceptedBy: b.clearance.acceptedBy ?? by },
-      history: log(b, by, `${firstTouch ? 'Tiếp nhận Vận đơn. ' : ''}Giấy tờ "${CLEARANCE_DOC[type].short}": ${patch.status === 'done' ? 'xong' : patch.status === 'doing' ? 'đang làm' : patch.status === 'todo' ? 'chưa làm' : 'cập nhật'}`),
+      history: log(b, by, `${firstTouch ? 'Tiếp nhận Vận đơn. ' : ''}Giấy tờ "${CLEARANCE_DOC[type].short}": ${patch.photos ? (next.status === 'done' ? 'đã nộp (có ảnh chụp)' : 'chưa nộp (chưa có ảnh)') : 'cập nhật ghi chú'}`),
     }))
   },
 
@@ -593,6 +583,7 @@ export const bookingsApi = {
     const b = must(id)
     const t = liveTrip(b, tripId)
     running(t)
+    if (pendingDeparture(t)) throw new Error('Chưa bấm tiếp tục hành trình rời cửa khẩu.')
     const cp = currentCheckpoint(t)
     if (!cp || !['rest', 'border', 'delivery'].includes(cp.type)) throw new Error('Mốc hiện tại không phải xác nhận có mặt tới nơi.')
     if (cp.arrivedAt) throw new Error('Đã xác nhận có mặt mốc này.')
@@ -621,6 +612,8 @@ export const bookingsApi = {
     const b = must(id)
     const t = liveTrip(b, tripId)
     const run = running(t)
+    const left = pendingDeparture(t) // thông quan xong: rời cửa khẩu
+    if (left) { left.leftAt = Date.now(); return commitTrips(b, by, `Xe ${tripId} rời cửa khẩu, tiếp tục hành trình`) }
     const cp = currentCheckpoint(t)
     if (cp?.type !== 'rest' || !cp.arrivedAt) throw new Error('Chưa ở trạm trung chuyển.')
     if (!run.welfare.some(w => w.checkpointId === cp.id)) throw new Error('Hộ tống chưa gửi nhật ký an sinh của trạm này.')
@@ -667,25 +660,33 @@ export const bookingsApi = {
     if (!t.run?.startedAt || t.run.deliveredAt) throw new Error('Xe chưa chở ngựa hoặc đã giao xong, không báo sự cố được.')
     if (openIncidentOf(b, tripId)) throw new Error(`Xe ${tripId} đang có sự cố chưa xử lý xong.`)
     if (!photo) throw new Error('Cần chụp ảnh hiện trường sự cố.')
-    const inc: Incident = { id: INCIDENT_NO(b), tripId, kind, reportedBy: by, reportedAt: Date.now(), photo, note: note.trim(), status: 'reported', expenses: [] }
+    const inc: Incident = { id: INCIDENT_NO(b), tripId, kind, reportedBy: by, reportedAt: Date.now(), location: incidentLocation(b, t), photo, note: note.trim(), status: 'reported', expenses: [] }
     b.incidents = [...(b.incidents ?? []), inc]
     const out = commitIncident(b, by, `SOS xe ${tripId}: ${INCIDENT_KIND[kind].label.toLowerCase()}`)
     notify(b, ['manager', 'coordinator'], `SOS xe ${tripId} — đơn ${id}`, note.trim() || 'Tài xế / hộ tống báo sự cố khẩn cấp.', { manager: LINK.manager.incidents, coordinator: '/coordinator/incidents' })
     return out
   },
-  // Coordinator: lập phương án xử lý (đề nghị hạn mức) trình Manager
-  planIncident: async (id: string, incidentId: string, by: string, input: { action: IncidentAction; note: string; newEta: number; budget: number }): Promise<Booking> => {
+  // Coordinator: lập phương án xử lý trên bản đồ (đề nghị hạn mức) trình Manager. Mỗi nhóm sự cố có một cách xử lý:
+  // sức khỏe ngựa → đưa ngựa tới trạm nghỉ gần nhất; xe gặp sự cố → gọi cứu hộ gần chỗ xe + đưa ngựa tới trạm nghỉ; tắc đường → đổi lộ trình.
+  planIncident: async (id: string, incidentId: string, by: string, input: { action: IncidentAction; note: string; newEta: number; budget: number } & Pick<IncidentPlan, 'station' | 'restMinutes' | 'rescue' | 'rescueLine' | 'toStation' | 'detour'>): Promise<Booking> => {
     const b = must(id)
     const inc = incidentById(b, incidentId)
     if (inc.status !== 'reported') throw new Error('Sự cố này không ở bước lập phương án.')
     if (!incidentActionsFor(inc.kind).includes(input.action)) throw new Error('Phương án không phù hợp với nhóm sự cố này.')
     if (input.newEta <= Date.now()) throw new Error('ETA mới phải sau thời điểm hiện tại.')
     if (!(input.budget >= 0)) throw new Error('Hạn mức đề nghị không hợp lệ.')
-    inc.plan = { ...input, note: input.note.trim(), at: Date.now(), by }
+    if (input.action !== 'reroute') {
+      if (!input.station || !TRANSIT_STATIONS.some(s => s.name === input.station)) throw new Error('Chọn trạm nghỉ trong danh mục để đưa ngựa tới.')
+      if (!((input.restMinutes ?? 0) >= MIN_REST_MINUTES)) throw new Error(`Ngựa nghỉ tại trạm tối thiểu ${MIN_REST_MINUTES} phút.`)
+    }
+    if (input.action === 'rescue_and_station' && !input.rescue) throw new Error('Chọn điểm cứu hộ gần chỗ xe gặp sự cố.')
+    if (input.action === 'reroute' && !input.detour) throw new Error('Chọn lộ trình mới để tránh tắc nghẽn.')
+    const { action, newEta, budget, station, restMinutes, rescue, rescueLine, toStation, detour } = input
+    inc.plan = { action, newEta, budget, note: input.note.trim(), at: Date.now(), by, ...(action !== 'reroute' ? { station, restMinutes, toStation } : {}), ...(action === 'rescue_and_station' ? { rescue, rescueLine } : {}), ...(action === 'reroute' ? { detour } : {}) }
     inc.status = 'pending_approval'
     delete inc.rejection
-    const out = commitIncident(b, by, `Lập phương án sự cố ${incidentId}, trình Quản lý duyệt`)
-    notify(b, ['manager'], `Phương án sự cố đơn ${id} chờ duyệt`, `Đề nghị hạn mức ${formatVND(input.budget)}.`, { manager: LINK.manager.incidents })
+    const out = commitIncident(b, by, `Lập phương án sự cố ${incidentId} trên bản đồ: ${INCIDENT_ACTION[action]}, trình Quản lý duyệt`)
+    notify(b, ['manager'], `Phương án sự cố đơn ${id} chờ duyệt`, `${INCIDENT_ACTION[action]}. Đề nghị hạn mức ${formatVND(input.budget)}.`, { manager: LINK.manager.incidents })
     return out
   },
   // Manager: trả phương án về
@@ -711,7 +712,7 @@ export const bookingsApi = {
     inc.status = 'active'
     const out = commitIncident(b, by, `Duyệt phương án khẩn cấp ${incidentId}, hạn mức ${formatVND(input.budget)}`)
     notify(b, ['customer', 'coordinator'], `Xe ${inc.tripId} đang xử lý sự cố — đơn ${id}`, 'Quản lý đã duyệt phương án. Ngựa đang được đội ngũ chăm sóc, ETA mới đã cập nhật.', { coordinator: '/coordinator/incidents' })
-    await notifyCrew(b, `Phương án sự cố đã duyệt — ${id}`, inc.plan ? `Thực hiện: ${INCIDENT_ACTION[inc.plan.action]}. Hạn mức ${formatVND(input.budget)}.` : 'Phương án khẩn cấp đã duyệt.', [inc.tripId])
+    await notifyCrew(b, `Phương án sự cố đã duyệt — ${id}`, inc.plan ? `Thực hiện: ${INCIDENT_ACTION[inc.plan.action]}${inc.plan.station ? ` (${inc.plan.station})` : ''}. Hạn mức ${formatVND(input.budget)}.` : 'Phương án khẩn cấp đã duyệt.', [inc.tripId])
     return out
   },
   // Driver / Escort: tải chi phí tại chỗ, ảnh chứng từ trước, số tiền sau (Evidence-First)
@@ -730,7 +731,7 @@ export const bookingsApi = {
     const b = must(id)
     const inc = incidentById(b, incidentId)
     if (inc.status !== 'active') throw new Error('Phương án khẩn cấp chưa được duyệt hoặc đã xong.')
-    if (inc.kind !== 'horse_health') throw new Error('Chỉ cần xác nhận đủ sức với sự cố sức khỏe ngựa.')
+    if (!needsFitCheck(inc.kind)) throw new Error('Sự cố tắc nghẽn không cần xác nhận ngựa đủ sức.')
     inc.fitConfirmedAt = Date.now()
     return commitIncident(b, by, `Hộ tống xác nhận ngựa đủ sức đi tiếp (${incidentId})`)
   },
@@ -739,7 +740,7 @@ export const bookingsApi = {
     const b = must(id)
     const inc = incidentById(b, incidentId)
     if (inc.status !== 'active') throw new Error('Phương án khẩn cấp chưa được duyệt hoặc đã xong.')
-    if (inc.kind === 'horse_health' && !inc.fitConfirmedAt) throw new Error('Hộ tống chưa xác nhận ngựa đủ sức đi tiếp.')
+    if (needsFitCheck(inc.kind) && !inc.fitConfirmedAt) throw new Error('Hộ tống chưa xác nhận ngựa đủ sức đi tiếp.')
     inc.status = 'resolved'
     inc.resolvedAt = Date.now()
     const out = commitIncident(b, by, `Tiếp tục hành trình chính xe ${inc.tripId}, sự cố ${incidentId} đã xử lý xong`)

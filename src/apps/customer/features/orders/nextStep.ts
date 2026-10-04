@@ -1,7 +1,7 @@
 // "Bước tiếp theo" của đơn phía khách: mỗi trạng thái nói rõ khách đang chờ ai, hoặc cần làm gì.
 import { HOUR } from '@shared/config/business-rules'
 import type { Tone } from '@shared/config/booking-rules'
-import { clearanceProgress, currentCheckpoint, orderGroupOf } from '@shared/lib/booking'
+import { arrivalOf, clearanceProgress, currentCheckpoint, orderGroupOf } from '@shared/lib/booking'
 import { formatDateTime, formatVND, timeLeftText } from '@shared/lib/format'
 import type { CustomerBookingView } from '@shared/services/bookings'
 
@@ -36,7 +36,7 @@ function baseStep(b: CustomerBookingView, now: number): NextStep {
       return { tone: 'orange', icon: 'fa-file-invoice-dollar', title: 'Đang lập báo giá', text: 'Thẩm định đã xong. Quản lý đang duyệt báo giá chính thức để gửi cho bạn.', actionNeeded: false }
     case 'awaiting_payment': {
       const ms = b.quote!.expiresAt - now
-      return { tone: ms < 12 * HOUR ? 'danger' : 'warning', icon: 'fa-credit-card', title: `Đặt cọc 30% trong ${timeLeftText(b.quote!.expiresAt, now)}`, text: `Báo giá có hiệu lực đến ${formatDateTime(b.quote!.expiresAt)}. Quá hạn, xe và nhân sự được nhả cho đơn khác.`, actionNeeded: true }
+      return { tone: ms < 12 * HOUR ? 'danger' : 'warning', icon: 'fa-credit-card', title: `Đặt cọc 30% trong ${timeLeftText(b.quote!.expiresAt, now)}`, text: `Báo giá có hiệu lực đến ${formatDateTime(b.quote!.expiresAt)}. Quá hạn, xe và nhân sự được nhả cho đơn khác.${arrivalOf(b.route) ? ` Dự kiến đến nơi ${formatDateTime(arrivalOf(b.route)!)}.` : ''}`, actionNeeded: true }
     }
     case 'quote_expired':
       return { tone: 'muted', icon: 'fa-hourglass-end', title: 'Báo giá đã hết hạn', text: 'Quá 48 giờ chưa đặt cọc nên xe và nhân sự đã được nhả. Bạn có thể tạo đơn mới.', actionNeeded: false }

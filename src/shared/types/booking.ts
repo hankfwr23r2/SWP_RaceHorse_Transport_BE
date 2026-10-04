@@ -1,6 +1,6 @@
 // Đơn đặt chuyến theo quy trình mới (Flow 1). Khớp docs/PRD.md mục 2, 13. Các luồng 2–6 sẽ thêm trạng thái và trường vào đây.
 import type { BookingStatus, ClearanceDocType, ExpenseCategory, HorseDocType, IncidentAction, IncidentKind, IncidentStatus, Payer, WelfareCondition } from '../config/booking-rules'
-import type { CountryCode } from '../config/network'
+import type { CountryCode, GeoPoint } from '../config/network'
 
 export type Sex = 'stallion' | 'mare' | 'gelding'
 export const SEX_LABEL: Record<Sex, string> = { stallion: 'Đực', mare: 'Cái', gelding: 'Thiến' }
@@ -66,7 +66,7 @@ export interface Quote {
 }
 
 // ===== Giấy tờ pháp lý do Specialist làm (Flow 2) =====
-export type ClearanceStatus = 'todo' | 'doing' | 'done'
+export type ClearanceStatus = 'todo' | 'done' // Chưa nộp / Đã nộp (nộp cho cơ quan chức năng)
 export interface ClearanceItem { type: ClearanceDocType; status: ClearanceStatus; note: string; photos: string[]; updatedAt?: number; by?: string }
 export interface CustomerFlag { at: number; note: string; by: string } // khách báo sai thông tin, không chặn tiến độ
 export interface Clearance {
@@ -82,7 +82,7 @@ export interface Clearance {
 // ===== Lộ trình chi tiết và Trip Manifest (Flow 3) =====
 export interface RouteLeg { no: number; from: string; to: string; departAt: number; arriveAt: number }
 // Trạm trung chuyển (checkpoint dọc tuyến): ngựa dừng tối thiểu 30 phút, Escort ghi nhật ký an sinh
-export interface RestStop { afterLeg: number; name: string; minutes: number; facilities: string }
+export interface RestStop { afterLeg: number; name: string; minutes: number }
 export interface RoutePlan {
   legs: RouteLeg[]
   rests: RestStop[]
@@ -100,6 +100,7 @@ export interface Checkpoint {
   place: string
   plannedAt: number
   arrivedAt?: number // Driver check-in tại mốc (kèm ảnh chụp trực tiếp)
+  leftAt?: number // customs: Driver bấm tiếp tục hành trình, rời cửa khẩu
   doneAt?: number // mốc hoàn tất: xuất phát (pickup), tiếp tục hành trình (rest), thông quan, giao xong
   photo?: string
   by?: string
@@ -148,13 +149,29 @@ export interface Payment { paidAt: number; amount: number; reference: string }
 
 // ===== Sự cố (Flow 5) và quyết toán (Flow 6) =====
 export interface IncidentExpense { id: string; category: ExpenseCategory; label: string; photo: string; amount: number; payer: Payer; at: number; by: string }
-export interface IncidentPlan { action: IncidentAction; note: string; newEta: number; budget: number; at: number; by: string }
+// Một đoạn đường vẽ trên bản đồ (đã lấy theo đường bộ): các điểm, quãng đường, thời gian lái
+export interface PlanLine { path: [lat: number, lng: number][]; km: number; hours: number }
+export interface IncidentPlan {
+  action: IncidentAction
+  note: string
+  newEta: number
+  budget: number
+  at: number
+  by: string
+  station?: string // trạm nghỉ đưa ngựa tới (sức khỏe ngựa, xe gặp sự cố)
+  restMinutes?: number // thời gian nghỉ ngựa tại trạm
+  rescue?: { name: string; phone: string; lat: number; lng: number } // điểm cứu hộ được gọi (xe gặp sự cố)
+  rescueLine?: PlanLine // đường cứu hộ chạy tới chỗ xe
+  toStation?: PlanLine // đường đưa ngựa từ chỗ xe tới trạm nghỉ
+  detour?: PlanLine // lộ trình mới đi tiếp (giao thông tắc nghẽn)
+}
 export interface Incident {
   id: string // INC-NNNN-i
   tripId: string
   kind: IncidentKind
   reportedBy: string
   reportedAt: number
+  location: GeoPoint // vị trí xe lúc báo sự cố (bản thử: mô phỏng theo tiến độ hành trình; có app thật thì lấy GPS)
   photo: string
   note: string
   status: IncidentStatus
@@ -190,7 +207,7 @@ export interface Booking {
 
   // ----- kết quả từng bước -----
   medical?: MedicalReview
-  trips?: VehicleTrip[] // hệ thống tự gán khi tiếp nhận, Coordinator sửa được
+  trips?: VehicleTrip[] // Coordinator chọn khi chốt phương án; chưa chốt thì chưa có
   plan?: PlanConfirmed // Coordinator đã xác nhận xe, nhân sự và lộ trình
   route?: RoutePlan // một lộ trình dùng chung cho mọi xe
   quote?: Quote

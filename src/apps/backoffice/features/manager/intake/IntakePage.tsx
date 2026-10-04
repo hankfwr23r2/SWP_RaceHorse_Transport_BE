@@ -15,9 +15,20 @@ import { HorseConfigList, ReviewChips, TripSummary } from '../../../shared/Booki
 import { ListPage, idCell, routeCell, statusCell, type Column } from '../../../shared/ListPage'
 import { placeShort } from '../../../shared/place'
 import s from '../../../shared/booking.module.css'
-import { FormSelect } from '@shared/ui/FormSelect'
+import { StaffPicker } from '../../../shared/StaffPicker'
 
 type Tab = 'new' | 'running'
+
+// Nút chọn người giao việc: bấm mở popup thẻ
+function PickButton({ person, icon, suggested, onClick }: { person?: { name: string; load: number }; icon: string; suggested: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="btn btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', gap: 10, minHeight: 46, textAlign: 'left' }} onClick={onClick}>
+      <i className={`fa-solid ${icon}`} aria-hidden="true" style={{ color: '#ea580c' }} />
+      <span style={{ flex: 1 }}>{person ? <><b>{person.name}</b> · {person.load} đơn đang làm{suggested ? ' (gợi ý)' : ''}</> : 'Chọn người'}</span>
+      <small style={{ color: '#ea580c', fontWeight: 600 }}>{person ? 'Đổi' : 'Chọn'}</small>
+    </button>
+  )
+}
 
 function IntakeModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
@@ -39,7 +50,7 @@ function IntakeModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; 
     setBusy(true)
     try {
       await bookingsApi.activate(b.id, session!.name, { id: a.id, name: a.name }, { id: c.id, name: c.name })
-      toast(`Đã tiếp nhận ${b.id}, hệ thống đã tự gán xe và đẩy sang thẩm định`)
+      toast(`Đã tiếp nhận ${b.id}, đã giao Kiểm dịch viên và Điều phối viên`)
       onDone()
     } catch (e) { toast(e instanceof Error ? e.message : 'Không tiếp nhận được', 'error'); setBusy(false) }
   }
@@ -53,7 +64,7 @@ function IntakeModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; 
     } catch (e) { toast(e instanceof Error ? e.message : 'Không từ chối được', 'error'); setBusy(false) }
   }
 
-  const option = (x: { id: string; name: string; load: number }, i: number) => <option key={x.id} value={x.id}>{x.name} · {x.load} đơn đang làm{i === 0 ? ' (gợi ý)' : ''}</option>
+  const [pick, setPick] = useState<'specialist' | 'coordinator' | null>(null)
 
   return (
     <Modal
@@ -74,15 +85,16 @@ function IntakeModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; 
       <h4 style={{ margin: '18px 0 10px' }}>Giao việc</h4>
       <div className={s.form2}>
         <div className="form-group">
-          <label htmlFor="sp">Kiểm dịch viên (thẩm định y tế)</label>
-          <FormSelect id="sp" className="form-control" value={spId ?? ''} onChange={e => setSp(e.target.value)}>{specialists.map(option)}</FormSelect>
+          <label>Kiểm dịch viên (thẩm định y tế)</label>
+          <PickButton icon="fa-user-doctor" person={spId ? specialists.find(x => x.id === spId) : undefined} suggested={spId === specialists[0]?.id} onClick={() => setPick('specialist')} />
         </div>
         <div className="form-group">
-          <label htmlFor="co">Điều phối viên (xe và lộ trình)</label>
-          <FormSelect id="co" className="form-control" value={coId ?? ''} onChange={e => setCo(e.target.value)}>{coordinators.map(option)}</FormSelect>
+          <label>Điều phối viên (xe và lộ trình)</label>
+          <PickButton icon="fa-route" person={coId ? coordinators.find(x => x.id === coId) : undefined} suggested={coId === coordinators[0]?.id} onClick={() => setPick('coordinator')} />
         </div>
       </div>
-      <ReadMore className={s.hint} text={'Hệ thống gợi ý người ít việc nhất và bỏ qua người đang nghỉ. Khi tiếp nhận, hệ thống tự gán xe, tài xế và hộ tống cho đơn (chia ngựa lên nhiều xe nếu cần). Nếu không đủ xe hoặc nhân sự rảnh, đơn ở lại hàng chờ và báo lỗi.'} />
+      <ReadMore className={s.hint} text={'Hệ thống gợi ý người ít việc nhất và bỏ qua người đang nghỉ. Tiếp nhận xong, Điều phối viên tự chọn xe, tài xế và hộ tống (chia ngựa lên nhiều xe nếu cần) khi lập lộ trình.'} />
+      {pick && staff && <StaffPicker task={pick} staff={staff} all={all} selected={(pick === 'specialist' ? spId : coId) ?? ''} suggested={(pick === 'specialist' ? specialists : coordinators)[0]?.id} onPick={id => (pick === 'specialist' ? setSp(id) : setCo(id))} onClose={() => setPick(null)} />}
     </Modal>
   )
 }

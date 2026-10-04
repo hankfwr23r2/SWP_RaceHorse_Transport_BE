@@ -114,3 +114,37 @@
 .stepBar li { height: 6px; border-radius: 3px; background: var(--line); }
 .stepBar .segDone { background: var(--green, #16a34a); }
 .stepBar .segNow { background: var(--orange); }
+
+/* Nút chọn xe ở trang lập lộ trình: bấm để mở popup các xe */
+.vehBtn { display: flex; align-items: center; gap: 10px; min-height: 44px; text-align: left; cursor: pointer; font: inherit; }
+.vehBtn i { color: var(--orange); }
+.vehBtn span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vehBtn em { font-style: normal; font-size: 0.8rem; font-weight: 700; color: var(--orange); }
+.vehBtn:hover { border-color: var(--orange); }
+.vehPop { animation: vehPop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
+@keyframes vehPop { from { opacity: 0; transform: translateY(5px) scale(0.96); } }
+.busyNote { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; font-size: 0.78rem; line-height: 1.35; }
+.busyOn { color: var(--amber); }
+.busyFree { color: var(--green); }
+@media (prefers-reduced-motion: reduce) { .vehPop { animation: none; } }
+
+/* Danh sách trạm trung chuyển đã chọn (chọn trên bản đồ) */
+.stopList { display: grid; gap: 8px; list-style: none; }
+.stopList li { display: flex; align-items: center; gap: 6px; }
+.stopItem { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.stopItem:hover { border-color: var(--orange); transform: translateX(2px); }
+.stopNum { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--orange); color: white; font-weight: 800; font-size: 0.85rem; }
+.stopName { flex: 1; min-width: 0; display: grid; }
+.stopName b { color: var(--navy); }
+.stopName small { color: var(--muted); font-size: 0.78rem; }
+.stopMin { flex: none; padding: 4px 10px; border-radius: 999px; background: var(--orange-soft); color: var(--orange); font-size: 0.8rem; font-weight: 600; }
+.stopEmpty { padding: 22px; border: 1px dashed #d5d9e0; border-radius: 12px; text-align: center; color: var(--muted); }
+.stopEmpty i { margin-right: 8px; color: var(--orange); }
+
+/* Giấy tờ ngựa khách đã nộp (Specialist bấm ảnh để xem lớn) */
+.docFiles { display: grid; gap: 8px; margin: 10px 0; }
+.docFile { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.docFile div { display: grid; gap: 2px; min-width: 0; }
+.docFile b { font-size: 0.86rem; color: var(--navy); }
+.docFile small { font-size: 0.76rem; color: var(--muted); overflow-wrap: anywhere; }
+.docEmpty { display: grid; place-items: center; flex: none; width: 64px; height: 64px; border: 1.5px dashed var(--line); border-radius: 10px; color: var(--muted); }

@@ -2,7 +2,7 @@
 import { ReadMore } from '@shared/ui/ReadMore'
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
-import { openIncidentOf, currentCheckpoint, manifestDocuments } from '@shared/lib/booking'
+import { openIncidentOf, currentCheckpoint, manifestDocuments, pendingDeparture, spotLabel } from '@shared/lib/booking'
 import { formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import type { Booking, Checkpoint, VehicleTrip } from '@shared/types/booking'
@@ -105,6 +105,7 @@ export function DriverJob({ b, t, reload }: { b: Booking; t: VehicleTrip; reload
   if (inc) return <IncidentPanel b={b} inc={inc} role="driver" run={run} />
   return (
     <>
+      {t.run?.startedAt && !t.run.deliveredAt && <div className="alert alert-info" style={{ marginBottom: 12 }}><i className="fa-solid fa-truck-fast" /><div><b>{spotLabel(t)}</b></div></div>}
       <DriverSteps b={b} t={t} run={run} />
       {t.run?.startedAt && !t.run.deliveredAt && <SosPanel b={b} t={t} run={run} />}
       {b.status === 'delivered_pending_settlement' && <SubmitExpensesPanel b={b} run={run} />}
@@ -123,6 +124,13 @@ function DriverSteps({ b, t, run }: { b: Booking; t: VehicleTrip; run: Run }) {
     if (!pickup?.arrivedAt) return <ArriveStep key="pickup" title="Xác nhận có mặt tại điểm đón" icon="fa-location-dot" button="Đã tới điểm đón" hint={`Khi tới trang trại, chụp ảnh cổng hoặc khu chuồng. Dự kiến ${b.route ? formatDateTime(b.route.legs[0].departAt) : 'đúng hẹn'}.`} run={run} action={photo => bookingsApi.arriveAtPickup(b.id, t.tripId, session!.name, photo)} />
     return <PickupStep b={b} t={t} run={run} />
   }
+
+  if (t.run?.startedAt && pendingDeparture(t)) return (
+    <Panel title="Đã thông quan, xe còn ở cửa khẩu" icon="fa-flag" tone="ok">
+      <p>Khi Escort và xe sẵn sàng, bấm tiếp tục để rời cửa khẩu. Khách và Điều phối viên sẽ thấy xe đang chạy tiếp.</p>
+      <button className={`btn btn-primary ${s.big}`} onClick={() => run(() => bookingsApi.continueJourney(b.id, t.tripId, session!.name), 'Tiếp tục hành trình')}><i className="fa-solid fa-play" /> Rời cửa khẩu, tiếp tục hành trình</button>
+    </Panel>
+  )
 
   if (t.run?.startedAt && cp) {
     const arrive = (title: string, button: string, hint: string, icon: string) => <ArriveStep key={cp.id} title={title} icon={icon} button={button} hint={hint} run={run} action={photo => bookingsApi.arriveCheckpoint(b.id, t.tripId, session!.name, photo)} />

@@ -5,7 +5,7 @@ import { useAuth } from '@shared/auth/AuthContext'
 import { BOOKING_STEPS, HORSE_DOC, INCIDENT_COST_POLICY, stepOf, VEHICLE_CLASS } from '@shared/config/booking-rules'
 import { BANK, HOTLINE, REFUND_POLICY } from '@shared/config/business-rules'
 import { COUNTRIES } from '@shared/config/network'
-import { CANCELLABLE, cancelRefund, insuranceFee, vehicleClassOf } from '@shared/lib/booking'
+import { CANCELLABLE, arrivalOf, cancelRefund, insuranceFee, vehicleClassOf } from '@shared/lib/booking'
 import { formatClock, formatDate, formatDateTime, formatVND } from '@shared/lib/format'
 import { customerBookingsApi, type CustomerBookingView, type TripTeam } from '@shared/services/bookings'
 import { horsesApi } from '@shared/services/horses'
@@ -15,6 +15,7 @@ import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { Modal } from '@shared/ui/Modal'
 import { QuoteSheet } from '@shared/ui/QuoteSheet'
 import { TripTimeline } from '@shared/ui/TripTimeline'
+import { TripTrackMap } from '@shared/ui/TripTrackMap'
 import { useToast } from '@shared/ui/toast'
 import { useNow } from '@shared/ui/useNow'
 import { HorseFormModal } from '../horses/HorseFormModal'
@@ -98,6 +99,14 @@ function PayCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; 
     <div className={`card ${s.pay}`}>
       <div className="card-header"><h3><i className="fa-solid fa-credit-card" /> Đặt cọc giữ xe</h3></div>
       <div className={s.payAmount}><span>Số tiền cần đặt cọc (30%)</span><strong>{formatVND(b.quote!.deposit)}</strong></div>
+      {arrivalOf(b.route) && (
+        <div className={s.eta} aria-label="Lịch trình dự kiến">
+          <i className="fa-solid fa-flag-checkered" aria-hidden="true" />
+          <div><span>Dự kiến khởi hành</span><b>{formatDateTime(b.route!.legs[0].departAt)}</b></div>
+          <div><span>Dự kiến đến nơi</span><b>{formatDateTime(arrivalOf(b.route)!)}</b></div>
+          <small>Thời gian dự kiến theo lộ trình đã duyệt, có thể thay đổi nếu gặp sự cố trên đường.</small>
+        </div>
+      )}
       <div className={s.bank} aria-label="Thông tin chuyển khoản">
         <div><span>Ngân hàng</span><b>{BANK.name}</b></div>
         <div><span>Số tài khoản</span><b>{BANK.account}</b></div>
@@ -325,6 +334,12 @@ export default function OrderDetailPage() {
                       {i < b.trips!.filter(x => x.run).length - 1 && <hr style={{ margin: '14px 0' }} />}
                     </div>
                   ))}
+                </div>
+              )}
+              {(b.trips ?? []).length > 0 && b.route && (ROUTE_VISIBLE.includes(b.status) || (b.trips ?? []).some(t => t.run)) && (
+                <div className="card">
+                  <div className="card-header"><h3><i className="fa-solid fa-map-location-dot" /> Theo dõi trên bản đồ</h3></div>
+                  <TripTrackMap b={b} trips={b.trips!} />
                 </div>
               )}
               <IncidentsCard b={b} />

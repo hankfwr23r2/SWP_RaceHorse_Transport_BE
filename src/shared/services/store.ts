@@ -2,7 +2,7 @@
 // Khi có Spring Boot: xóa file này, các service gọi fetch('/api/...') thay vì đọc/ghi store.
 
 // Tăng số này mỗi khi sửa dữ liệu mẫu (mock/*) để trình duyệt bỏ bản cũ đã lưu trong phiên và nạp bản mới.
-export const MOCK_VERSION = 18
+export const MOCK_VERSION = 22
 
 // Dữ liệu mẫu lưu trong phiên để đi trọn luồng giữa hai app (khách và nội bộ là hai trang riêng, chuyển qua lại không mất dữ liệu).
 // Bấm F5 (tải lại trang) thì đặt lại dữ liệu mẫu về ban đầu, để thử lại từ đầu; phiên đăng nhập và bản nháp đặt chuyến được giữ.

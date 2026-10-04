@@ -93,22 +93,22 @@ export const PUBLIC_STEPS = ['Gửi đơn', 'Thẩm định', 'Đặt cọc', 'C
 export const publicStepOf = (s: BookingStatus): number => (s === 'pending_intake' || s === 'cancelled' || s === 'rejected' ? 0 : s === 'under_review' || s === 'pending_commercial' ? 1 : s === 'awaiting_payment' || s === 'quote_expired' ? 2 : ['in_transit', 'incident_reported', 'pending_emergency_approval', 'emergency_plan_active', 'delivered_pending_settlement', 'expenses_submitted', 'settlement_issued', 'payment_overdue', 'completed'].includes(s) ? 4 : 3)
 
 // ===== Sự cố và chi phí (Flow 5, PRD mục 6, 11.5) =====
-export type IncidentKind = 'horse_health' | 'vehicle_breakdown' | 'border_congestion'
+export type IncidentKind = 'horse_health' | 'vehicle_breakdown' | 'traffic_jam'
 export const INCIDENT_KIND: Record<IncidentKind, { label: string; icon: string; hint: string }> = {
   horse_health: { label: 'Sức khỏe ngựa', icon: 'fa-horse-head', hint: 'Đau bụng, sốt, mất nước, chấn thương' },
-  vehicle_breakdown: { label: 'Hỏng phương tiện', icon: 'fa-screwdriver-wrench', hint: 'Hỏng điều hòa thùng, nổ lốp, sự cố động cơ' },
-  border_congestion: { label: 'Tắc cửa khẩu', icon: 'fa-road-barrier', hint: 'Cửa khẩu tạm dừng tiếp nhận, tắc quá giờ' },
+  vehicle_breakdown: { label: 'Xe gặp sự cố', icon: 'fa-screwdriver-wrench', hint: 'Hỏng điều hòa thùng, nổ lốp, sự cố động cơ, tai nạn' },
+  traffic_jam: { label: 'Giao thông tắc nghẽn', icon: 'fa-traffic-light', hint: 'Kẹt xe, tắc đường, đường bị chặn' },
 }
-export type IncidentAction = 'vet_clinic' | 'repair_on_site' | 'rescue_van' | 'holding_stable'
+// Phương án xử lý (lập trên bản đồ): mỗi nhóm sự cố có đúng một cách xử lý
+export type IncidentAction = 'to_station' | 'rescue_and_station' | 'reroute'
 export const INCIDENT_ACTION: Record<IncidentAction, string> = {
-  vet_clinic: 'Đưa ngựa vào trạm thú y gần nhất',
-  repair_on_site: 'Sửa xe tại chỗ, giữ nguyên xe chính',
-  rescue_van: 'Xe cứu hộ đưa ngựa về chuồng đệm hoặc phòng khám (không chạy tiếp qua cửa khẩu)',
-  holding_stable: 'Đưa ngựa về chuồng đệm gần cửa khẩu chờ thông quan',
+  to_station: 'Lập lại lộ trình đưa ngựa đến trạm nghỉ gần nhất',
+  rescue_and_station: 'Gọi cứu hộ sửa xe gần chỗ xe gặp nạn, đưa ngựa đến trạm nghỉ gần nhất',
+  reroute: 'Đổi sang lộ trình khác để tránh tắc nghẽn',
 }
 export type ExpenseCategory = 'vet_fee' | 'medicine' | 'holding_stable' | 'rescue' | 'repair' | 'other'
 export const EXPENSE_CATEGORY: Record<ExpenseCategory, string> = {
-  vet_fee: 'Viện phí thú y', medicine: 'Thuốc cấp cứu', holding_stable: 'Tiền chuồng đệm', rescue: 'Xe cứu hộ', repair: 'Sửa chữa xe', other: 'Khoản khác',
+  vet_fee: 'Viện phí thú y', medicine: 'Thuốc cấp cứu', holding_stable: 'Phí trạm nghỉ, chuồng đệm', rescue: 'Xe cứu hộ', repair: 'Sửa chữa xe', other: 'Khoản khác',
 }
 export type IncidentStatus = 'reported' | 'pending_approval' | 'active' | 'resolved'
 export type Payer = 'customer' | 'carrier'
@@ -164,5 +164,5 @@ export const REFUND_RATE = { d7: 0.8, d3: 0.5, beforeCutoff: 0.2, afterCutoff: 0
 export const INCIDENT_COST_POLICY: { who: 'customer' | 'carrier'; group: string; items: string[] }[] = [
   { who: 'customer', group: 'Liên quan đến ngựa', items: ['Thuốc, viện phí thú y', 'Chuồng đệm, cỏ và nước trong lúc chờ', 'Ngựa ốm hoặc chấn thương', 'Hồ sơ ngựa sai hoặc hết hạn', 'Người nhận từ chối', 'Hồi hương', 'Lưu xe do lỗi phía khách'] },
   { who: 'carrier', group: 'Liên quan đến vận chuyển', items: ['Hỏng xe, cứu hộ cơ khí, xe cứu hộ', 'Hỏng điều hòa thùng xe', 'Tai nạn do xe hoặc tài xế', 'Chậm do nhà xe', 'Giấy nhà xe làm sai', 'Chênh lệch nhiên liệu và BOT'] },
-  { who: 'carrier', group: 'Tắc cửa khẩu', items: ['Nhà xe chịu toàn bộ phí lưu xe, tiền chuồng và chăm sóc ngựa. Khách chấp nhận giao trễ khi tắc cửa khẩu và không yêu cầu bồi thường.'] },
+  { who: 'carrier', group: 'Giao thông tắc nghẽn', items: ['Nhà xe chịu toàn bộ phí đường tránh, chi phí chờ và chăm sóc ngựa. Khách chấp nhận giao trễ khi tắc nghẽn giao thông và không yêu cầu bồi thường.'] },
 ]

@@ -1,9 +1,10 @@
 // Máy trạng thái của luồng đặt đơn: giấy tờ do Specialist làm, nhiều xe, thanh toán hai đợt, và hành trình từng xe.
 import { beforeAll, describe, expect, it } from 'vitest'
-import { buildRoutePlan, manifestDocuments, routeKm } from '../lib/booking'
+import { buildRoutePlan, busyResources, manifestDocuments, routeKm, vehicleDocsOk } from '../lib/booking'
 import { COUNTRY_LOCATIONS } from '../config/network'
 import { bookingsApi, customerBookingsApi } from './bookings'
-import { vehiclesApi } from './fleet'
+import { crewApi, vehiclesApi } from './fleet'
+import type { Booking } from '../types/booking'
 import { CUSTOMER } from './mock/orders'
 
 const ID = 'ORD-2026-0116' // en_route_to_pickup, 1 xe, 2 ngựa, nội địa, đã trả 70%
@@ -11,6 +12,15 @@ const T = 'TRP-0116-1'
 const D = 'Nguyễn Văn Hùng'
 const E = 'Võ Thị Lan'
 const SP = 'Phạm Văn Hưng'
+// Điều phối viên tự chọn xe, tài xế, hộ tống đang rảnh vào ngày đi (không còn gán tự động); cả đơn đi một xe
+const freeTrip = async (b: { id: string; departAt: number; type: string; horses: { horseId: string }[] }) => {
+  const [vehicles, crew, all] = await Promise.all([vehiclesApi.list(), crewApi.list(), bookingsApi.list()])
+  const busy = busyResources(all, b.departAt, b.id)
+  const v = vehicles.filter(x => vehicleDocsOk(x, b.type === 'international') && !busy.vehicles.has(x.id) && x.capacity >= b.horses.length).sort((a, z) => a.capacity - z.capacity)[0]
+  const d = crew.find(c => c.role === 'driver' && !busy.crew.has(c.id))!
+  const e = crew.find(c => c.role === 'escort' && !busy.crew.has(c.id))!
+  return { vehicleId: v.id, driverId: d.id, escortId: e.id, horseIds: b.horses.map(h => h.horseId) }
+}
 const fail = async (p: Promise<unknown>) => { try { await p } catch (e) { return (e as Error).message } return '' }
 
 describe('hành trình một xe (Flow 4)', () => {
@@ -114,7 +124,7 @@ describe('giấy tờ do Specialist làm (Flow 2)', () => {
     expect((await bookingsApi.acceptWaybill(id, SP)).status).toBe('clearance_in_progress')
     expect(await fail(bookingsApi.completeClearance(id, SP))).toMatch(/hạng mục/)
     const b = (await bookingsApi.get(id))!
-    for (const i of b.clearance!.items) await bookingsApi.updateClearanceItem(id, SP, i.type, { status: 'done', photos: ['a.jpg'] })
+    for (const i of b.clearance!.items) await bookingsApi.updateClearanceItem(id, SP, i.type, { photos: ['a.jpg'] })
     expect(await fail(bookingsApi.completeClearance(id, SP))).toMatch(/thông quan/)
     for (const h of b.horses) await bookingsApi.markHorseCleared(id, SP, h.horseId, true)
     expect((await bookingsApi.completeClearance(id, SP)).status).toBe('clearance_done')
@@ -127,8 +137,13 @@ describe('giấy tờ do Specialist làm (Flow 2)', () => {
   })
   it('cập nhật hạng mục lưu ghi chú, ảnh và đưa đơn sang đang làm; khách báo sai không đổi trạng thái', async () => {
     const id = 'ORD-2026-0110'
-    const b = await bookingsApi.updateClearanceItem(id, SP, 'poa', { status: 'doing', note: 'Đang soạn song ngữ' })
-    expect(b.clearance!.items.find(i => i.type === 'poa')).toMatchObject({ status: 'doing', note: 'Đang soạn song ngữ' })
+    const poa = (b: Booking) => b.clearance!.items.find(i => i.type === 'poa')!
+    expect(poa((await bookingsApi.get(id))!).status).toBe('todo')
+    const noted = await bookingsApi.updateClearanceItem(id, SP, 'poa', { note: 'Đang soạn song ngữ' })
+    expect(poa(noted)).toMatchObject({ status: 'todo', note: 'Đang soạn song ngữ' }) // chỉ ghi chú thì chưa nộp
+    const b = await bookingsApi.updateClearanceItem(id, SP, 'poa', { photos: ['poa_scan.jpg'] })
+    expect(poa(b).status).toBe('done') // tải ảnh lên thì tự chuyển Đã nộp
+    expect(poa(await bookingsApi.updateClearanceItem(id, SP, 'poa', { photos: [] })).status).toBe('todo') // xóa hết ảnh thì về Chưa nộp
     const v = await customerBookingsApi.flagClearance(CUSTOMER.name, id, 'Sai họ người nhận')
     expect(v.status).toBe('clearance_in_progress')
     expect(v.clearance!.flags.at(-1)!.note).toBe('Sai họ người nhận')
@@ -160,7 +175,7 @@ describe('nhiều xe', () => {
   })
 })
 
-describe('tự gán khi tiếp nhận', () => {
+describe('tiếp nhận của Manager', () => {
   const draft = () => ({
     type: 'domestic' as const, origin: { id: 'KHO-DN', name: 'Kho Đồng Nai', country: 'VN' as const }, dest: { id: 'CLB-SG', name: 'CLB', country: 'VN' as const },
     departAt: Date.now() + 40 * 86_400_000, consignor: { name: 'a', phone: '0901000001', idNumber: '1', address: 'x' }, consignee: { name: 'b', phone: '0901000002', idNumber: '2', address: 'y' },
@@ -168,23 +183,22 @@ describe('tự gán khi tiếp nhận', () => {
   })
   const sp = { id: 'KD-01', name: SP }
   const co = { id: 'DP-01', name: 'Trần Minh' }
-  it('đủ xe thì gán xe cho đơn và chuyển sang thẩm định', async () => {
+  it('tiếp nhận chuyển sang thẩm định, giao người phụ trách và chưa có xe nào (Điều phối viên chọn sau)', async () => {
     const created = await customerBookingsApi.create(CUSTOMER.name, draft())
     const b = await bookingsApi.activate(created.id, 'Quản lý', sp, co)
     expect(b.status).toBe('under_review')
-    expect(b.trips!.flatMap(t => t.horseIds)).toEqual(['H-001'])
+    expect(b.intake).toMatchObject({ specialist: sp, coordinator: co })
+    expect(b.trips).toBeUndefined()
     expect(b.clearance!.items.length).toBeGreaterThan(0)
   })
-  it('thiếu xe thì ném lỗi và đơn vẫn chờ tiếp nhận', async () => {
+  it('tiếp nhận không phụ thuộc đội xe: dù mọi xe thiếu giấy vẫn tiếp nhận được', async () => {
     const created = await customerBookingsApi.create(CUSTOMER.name, draft())
-    // Mọi xe thiếu giấy đăng kiểm thì không gán được xe nào; trả lại giấy sau khi thử
     const saved = await vehiclesApi.list()
     for (const v of saved) await vehiclesApi.update(v.id, { inspectionNo: '' })
-    const err = await fail(bookingsApi.activate(created.id, 'Quản lý', sp, co))
+    const b = await bookingsApi.activate(created.id, 'Quản lý', sp, co)
     for (const v of saved) await vehiclesApi.update(v.id, { inspectionNo: v.inspectionNo })
-    expect(err).toMatch(/Chưa gán được xe/)
-    expect((await bookingsApi.get(created.id))!.status).toBe('pending_intake')
-    expect((await bookingsApi.get(created.id))!.trips).toBeUndefined()
+    expect(b.status).toBe('under_review')
+    expect(b.trips).toBeUndefined()
   })
 })
 
@@ -194,7 +208,7 @@ describe('sửa sau review', () => {
     const SPN = 'Phạm Văn Hưng'
     await bookingsApi.acceptWaybill(id, SPN)
     const b0 = (await bookingsApi.get(id))!
-    for (const i of b0.clearance!.items) await bookingsApi.updateClearanceItem(id, SPN, i.type, { status: 'done', photos: ['a.jpg'] })
+    for (const i of b0.clearance!.items) await bookingsApi.updateClearanceItem(id, SPN, i.type, { photos: ['a.jpg'] })
     for (const h of b0.horses) await bookingsApi.markHorseCleared(id, SPN, h.horseId, true)
     await bookingsApi.completeClearance(id, SPN)
     const [a, bTrip] = b0.trips!
@@ -222,9 +236,9 @@ describe('sửa sau review', () => {
     const b = (await bookingsApi.get(id))!
     const route = buildRoutePlan(b, Date.now() + 40 * 86_400_000)
     route.rests.forEach((r, i) => { r.name = `Trạm ${i + 1}` })
-    const t0 = b.trips![0]
+    const t0 = await freeTrip(b)
     const empty = { vehicleId: 'VH-010', driverId: 'TX-10', escortId: 'NV-05', horseIds: [] as string[] }
-    expect(await fail(bookingsApi.confirmPlan(id, 'Trần Minh', { trips: [{ vehicleId: t0.vehicleId, driverId: t0.driverId, escortId: t0.escortId, horseIds: t0.horseIds }, empty], route, note: '' }))).toMatch(/ít nhất một ngựa/)
+    expect(await fail(bookingsApi.confirmPlan(id, 'Trần Minh', { trips: [t0, empty], route, note: '' }))).toMatch(/ít nhất một ngựa/)
     expect((await bookingsApi.get(id))!.plan).toBeUndefined()
   })
 })
@@ -250,9 +264,9 @@ describe('sửa các lỗi nhỏ sau review', () => {
     const created = await customerBookingsApi.create(CUSTOMER.name, { ...(() => { const d = { type: 'domestic' as const, origin: { id: 'KHO-DN', name: 'Kho Đồng Nai', country: 'VN' as const }, dest: { id: 'CLB-SG', name: 'CLB', country: 'VN' as const }, departAt: Date.now() + 40 * 86_400_000, consignor: { name: 'a', phone: '0901000011', idNumber: '1', address: 'x' }, consignee: { name: 'b', phone: '0901000012', idNumber: '2', address: 'y' }, horses: [{ horseId: 'H-001', name: 'S', microchip: 'VN-985211', breed: 'Thoroughbred', sex: 'gelding' as const, stall: 'standard' as const, targetTemp: 22, feeding: '', water: '', careNote: '', insurance: { opted: false } }] }; return d })() })
     const b = await bookingsApi.activate(created.id, 'Quản lý', { id: 'KD-01', name: SP }, { id: 'DP-01', name: 'Trần Minh' })
     const route = buildRoutePlan(b, Date.now() + 40 * 86_400_000)
-    const t = b.trips![0]
+    const t = await freeTrip(b)
     await vehiclesApi.update(t.vehicleId, { inspectionNo: '' })
-    expect(await fail(bookingsApi.confirmPlan(b.id, 'Trần Minh', { trips: [{ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds }], route, note: '' }))).toMatch(/đăng kiểm/)
+    expect(await fail(bookingsApi.confirmPlan(b.id, 'Trần Minh', { trips: [t], route, note: '' }))).toMatch(/đăng kiểm/)
     await vehiclesApi.update(t.vehicleId, { inspectionNo: 'KD-2026-RESTORED' })
     await customerBookingsApi.cancel(CUSTOMER.name, b.id, 'Dọn dữ liệu thử') // nhả xe và nhân sự cho các test sau
   })
@@ -270,8 +284,8 @@ describe('cửa khẩu do Coordinator chốt', () => {
     expect(created.gate).toBeUndefined() // khách không chọn cửa khẩu
     const b = await bookingsApi.activate(created.id, 'Quản lý', { id: 'KD-01', name: SP }, { id: 'DP-01', name: 'Trần Minh' })
     const route = buildRoutePlan({ ...b, gate }, Date.now() + 40 * 86_400_000)
-    const t = b.trips![0]
-    return { id: b.id, call: (g?: string) => bookingsApi.confirmPlan(b.id, 'Trần Minh', { trips: [{ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds }], route, gate: g, note: '' }) }
+    const t = await freeTrip(b)
+    return { id: b.id, call: (g?: string) => bookingsApi.confirmPlan(b.id, 'Trần Minh', { trips: [t], route, gate: g, note: '' }) }
   }
   it('tuyến quốc tế phải có cửa khẩu đúng nước đến mới chốt được', async () => {
     const p = await plan('Mộc Bài – Bavet')
@@ -291,8 +305,8 @@ describe('cửa khẩu do Coordinator chốt', () => {
     const id = 'ORD-2026-0102'
     const b = (await bookingsApi.get(id))!
     const route = buildRoutePlan(b, Date.now() + 40 * 86_400_000)
-    const t = b.trips![0]
-    expect((await bookingsApi.confirmPlan(id, 'Trần Minh', { trips: [{ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds }], route, gate: 'Mộc Bài – Bavet', note: '' })).gate).toBeUndefined()
+    const t = await freeTrip(b)
+    expect((await bookingsApi.confirmPlan(id, 'Trần Minh', { trips: [t], route, gate: 'Mộc Bài – Bavet', note: '' })).gate).toBeUndefined()
   })
 })
 

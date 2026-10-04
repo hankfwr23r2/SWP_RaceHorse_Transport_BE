@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
 import { BOOKING_STEPS, stepOf, statusRank } from '@shared/config/booking-rules'
-import { orderTabOf, type OrderTab } from '@shared/lib/booking'
+import { arrivalOf, orderTabOf, type OrderTab } from '@shared/lib/booking'
 import { formatDate, formatVND } from '@shared/lib/format'
 import { useStaggerIn } from '@shared/motion/motion'
 import { customerBookingsApi } from '@shared/services/bookings'
@@ -91,6 +91,7 @@ export default function OrdersPage() {
                       <div className={s.meta}>
                         <span><i className="fa-solid fa-calendar-day" />Khởi hành {formatDate(b.departAt)}</span>
                         <span><i className="fa-solid fa-horse-head" />{b.horses.length} ngựa</span>
+                        {arrivalOf(b.route) && !stopped && <span><i className="fa-solid fa-flag-checkered" />Đến dự kiến {formatDate(arrivalOf(b.route)!)}</span>}
                         {b.gate && <span><i className="fa-solid fa-flag" />{b.gate}</span>}
                       </div>
                       <div className={`${s.meta} ${s.horses}`}>{b.horses.map(h => h.name).join(', ')}</div>

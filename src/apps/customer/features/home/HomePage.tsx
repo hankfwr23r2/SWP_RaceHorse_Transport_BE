@@ -6,13 +6,16 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { CountUp, reducedMotion, useScrollReveal } from '@shared/motion/motion'
 import { Link, useLocation } from 'react-router'
-import { PUBLIC_STEPS } from '@shared/config/booking-rules'
+import { PUBLIC_STEPS, QUOTE_VALID_HOURS, VEHICLE_CLASS } from '@shared/config/booking-rules'
 import { MIN_LEAD_DAYS } from '@shared/config/business-rules'
-import { COUNTRIES, GATES, PLACES, type CountryCode } from '@shared/config/network'
+import { COUNTRIES, COUNTRY_LOCATIONS, GATES, type CountryCode } from '@shared/config/network'
+import { DEPOSIT_RATE } from '@shared/config/booking-rules'
+import { findLocation, routeKm, tripDays } from '@shared/lib/booking'
 import { formatDate } from '@shared/lib/format'
 import { trackOrder, type PublicTracking } from '@shared/services/tracking'
 import { FLAG_SVG } from '@shared/ui/flags'
-import { FeeLookup, PriceTable } from '../pricing/PriceLookup'
+import { PHOTOS } from '@shared/config/photos'
+import { PriceTable } from '../pricing/PriceLookup'
 import s from './HomePage.module.css'
 
 gsap.registerPlugin(MotionPathPlugin)
@@ -23,9 +26,9 @@ const STEPS = PUBLIC_STEPS
 
 // ===== Banner trượt =====
 const SLIDES = [
-  { bg: '/images/truck.jpg', tag: 'Xe chuyên dụng 2 – 4 ngăn', title: 'Vận chuyển ngựa đua', hl: 'Việt Nam · Lào · Campuchia', text: 'Xe chuyên dụng có vách ngăn và đệm chống trượt, nhân viên chăm sóc đi kèm suốt hành trình.', cta: ['Đặt chuyến ngay', '/login'] },
-  { bg: '/images/vet.jpg', tag: 'Kiểm dịch & thủ tục trọn gói', title: 'Hồ sơ thú y được', hl: 'kiểm dịch viên xác minh', text: 'Chúng tôi làm thủ tục kiểm dịch và hải quan cửa khẩu. Bạn theo dõi từng giấy tờ ngay trên hệ thống.', cta: ['Xem quy trình', '/#quy-trinh'] },
-  { bg: null, tag: 'Báo giá minh bạch', title: 'Biết trước chi phí', hl: 'trước khi đặt chuyến', text: 'Tra cước theo tuyến và số ngựa. Giá trên đơn được báo trước; phụ phí phát sinh (nếu có) sẽ được thông báo rõ.', cta: ['Tra cứu cước', '/?tab=fee#tra-cuu'] },
+  { bg: PHOTOS.transport.src, tag: 'Xe chuyên dụng 2 – 9 ngăn', title: 'Vận chuyển ngựa đua', hl: 'Việt Nam · Lào · Campuchia', text: 'Xe nguyên chuyến chỉ chở ngựa của bạn, mỗi xe có tài xế và nhân viên chăm sóc riêng. Bạn theo dõi xe đang ở đâu trên bản đồ.', cta: ['Đặt chuyến ngay', '/login'] },
+  { bg: PHOTOS.checkup.src, tag: 'Kiểm dịch & thủ tục trọn gói', title: 'Hồ sơ thú y được', hl: 'kiểm dịch viên xác minh', text: 'Bạn chỉ nộp hồ sơ ngựa. Giấy kiểm dịch, hải quan và giấy chuyến đi do chúng tôi làm, bạn xem tiến độ từng giấy trên hệ thống.', cta: ['Xem quy trình', '/#quy-trinh'] },
+  { bg: PHOTOS.race.src, tag: 'Báo giá cố định', title: 'Biết trước chi phí', hl: 'trước khi đặt chuyến', text: 'Xem bảng giá cước theo hạng xe và quãng đường. Báo giá chính thức đã gồm nhiên liệu, cầu đường, không phụ thu ngoài phiếu.', cta: ['Xem bảng giá', '/?tab=price#tra-cuu'] },
 ]
 
 // Trang khách đã đăng nhập dùng lại các khối này: đổi liên kết sang trang trong app khách
@@ -134,8 +137,8 @@ function OrderLookup() {
 const pad = (n: number) => String(n).padStart(2, '0')
 const formatClockDate = (t: number) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())} ${formatDate(t)}` }
 
-type Tab = 'order' | 'fee' | 'price'
-const TABS: [Tab, string][] = [['order', 'Tra cứu đơn hàng'], ['fee', 'Tra cứu cước'], ['price', 'Bảng giá']]
+type Tab = 'order' | 'price'
+const TABS: [Tab, string][] = [['order', 'Tra cứu đơn hàng'], ['price', 'Bảng giá']]
 
 function Lookup() {
   const { search, hash } = useLocation()
@@ -152,7 +155,7 @@ function Lookup() {
       </div>
       <div className={s.lookupCard}>
         <div className={cx(s.lookupPanel, s.active)} key={tab}>
-          {tab === 'order' ? <OrderLookup /> : tab === 'fee' ? <FeeLookup bookHref="/login" /> : <PriceTable />}
+          {tab === 'order' ? <OrderLookup /> : <PriceTable />}
         </div>
       </div>
     </section>
@@ -160,21 +163,28 @@ function Lookup() {
 }
 
 // ===== Mạng lưới =====
-// Tuyến mẫu theo từng nước (lấy từ dữ liệu đơn thật). Điểm giữa là cửa khẩu (thông quan) hoặc trạm trung chuyển (nghỉ đêm).
+// Tuyến mẫu theo từng nước, lấy từ các kho và cửa khẩu có thật trong hệ thống. Điểm giữa là cửa khẩu (thông quan) hoặc trạm trung chuyển (nghỉ ngựa).
 type Stop = { x: number; y: number; name: string; sub: string }
+const sample = (from: string, to: string, gate?: string) => {
+  const a = findLocation(from)!, b = findLocation(to)!
+  const ref = (l: typeof a, country: CountryCode) => ({ id: l.id, name: l.name, country })
+  const km = routeKm(ref(a, 'VN'), ref(b, 'VN'), gate)
+  return { km, days: tripDays(km, !!gate) }
+}
+const road = (from: string, to: string, gate?: string) => { const r = sample(from, to, gate); return `${r.km} km · ${r.days} ngày` }
 const JOURNEYS: Record<CountryCode, { stops: [Stop, Stop, Stop]; mid: 'gate' | 'station'; summary: string }> = {
-  VN: { mid: 'station', summary: 'Tuyến nội địa · 930 km · 2 ngày', stops: [
-    { x: 40, y: 70, name: 'Đồng Nai', sub: 'Nhận ngựa' },
-    { x: 450, y: 140, name: 'Trạm Tuy Hòa', sub: 'Nghỉ đêm · chăm sóc ngựa' },
-    { x: 860, y: 60, name: 'Đà Nẵng', sub: 'Giao ngựa' }] },
-  LA: { mid: 'gate', summary: 'Tuyến Việt Nam – Lào · qua cửa khẩu Cầu Treo', stops: [
-    { x: 40, y: 140, name: 'Hà Nội', sub: 'Nhận ngựa' },
-    { x: 450, y: 60, name: 'Cầu Treo – Nam Phao', sub: 'Thông quan · kiểm dịch' },
-    { x: 860, y: 130, name: 'Viêng Chăn', sub: 'Giao ngựa' }] },
-  KH: { mid: 'gate', summary: 'Tuyến Việt Nam – Campuchia · qua cửa khẩu Mộc Bài', stops: [
-    { x: 40, y: 120, name: 'Đồng Nai', sub: 'Nhận ngựa' },
+  VN: { mid: 'station', summary: `Tuyến nội địa · ${road('KHO-DN', 'KHO-LA')}`, stops: [
+    { x: 40, y: 70, name: 'Kho Đồng Nai', sub: 'Nhận ngựa' },
+    { x: 450, y: 140, name: 'Trạm Biên Hòa', sub: 'Nghỉ ngựa · kiểm tra thể trạng' },
+    { x: 860, y: 60, name: 'Kho Long An', sub: 'Giao ngựa' }] },
+  LA: { mid: 'gate', summary: `Tuyến Việt Nam – Lào · qua cửa khẩu Lao Bảo · ${road('KHO-DN', 'KHO-VTE', 'Lao Bảo – Densavanh')}`, stops: [
+    { x: 40, y: 140, name: 'Kho Đồng Nai', sub: 'Nhận ngựa' },
+    { x: 450, y: 60, name: 'Lao Bảo – Densavanh', sub: 'Thông quan · kiểm dịch' },
+    { x: 860, y: 130, name: 'Kho Viêng Chăn', sub: 'Giao ngựa' }] },
+  KH: { mid: 'gate', summary: `Tuyến Việt Nam – Campuchia · qua cửa khẩu Mộc Bài · ${road('KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet')}`, stops: [
+    { x: 40, y: 120, name: 'Kho Đồng Nai', sub: 'Nhận ngựa' },
     { x: 450, y: 90, name: 'Mộc Bài – Bavet', sub: 'Thông quan · kiểm dịch' },
-    { x: 860, y: 70, name: 'Phnom Penh', sub: 'Giao ngựa' }] },
+    { x: 860, y: 70, name: 'Kho Phnom Penh', sub: 'Giao ngựa' }] },
 }
 const pathOf = ([a, b, c]: Stop[]) =>
   `M ${a.x} ${a.y} C ${a.x + 170} ${a.y - 90}, ${b.x - 170} ${b.y - 60}, ${b.x} ${b.y} S ${c.x - 170} ${c.y + 90}, ${c.x} ${c.y}`
@@ -258,7 +268,7 @@ export function Network() {
     <section className={s.network} id="mang-luoi">
       <div className="wrap">
         <h2 className={cx('section-title', s.reveal)}>Mạng lưới phủ sóng 3 nước</h2>
-        <p className={cx('section-sub', s.reveal)}>Tuyến nội địa Việt Nam và tuyến xuyên biên giới Việt Nam – Lào, Việt Nam – Campuchia qua các cửa khẩu đường bộ quốc tế.</p>
+        <p className={cx('section-sub', s.reveal)}>Tuyến nội địa Việt Nam và tuyến xuyên biên giới Việt Nam – Lào, Việt Nam – Campuchia qua các cửa khẩu đường bộ quốc tế. Bạn chọn điểm đón và điểm giao trên bản đồ; nhà xe chọn cửa khẩu và các trạm nghỉ dọc đường.</p>
         <div ref={flagsRef} className={s.flags}>
           {(Object.keys(COUNTRIES) as CountryCode[]).map(code => (
             <button key={code} className={cx(s.flag, code === active && s.active)} onClick={() => setActive(code)}>
@@ -272,7 +282,7 @@ export function Network() {
         <div className={cx(s.networkDetail, s.reveal)}>
           <h3>{COUNTRIES[active].name}</h3>
           <div className={s.networkCols} key={active}>
-            <div><h4>Điểm nhận / giao ngựa</h4><ul>{PLACES.filter(p => p.country === active).map(p => <li key={p.id}><i className="fa-solid fa-location-dot" /> {p.name}</li>)}</ul></div>
+            <div><h4>Điểm nhận / giao ngựa</h4><ul>{COUNTRY_LOCATIONS[active].map(p => <li key={p.id}><i className="fa-solid fa-location-dot" /> {p.name.split(' — ')[0]}<span style={{ color: 'var(--muted)' }}>{p.name.includes(' — ') ? ` · ${p.name.split(' — ')[1]}` : ''}</span></li>)}</ul></div>
             <div>
               <h4>{active === 'VN' ? 'Cửa khẩu đường bộ phục vụ' : 'Cửa khẩu với Việt Nam'}</h4>
               <ul>{gates.map(g => <li key={g.name}><i className="fa-solid fa-flag" /> {g.name}{active === 'VN' && <span style={{ color: 'var(--muted)' }}> ({COUNTRIES[g.country].name})</span>}</li>)}</ul>
@@ -286,25 +296,25 @@ export function Network() {
 
 const FEATURES: [string, React.ReactNode, string][] = [
   ['fa-earth-asia', <><CountUp to={3} /> quốc gia</>, 'Việt Nam, Lào, Campuchia'],
-  ['fa-truck', 'Xe chuyên dụng', 'Xe 2 ngăn và 4 ngăn, có đệm và vách ngăn riêng từng con'],
-  ['fa-user-doctor', 'Kiểm dịch viên riêng', 'Xác minh hồ sơ, làm thủ tục và bàn giao giấy tờ cho từng đơn'],
-  ['fa-flag', <><CountUp to={GATES.length} /> cửa khẩu</>, 'Cửa khẩu đường bộ quốc tế với Lào và Campuchia'],
+  ['fa-truck', 'Xe nguyên chuyến', `${Object.values(VEHICLE_CLASS).map(c => c.label).join(', ')}: từ 2 đến 9 ngăn. Không ghép ngựa của đơn khác`],
+  ['fa-user-doctor', 'Kiểm dịch viên riêng', 'Duyệt hồ sơ ngựa, làm giấy kiểm dịch, hải quan và báo tiến độ từng giấy cho bạn'],
+  ['fa-flag', <><CountUp to={GATES.length} /> cửa khẩu</>, 'Cửa khẩu đường bộ quốc tế với Lào và Campuchia, chọn sẵn khi lập lộ trình'],
 ]
 
 const SERVICES: [string, string, string, string, string][] = [
-  ['/?tab=fee#tra-cuu', 'fa-road', 'NỘI ĐỊA', 'Vận chuyển nội địa', 'Giữa các tỉnh thành Việt Nam'],
-  ['/#mang-luoi', 'fa-earth-asia', 'XUYÊN BIÊN GIỚI', 'Vận chuyển xuyên biên giới', 'Việt Nam – Lào, Việt Nam – Campuchia'],
-  ['/#quy-trinh', 'fa-file-shield', 'KIỂM DỊCH', 'Kiểm dịch & thủ tục', 'Giấy chứng nhận kiểm dịch, tờ khai hải quan'],
-  ['/?tab=price#tra-cuu', 'fa-heart-pulse', 'CHĂM SÓC', 'Chăm sóc & bảo hiểm', 'Nhân viên chăm sóc đi kèm, bảo hiểm theo giá trị khai báo'],
+  ['/?tab=price#tra-cuu', PHOTOS.transport.src, 'NỘI ĐỊA', 'Vận chuyển nội địa', 'Giữa các kho và câu lạc bộ trong nước, có trạm nghỉ cho ngựa'],
+  ['/#mang-luoi', PHOTOS.trailers.src, 'XUYÊN BIÊN GIỚI', 'Vận chuyển xuyên biên giới', 'Việt Nam – Lào, Việt Nam – Campuchia, nhà xe làm thủ tục cửa khẩu'],
+  ['/#quy-trinh', PHOTOS.checkup.src, 'KIỂM DỊCH', 'Kiểm dịch & thủ tục', 'Giấy kiểm dịch, tờ khai hải quan do nhà xe làm trọn gói'],
+  ['/?tab=price#tra-cuu', PHOTOS.stable.src, 'CHĂM SÓC', 'Chăm sóc & bảo hiểm', 'Hộ tống đi kèm, khoang đơn mở rộng, bảo hiểm động vật sống theo giống'],
 ]
 
 const PROCESS: [string, string, string, string][] = [
-  ['fa-paper-plane', 'Gửi đơn', 'Chọn tuyến, chọn ngựa từ Hồ sơ ngựa, chọn dịch vụ và khai bảo hiểm.', `Trước ngày đi ≥ ${MIN_LEAD_DAYS} ngày`],
-  ['fa-magnifying-glass', 'Thẩm định', 'Kiểm dịch viên xác minh hồ sơ, điều phối viên lập lộ trình.', 'Trong 5 ngày làm việc'],
-  ['fa-credit-card', 'Duyệt & đặt cọc', 'Quản lý duyệt đơn, bạn đặt cọc 30%, phần còn lại trả vào ngày bốc ngựa.', 'Trong 48 giờ'],
-  ['fa-folder-open', 'Làm giấy tờ', 'Chúng tôi làm giấy kiểm dịch (và tờ khai hải quan nếu đi quốc tế), bạn theo dõi tiến độ trực tuyến.', 'Trước ngày đi'],
-  ['fa-truck-moving', 'Vận chuyển', 'Tài xế nhận ngựa theo checklist, hộ tống báo cáo sức khỏe dọc đường, bạn theo dõi hành trình trực tuyến.', 'Theo lộ trình'],
-  ['fa-clipboard-check', 'Nghiệm thu', 'Kiểm tra tình trạng ngựa khi nhận và xác nhận hoàn thành.', 'Trong 24 giờ'],
+  ['fa-paper-plane', 'Gửi đơn', 'Chọn điểm đón, điểm giao trên bản đồ, chọn ngựa từ Hồ sơ ngựa, dịch vụ và bảo hiểm.', `Trước ngày đi ≥ ${MIN_LEAD_DAYS} ngày`],
+  ['fa-magnifying-glass', 'Thẩm định', 'Quản lý tiếp nhận; Kiểm dịch viên duyệt hồ sơ ngựa; Điều phối viên chọn xe, tài xế, hộ tống và lập lộ trình.', 'Song song, trước khi báo giá'],
+  ['fa-credit-card', 'Báo giá & đặt cọc', `Báo giá cố định có hiệu lực ${QUOTE_VALID_HOURS} giờ. Đặt cọc ${DEPOSIT_RATE * 100}% để nhận Vận đơn.`, `Trong ${QUOTE_VALID_HOURS} giờ`],
+  ['fa-folder-open', 'Làm giấy tờ', 'Nhà xe làm giấy kiểm dịch (và hải quan nếu đi quốc tế); bạn xem từng giấy đã nộp và báo sai nếu có.', 'Trước ngày đi'],
+  ['fa-truck-moving', 'Vận chuyển', `Ngày bốc ngựa bạn trả ${100 - DEPOSIT_RATE * 100}% còn lại. Tài xế check-in từng mốc, hộ tống ghi nhật ký sức khỏe, bạn xem xe trên bản đồ.`, 'Theo lộ trình'],
+  ['fa-clipboard-check', 'Bàn giao & quyết toán', 'Ký biên bản giao nhận. Chỉ khi có sự cố liên quan đến ngựa mới có khoản phát sinh có chứng từ; sau đó bạn đánh giá chuyến đi.', 'Trong 24 giờ sau khi có quyết toán'],
 ]
 
 function useStepsLine() {
@@ -322,7 +332,7 @@ export function About({ link = same }: { link?: LinkMap }) {
         <div className={cx(s.aboutLeft, s.reveal)}>
           <div className={s.aboutLeftInner}>
             <h2>Về chúng tôi</h2>
-            <p>Chúng tôi chuyên vận chuyển ngựa đua bằng đường bộ. Mỗi đơn đều được kiểm dịch viên xác minh hồ sơ thú y và điều phối viên lập lộ trình riêng. Quản lý duyệt đơn trước khi bạn thanh toán.</p>
+            <p>Chúng tôi chuyên vận chuyển ngựa đua bằng đường bộ. Mỗi đơn có kiểm dịch viên xác minh hồ sơ thú y, điều phối viên chọn xe, tài xế, hộ tống và lập lộ trình riêng, quản lý duyệt báo giá trước khi bạn đặt cọc. Có sự cố, quản lý duyệt phương án xử lý và trực tiếp liên hệ bạn.</p>
             <Link to={link('/#quy-trinh')} className={s.linkArrow}>Xem quy trình <i className="fa-solid fa-arrow-right-long" /></Link>
           </div>
         </div>
@@ -343,9 +353,9 @@ export function Services({ link = same }: { link?: LinkMap }) {
         <div className="wrap">
           <h2 className={cx('section-title', s.reveal)}>Dịch vụ</h2>
           <div className={s.serviceGrid}>
-            {SERVICES.map(([to, icon, tile, title, text], i) => (
+            {SERVICES.map(([to, photo, tile, title, text], i) => (
               <Link key={title} to={link(to)} className={cx(s.service, s.reveal)} data-delay={i * 120}>
-                <span className={s.serviceTile}><i className={`fa-solid ${icon}`} /><b>{tile}</b></span><h3>{title}</h3><p>{text}</p>
+                <span className={s.serviceTile} style={{ '--photo': `url('${photo}')` } as CSSProperties}><b>{tile}</b></span><h3>{title}</h3><p>{text}</p>
               </Link>
             ))}
           </div>
@@ -387,11 +397,18 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className={s.cta} style={{ '--bg': "url('/images/truck.jpg')" } as CSSProperties}>
+      <section className={s.cta} style={{ '--bg': `url('${PHOTOS.race.src}')` } as CSSProperties}>
         <div className={cx('wrap', s.reveal)}>
           <h2>Đặt chuyến vận chuyển ngựa đua</h2>
-          <p>Đặt trước tối thiểu 10 ngày · Có kết quả thẩm định trong 5 ngày làm việc · Thanh toán sau khi đơn được duyệt</p>
+          <p>Đặt trước tối thiểu {MIN_LEAD_DAYS} ngày · Báo giá cố định, hiệu lực {QUOTE_VALID_HOURS} giờ · Cọc {DEPOSIT_RATE * 100}% để nhận Vận đơn</p>
           <Link to="/login" className="btn btn-white btn-lg">Đặt chuyến ngay</Link>
+        </div>
+      </section>
+
+      <section className={s.credits} aria-label="Nguồn ảnh">
+        <div className="wrap">
+          <b>Nguồn ảnh</b> (Wikimedia Commons):{' '}
+          {Object.values(PHOTOS).map((ph, i) => <span key={ph.src}>{i > 0 && ' · '}<a href={ph.page} target="_blank" rel="noreferrer">{ph.alt}</a>, {ph.author}, {ph.license}</span>)}
         </div>
       </section>
     </div>

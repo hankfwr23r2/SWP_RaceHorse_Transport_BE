@@ -82,7 +82,7 @@ export default function PortalPage() {
       </div>
       </div>
 
-      <div id="tra-cuu" style={{ padding: '8px 0 40px' }}><PriceLookup bookHref="/booking/route" /></div>
+      <div id="tra-cuu" style={{ padding: '8px 0 40px' }}><PriceLookup /></div>
       <Network />
       <About link={portalLinks} />
       <Services link={portalLinks} />

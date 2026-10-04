@@ -30,7 +30,7 @@ export default function LegalListPage() {
     { head: 'Tuyến', cell: b => routeCell(placeShort(b.origin.name), placeShort(b.dest.name)) },
     { head: 'Khởi hành', cell: b => formatDate(b.departAt), nowrap: true },
     { head: 'Trạng thái', cell: b => statusCell(b.status) },
-    { head: 'Hạng mục xong', cell: b => { const p = clearanceProgress(b.clearance!); return `${p.done}/${p.total}` }, nowrap: true },
+    { head: 'Hạng mục đã nộp', cell: b => { const p = clearanceProgress(b.clearance!); return `${p.done}/${p.total}` }, nowrap: true },
     { head: 'Cảnh báo', minWidth: 120, cell: b => {
       const late = isClearanceOverdue(b, now)
       const flags = b.clearance!.flags.length

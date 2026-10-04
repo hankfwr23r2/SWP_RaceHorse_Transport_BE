@@ -10,9 +10,8 @@ import { useToast } from '@shared/ui/toast'
 import s from './OrderDetail.module.css'
 
 const STATUS: Record<ClearanceStatus, { label: string; cls: string; icon: string }> = {
-  todo: { label: 'Chưa làm', cls: 'badge-muted', icon: 'fa-circle' },
-  doing: { label: 'Đang làm', cls: 'badge-info', icon: 'fa-spinner' },
-  done: { label: 'Xong', cls: 'badge-success', icon: 'fa-circle-check' },
+  todo: { label: 'Chưa nộp', cls: 'badge-muted', icon: 'fa-circle' },
+  done: { label: 'Đã nộp', cls: 'badge-success', icon: 'fa-circle-check' },
 }
 
 export function ClearanceProgressCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; onDone: () => void }) {

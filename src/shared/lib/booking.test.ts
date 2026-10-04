@@ -3,13 +3,12 @@ import { DAY, HOUR } from '../config/business-rules'
 import { BOOKING_STATUS, BOOKING_STEPS, stepOf, statusRank, type BookingStatus } from '../config/booking-rules'
 import type { Incident, IncidentExpense } from '../types/booking'
 import { COUNTRY_LOCATIONS, PLACES, TRANSIT_STATIONS } from '../config/network'
-import type { CrewMember, Vehicle } from '../services/mock/fleet'
 import type { StaffMember } from '../services/mock/staff'
-import type { Booking, BookingHorse, HorseProfile, VehicleTrip } from '../types/booking'
+import type { Booking, BookingHorse, HorseProfile, VehicleTrip, Checkpoint, TripRun } from '../types/booking'
 import {
-  autoAssign, transitProgress, defaultPayer, incidentActionsFor, settlementOf, approvedSubOf, APPROVED_SUBS, orderGroupOf, ORDER_GROUPS, capacitiesFor, estimateQuote, busyResources, buildRoutePlan, gatesFor, suggestGate, suggestTransitStations, canCompleteClearance, classForHorses, defaultClearanceItems, deriveStatus, docsDueAt, earliestDeparture, finalizeQuote, horseReadiness,
+  schedulesOf, clashOf, vehicleSpot, vehiclePoint, pendingDeparture, spotLabel, nearestTo, projectOnPath, pointsAhead, pointAlong, bookingPath, incidentLocation, needsFitCheck, transitProgress, defaultPayer, incidentActionsFor, settlementOf, approvedSubOf, APPROVED_SUBS, orderGroupOf, ORDER_GROUPS, capacitiesFor, estimateQuote, busyResources, buildRoutePlan, gatesFor, suggestGate, suggestTransitStations, canCompleteClearance, classForHorses, defaultClearanceItems, deriveStatus, docsDueAt, earliestDeparture, finalizeQuote, horseReadiness,
   cancelRefund, insuranceFee, isClearanceOverdue, isDepartureAllowed, isQuoteExpired, layoutLegs, manifestDocuments, nextBookingId, quoteLines, refundOf, reviewDone, routeKm, suggestStaff,
-  findLocation, managerBoardOf, managerCounts, orderTabOf, tripIdFor, validateRoutePlan, vehicleClassOf, waybillNoOf,
+  findLocation, arrivalOf, routeOutline, managerBoardOf, managerCounts, orderTabOf, tripIdFor, validateRoutePlan, vehicleClassOf,
 } from './booking'
 
 const NOW = new Date(2026, 9, 1, 10, 0).getTime() // 01/10/2026 10:00
@@ -168,59 +167,36 @@ describe('xe và nhân sự', () => {
   })
 })
 
-describe('gán xe tự động (PRD mục 10.2)', () => {
-  const veh = (id: string, capacity: number, over: Partial<Vehicle> = {}): Vehicle => ({ id, name: id, type: 'x', capacity, plate: id, inspectionNo: `KD-${id}`, transitPermit: `CLV-${id}`, ...over })
-  const esc = (id: string): CrewMember => ({ id, name: id, role: 'escort', phone: '0' })
-  const drv = (id: string): CrewMember => ({ id, name: id, role: 'driver', phone: '0' })
-  const drivers = [drv('D1'), drv('D2'), drv('D3')] // tài xế không gắn với xe
-  const none = { vehicles: new Set<string>(), crew: new Set<string>() }
-  const ids = (n: number) => Array.from({ length: n }, (_, i) => `H${i + 1}`)
-
-  it('một xe đủ chỗ thì dùng đúng một xe, chọn xe nhỏ nhất đủ chỗ', () => {
-    const r = autoAssign(ids(2), [veh('A', 6), veh('B', 2), veh('C', 9)], [...drivers, esc('E1'), esc('E2')], none)
-    expect(r.ok).toBe(true)
-    expect(r.trips).toHaveLength(1)
-    expect(r.trips[0]).toMatchObject({ vehicleId: 'B', driverId: 'D1', escortId: 'E1', horseIds: ['H1', 'H2'] })
+describe('lịch bận của xe, tài xế, hộ tống (PRD mục 10.2)', () => {
+  const DAYS = 86_400_000
+  const D = new Date('2026-12-10T05:00:00').getTime()
+  const order = (id: string, offsetDays: number, status: BookingStatus, trip: { vehicleId: string; driverId: string; escortId: string }) => ({
+    id, status, departAt: D + offsetDays * DAYS, origin: { name: 'Kho A — x' }, dest: { name: 'Kho B — y' },
+    trips: [{ tripId: `${id}-1`, ...trip, horseIds: [], acks: {} }],
+  }) as unknown as Booking
+  const all = [
+    order('ORD-1', 1, 'awaiting_payment', { vehicleId: 'V1', driverId: 'D1', escortId: 'E1' }), // cách 1 ngày: trùng lịch
+    order('ORD-2', 5, 'in_transit', { vehicleId: 'V2', driverId: 'D2', escortId: 'E2' }), // cách 5 ngày: không trùng
+    order('ORD-3', 0, 'cancelled', { vehicleId: 'V3', driverId: 'D3', escortId: 'E3' }), // đơn đã đóng không giữ ai
+    order('ORD-4', 0, 'under_review', { vehicleId: 'V4', driverId: 'D4', escortId: 'E4' }), // chính đơn đang lập
+  ]
+  it('chỉ tính đơn đang giữ xe và nhân sự, bỏ đơn đã đóng và chính đơn đang lập', () => {
+    const s = schedulesOf(all, 'ORD-4')
+    expect([...s.vehicles.keys()].sort()).toEqual(['V1', 'V2'])
+    expect([...s.drivers.keys()].sort()).toEqual(['D1', 'D2'])
+    expect([...s.escorts.keys()].sort()).toEqual(['E1', 'E2'])
+    expect(s.vehicles.get('V1')![0]).toMatchObject({ order: 'ORD-1', route: 'Kho A → Kho B' })
   })
-  it('6 ngựa, không còn xe 6 chỗ: chia đều 3 + 3 cho hai xe, mỗi xe một Escort riêng', () => {
-    const r = autoAssign(ids(6), [veh('A', 4), veh('B', 4), veh('C', 2)], [...drivers, esc('E1'), esc('E2'), esc('E3')], none)
-    expect(r.ok).toBe(true)
-    expect(r.trips.map(t => t.horseIds.length)).toEqual([3, 3])
-    expect(new Set(r.trips.map(t => t.escortId)).size).toBe(2)
+  it('trùng lịch khi ngày đi cách dưới 3 ngày; xa hơn thì vẫn chọn được nhưng thấy lịch', () => {
+    const s = schedulesOf(all, 'ORD-4')
+    expect(clashOf(s.vehicles.get('V1'), D)?.order).toBe('ORD-1')
+    expect(clashOf(s.drivers.get('D2'), D)).toBeUndefined()
+    expect(s.drivers.get('D2')).toHaveLength(1)
+    expect(clashOf(undefined, D)).toBeUndefined()
   })
-  it('không xe nào vượt sức chứa, không sót ngựa (1, 2, 9, 10 ngựa)', () => {
-    const fleet = [veh('A', 6), veh('B', 6), veh('C', 2), veh('D', 9)]
-    for (const n of [1, 2, 9, 10]) {
-      const r = autoAssign(ids(n), fleet, [...drivers, esc('E1'), esc('E2'), esc('E3')], none)
-      expect(r.ok, `n=${n}`).toBe(true)
-      expect(r.trips.flatMap(t => t.horseIds).sort()).toEqual(ids(n).sort())
-      r.trips.forEach(t => expect(t.horseIds.length).toBeLessThanOrEqual(fleet.find(v => v.id === t.vehicleId)!.capacity))
-    }
-  })
-  it('xe thiếu giấy đăng kiểm, xe bận, tài xế bận, Escort bận đều bị loại', () => {
-    const fleet = [veh('A', 2, { inspectionNo: '' }), veh('B', 2), veh('C', 2), veh('D', 2)]
-    const r = autoAssign(ids(2), fleet, [...drivers, esc('E1'), esc('E2')], { vehicles: new Set(['B']), crew: new Set(['E1', 'D1']) })
-    expect(r.trips[0]).toMatchObject({ vehicleId: 'C', driverId: 'D2', escortId: 'E2' })
-  })
-  it('thiếu tài xế rảnh thì báo lỗi dù còn xe', () => {
-    const r = autoAssign(ids(5), [veh('A', 4), veh('B', 4)], [drv('D1'), esc('E1'), esc('E2')], none)
-    expect(r).toMatchObject({ ok: false, trips: [] })
-    expect(r.reason).toMatch(/tài xế/)
-  })
-  it('thiếu xe hoặc thiếu Escort thì báo lỗi và không gán', () => {
-    expect(autoAssign(ids(5), [veh('A', 2), veh('B', 2)], [...drivers, esc('E1'), esc('E2')], none)).toMatchObject({ ok: false, trips: [] })
-    expect(autoAssign(ids(4), [veh('A', 2), veh('B', 2)], [...drivers, esc('E1')], none)).toMatchObject({ ok: false, trips: [] })
-    expect(autoAssign([], [veh('A', 2)], [...drivers, esc('E1')], none).ok).toBe(false)
-  })
-  it('xe thiếu giấy đăng kiểm bị loại; tuyến quốc tế còn cần giấy phép liên vận', () => {
-    const fleet = [veh('A', 2, { inspectionNo: '' }), veh('B', 2, { transitPermit: '' }), veh('C', 2)]
-    expect(autoAssign(ids(2), fleet, [...drivers, esc('E1')], none).trips[0].vehicleId).toBe('B')
-    expect(autoAssign(ids(2), fleet, [...drivers, esc('E1')], none, true).trips[0].vehicleId).toBe('C')
-    expect(autoAssign(ids(2), [veh('A', 2, { inspectionNo: '' })], [...drivers, esc('E1')], none).ok).toBe(false)
-  })
-  it('mã chuyến theo thứ tự xe, mã Vận đơn theo 4 số cuối mã đơn', () => {
-    expect(tripIdFor('ORD-2026-0114', 2)).toBe('TRP-0114-2')
-    expect(waybillNoOf('ORD-2026-0114')).toBe('VD-0114')
+  it('một xe giữ nhiều đơn thì liệt kê đủ để Coordinator biết xe bận gì', () => {
+    const two = [...all, order('ORD-5', 2, 'clearance_done', { vehicleId: 'V1', driverId: 'D9', escortId: 'E9' })]
+    expect(schedulesOf(two, 'ORD-4').vehicles.get('V1')!.map(x => x.order)).toEqual(['ORD-1', 'ORD-5'])
   })
 })
 
@@ -291,14 +267,14 @@ describe('lộ trình chi tiết (Flow 3)', () => {
   })
   it('chặng quá 4 giờ, nghỉ dưới 30 phút, thiếu trạm thú y đều bị chặn', () => {
     const legs = layoutLegs('A', 'B', etd, [], 5)
-    const r = validateRoutePlan({ legs, rests: [{ afterLeg: 1, name: 'X', minutes: 20, facilities: '' }], borderEta: undefined }, false)
+    const r = validateRoutePlan({ legs, rests: [{ afterLeg: 1, name: 'X', minutes: 20 }], borderEta: undefined }, false)
     expect(r.errors.join(' | ')).toMatch(/vượt 4 giờ/)
     expect(r.errors.join(' | ')).toMatch(/tối thiểu 30 phút/)
     expect(r.errors.join(' | ')).not.toMatch(/Thú y/)
   })
   it('ETA cửa khẩu ngoài 07:30–16:30 chỉ là cảnh báo, quốc tế mà thiếu ETA là lỗi', () => {
     const legs = layoutLegs('A', 'B', etd, [{ name: 'X', minutes: 45 }], 6)
-    const base = { legs, rests: [{ afterLeg: 1, name: 'X', minutes: 45, facilities: '' }], }
+    const base = { legs, rests: [{ afterLeg: 1, name: 'X', minutes: 45 }], }
     expect(validateRoutePlan({ ...base, borderEta: new Date(2026, 10, 20, 6, 10).getTime() }, true)).toMatchObject({ errors: [], warnings: [expect.stringContaining('07:30–16:30')] })
     expect(validateRoutePlan({ ...base, borderEta: new Date(2026, 10, 20, 9, 0).getTime() }, true).warnings).toEqual([])
     expect(validateRoutePlan({ ...base }, true).errors.length).toBe(1)
@@ -459,7 +435,7 @@ describe('mục nhỏ trong nhóm Đã duyệt', () => {
   })
 })
 
-const inc = (status: Incident['status'], over: Partial<Incident> = {}): Incident => ({ id: 'INC-1', tripId: 'T1', kind: 'horse_health', reportedBy: 'x', reportedAt: 1, photo: 'a.jpg', note: '', status, expenses: [], ...over })
+const inc = (status: Incident['status'], over: Partial<Incident> = {}): Incident => ({ id: 'INC-1', tripId: 'T1', kind: 'horse_health', reportedBy: 'x', reportedAt: 1, location: { lat: 10.9, lng: 106.7 }, photo: 'a.jpg', note: '', status, expenses: [], ...over })
 const exp = (amount: number, payer: IncidentExpense['payer'], over: Partial<IncidentExpense> = {}): IncidentExpense => ({ id: `E${amount}`, category: 'vet_fee', label: 'x', photo: 'p.jpg', amount, payer, at: 1, by: 'x', ...over })
 
 describe('trạng thái đơn khi có sự cố (Flow 5)', () => {
@@ -484,20 +460,21 @@ describe('trạng thái đơn khi có sự cố (Flow 5)', () => {
 })
 
 describe('chi phí sự cố và quyết toán (PRD 11.5, Flow 6)', () => {
-  it('bên chịu mặc định: ngựa thì khách, vận chuyển thì nhà xe, chuồng đệm khi tắc cửa khẩu thì nhà xe', () => {
+  it('bên chịu mặc định: ngựa thì khách, vận chuyển thì nhà xe, tắc đường thì nhà xe chịu toàn bộ', () => {
     expect(defaultPayer('horse_health', 'vet_fee')).toBe('customer')
     expect(defaultPayer('horse_health', 'medicine')).toBe('customer')
     expect(defaultPayer('vehicle_breakdown', 'rescue')).toBe('carrier')
     expect(defaultPayer('vehicle_breakdown', 'repair')).toBe('carrier')
     expect(defaultPayer('horse_health', 'holding_stable')).toBe('customer')
-    expect(defaultPayer('border_congestion', 'holding_stable')).toBe('carrier')
-    expect(defaultPayer('border_congestion', 'medicine')).toBe('carrier') // tắc cửa khẩu: nhà xe chịu toàn bộ (PRD 11.5)
+    expect(defaultPayer('traffic_jam', 'holding_stable')).toBe('carrier')
+    expect(defaultPayer('traffic_jam', 'medicine')).toBe('carrier') // tắc đường là việc vận chuyển: nhà xe chịu toàn bộ (PRD 11.5)
     expect(defaultPayer('vehicle_breakdown', 'other')).toBe('carrier')
   })
   it('phương án hợp lệ theo nhóm sự cố', () => {
-    expect(incidentActionsFor('horse_health')).toEqual(['vet_clinic'])
-    expect(incidentActionsFor('vehicle_breakdown')).toEqual(['repair_on_site', 'rescue_van'])
-    expect(incidentActionsFor('border_congestion')).toEqual(['holding_stable'])
+    expect(incidentActionsFor('horse_health')).toEqual(['to_station'])
+    expect(incidentActionsFor('vehicle_breakdown')).toEqual(['rescue_and_station'])
+    expect(incidentActionsFor('traffic_jam')).toEqual(['reroute'])
+    expect(needsFitCheck('horse_health') && needsFitCheck('vehicle_breakdown') && !needsFitCheck('traffic_jam')).toBe(true) // ngựa tới trạm nghỉ thì phải xác nhận đủ sức; tắc đường thì không
   })
   it('bảng quyết toán chỉ gồm khoản khách chịu, tổng đúng; không có khoản nào thì 0 đồng', () => {
     const b = { incidents: [inc('resolved', { expenses: [exp(1_000_000, 'customer'), exp(500_000, 'carrier'), exp(300_000, 'customer')] })] }
@@ -563,5 +540,108 @@ describe('managerBoardOf', () => {
     expect(managerBoardOf('pending_intake')).toBe('intake')
     expect(managerBoardOf('incident_reported')).toBe('moving')
     expect(managerBoardOf('payment_overdue')).toBe('settle')
+  })
+})
+
+describe('arrivalOf', () => {
+  it('ngày đến dự kiến là giờ đến của chặng cuối; chưa có lộ trình thì chưa biết', () => {
+    expect(arrivalOf(undefined)).toBeUndefined()
+    expect(arrivalOf({ legs: [] })).toBeUndefined()
+    expect(arrivalOf({ legs: [{ no: 1, from: 'A', to: 'B', departAt: 100, arriveAt: 200 }, { no: 2, from: 'B', to: 'C', departAt: 300, arriveAt: 450 }] })).toBe(450)
+  })
+})
+
+describe('routeOutline: xếp trạm dọc đường đi và dựng đường vẽ', () => {
+  const origin = { lat: 10.78, lng: 107.0 } // Đồng Nai
+  const gate = { lat: 11.07, lng: 106.2 } // Mộc Bài
+  const dest = { lat: 11.56, lng: 104.92 } // Phnom Penh
+  const st = (name: string, lat: number, lng: number) => ({ name, lat, lng })
+  const longThanh = st('Long Thành', 10.78, 107.0), cuChi = st('Củ Chi', 10.97, 106.5), svay = st('Svay Rieng', 11.09, 105.8), neak = st('Neak Loeung', 11.26, 105.28)
+  it('sắp trạm theo thứ tự xe đi qua dù chọn lộn xộn, cửa khẩu chen đúng giữa các trạm', () => {
+    const r = routeOutline(origin, gate, dest, [neak, longThanh, svay, cuChi])
+    expect(r.stations.map(s => s.name)).toEqual(['Long Thành', 'Củ Chi', 'Svay Rieng', 'Neak Loeung'])
+    expect(r.path).toHaveLength(7) // điểm đón, 2 trạm trước cửa khẩu, cửa khẩu, 2 trạm sau, điểm trả
+    expect(r.path[0]).toBe(origin)
+    expect(r.path[3]).toBe(gate)
+    expect(r.path[6]).toBe(dest)
+  })
+  it('tuyến nội địa không có cửa khẩu; chưa chọn trạm thì đường đi thẳng điểm đón → điểm trả', () => {
+    expect(routeOutline(origin, undefined, dest, []).path).toEqual([origin, dest])
+    expect(routeOutline(origin, undefined, dest, [svay, cuChi]).stations.map(s => s.name)).toEqual(['Củ Chi', 'Svay Rieng'])
+  })
+})
+
+describe('bản đồ sự cố: điểm gần nhất, đường còn lại, vị trí xe', () => {
+  const A = { lat: 10.78, lng: 107.0 }, G = { lat: 11.07, lng: 106.2 }, B = { lat: 11.56, lng: 104.92 }
+  it('nearestTo xếp theo khoảng cách và cắt đúng số lượng', () => {
+    const pts = [{ n: 'xa', lat: 12, lng: 105 }, { n: 'gần', lat: 10.8, lng: 106.9 }, { n: 'giữa', lat: 11, lng: 106.5 }]
+    expect(nearestTo(A, pts).map(x => x.n)).toEqual(['gần', 'giữa', 'xa'])
+    expect(nearestTo(A, pts, 1)).toHaveLength(1)
+    expect(nearestTo(A, pts, 1)[0].km).toBeGreaterThan(0)
+  })
+  it('projectOnPath và pointsAhead: xe ở đoạn nào thì các điểm còn lại là từ điểm kế tiếp trở đi', () => {
+    const path = [A, G, B]
+    const beforeGate = { lat: 10.9, lng: 106.6 }, afterGate = { lat: 11.3, lng: 105.5 }
+    expect(projectOnPath(path, beforeGate).segment).toBe(0)
+    expect(projectOnPath(path, afterGate).segment).toBe(1)
+    expect(pointsAhead(path, beforeGate)).toEqual([G, B])
+    expect(pointsAhead(path, afterGate)).toEqual([B])
+  })
+  it('pointAlong trả điểm theo tỷ lệ quãng đường; 0 là điểm đầu, 1 là điểm cuối', () => {
+    expect(pointAlong([A, B], 0)).toEqual(A)
+    const end = pointAlong([A, B], 1)
+    expect(end.lat).toBeCloseTo(B.lat, 6); expect(end.lng).toBeCloseTo(B.lng, 6)
+    const half = pointAlong([A, B], 0.5)
+    expect(half.lat).toBeGreaterThan(A.lat); expect(half.lat).toBeLessThan(B.lat)
+  })
+  it('bookingPath dựng đường đón → trạm → cửa khẩu → trả; incidentLocation nằm trên đường đó', () => {
+    const b = { origin: { id: 'KHO-DN', name: 'a', country: 'VN' as const }, dest: { id: 'KHO-PNH', name: 'b', country: 'KH' as const }, gate: 'Mộc Bài – Bavet', route: { legs: [], rests: [{ afterLeg: 1, name: 'Trạm trung chuyển Củ Chi', minutes: 45 }] } }
+    const path = bookingPath(b)
+    expect(path).toHaveLength(4) // điểm đón, Củ Chi, cửa khẩu, điểm trả
+    const trip = { tripId: 't', vehicleId: 'v', driverId: 'd', escortId: 'e', horseIds: [], acks: {} }
+    const at = incidentLocation(b, trip)
+    expect(at.lat).toBeGreaterThan(Math.min(...path.map(p => p.lat)) - 0.01)
+    expect(at.lat).toBeLessThan(Math.max(...path.map(p => p.lat)) + 0.01)
+  })
+})
+
+describe('vị trí xe theo xác nhận thủ công của Driver', () => {
+  const cp = (id: string, type: Checkpoint['type'], place: string, over: Partial<Checkpoint> = {}): Checkpoint => ({ id, type, label: id, place, plannedAt: 1, ...over })
+  const run = (cps: Checkpoint[], extra: Partial<TripRun> = {}): { run: TripRun } => ({ run: { checkpoints: cps, welfare: [], startedAt: 1, ...extra } })
+  const b = { origin: { id: 'KHO-DN', name: 'a', country: 'VN' as const }, dest: { id: 'KHO-LA', name: 'b', country: 'VN' as const } }
+  const mk = (rest: Partial<Checkpoint>, pick: Partial<Checkpoint> = { arrivedAt: 1, doneAt: 2 }) => [cp('pickup', 'pickup', 'a', pick), cp('rest-1', 'rest', 'Trạm trung chuyển Long Thành', rest), cp('delivery', 'delivery', 'b')]
+  it('chưa tới trạm: xe đang chạy ở giữa điểm đón và trạm', () => {
+    const t = run(mk({}))
+    expect(vehicleSpot(t)).toEqual({ kind: 'between', from: 0, to: 1 })
+    expect(spotLabel(t)).toBe('Đang trên đường từ điểm đón tới trạm Long Thành')
+  })
+  it('tới trạm: xe đứng đúng chỗ trạm; bấm tiếp tục thì lại chạy giữa trạm và điểm giao', () => {
+    const at = run(mk({ arrivedAt: 3 }))
+    expect(vehicleSpot(at)).toEqual({ kind: 'at', index: 1 })
+    expect(vehiclePoint(b, at)).toMatchObject({ lat: expect.any(Number) })
+    expect(spotLabel(at)).toBe('Đang ở trạm Long Thành')
+    expect(vehicleSpot(run(mk({ arrivedAt: 3, doneAt: 4 })))).toEqual({ kind: 'between', from: 1, to: 2 })
+  })
+  it('giữa hai mốc thì toạ độ nằm giữa hai điểm', () => {
+    const p = vehiclePoint(b, run(mk({ arrivedAt: 3, doneAt: 4 })))!
+    const a = vehiclePoint(b, run(mk({ arrivedAt: 3 })))!, z = findLocation('KHO-LA')!
+    expect(p.lat).toBeCloseTo((a.lat + z.lat) / 2, 6)
+  })
+  it('cửa khẩu: thông quan xong xe vẫn ở cửa khẩu cho đến khi Driver bấm tiếp tục', () => {
+    const cps = [cp('pickup', 'pickup', 'a', { arrivedAt: 1, doneAt: 2 }), cp('border', 'border', 'Mộc Bài – Bavet', { arrivedAt: 3, doneAt: 3 }), cp('customs', 'customs', 'Mộc Bài – Bavet', { arrivedAt: 5, doneAt: 5 }), cp('delivery', 'delivery', 'b')]
+    expect(vehicleSpot(run(cps.slice(0, 2).concat(cp('customs', 'customs', 'Mộc Bài – Bavet'), cps[3])))).toEqual({ kind: 'at', index: 1 }) // mới tới cửa khẩu, chưa thông quan
+    expect(vehicleSpot(run(cps))).toEqual({ kind: 'at', index: 2 })
+    expect(pendingDeparture(run(cps))).toBe(cps[2])
+    cps[2].leftAt = 6
+    expect(pendingDeparture(run(cps))).toBeUndefined()
+    expect(vehicleSpot(run(cps))).toEqual({ kind: 'between', from: 2, to: 3 })
+  })
+  it('chưa xuất phát hoặc đã giao: xe ở điểm đón / điểm giao', () => {
+    expect(vehicleSpot({})).toEqual({ kind: 'at', index: 0 })
+    expect(spotLabel({})).toBe('Chưa xuất phát')
+    expect(spotLabel({ departedAt: 1 })).toBe('Đang trên đường tới điểm đón') // đã bấm bắt đầu đến điểm đón
+    const done = mk({ arrivedAt: 3, doneAt: 4 }); done[2].arrivedAt = 5; done[2].doneAt = 6
+    expect(vehicleSpot(run(done, { deliveredAt: 6 }))).toEqual({ kind: 'at', index: 2 })
+    expect(spotLabel(run(done, { deliveredAt: 6 }))).toBe('Đã giao ngựa tại điểm giao')
   })
 })

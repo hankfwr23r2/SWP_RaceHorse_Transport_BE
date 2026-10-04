@@ -4,13 +4,14 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
 import { HORSE_DOC, HORSE_DOC_TYPES, type HorseDocType } from '@shared/config/booking-rules'
 import { horseReadiness } from '@shared/lib/booking'
-import { formatDateTime } from '@shared/lib/format'
+import { formatDate, formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import { horsesApi } from '@shared/services/horses'
 import { useLoad } from '@shared/services/useLoad'
 import type { Booking, HorseProfile } from '@shared/types/booking'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { HorseDocChips } from '@shared/ui/HorseDocChips'
+import { ImageThumb } from '@shared/ui/ImageThumb'
 import { useToast } from '@shared/ui/toast'
 import { History, ReviewChips, TripSummary } from '../../../shared/BookingParts'
 import s from '../../../shared/booking.module.css'
@@ -58,6 +59,14 @@ function Review({ b, horses, onDone }: { b: Booking; horses: HorseProfile[]; onD
                   {r.ok ? <span className="badge badge-success">Đủ giấy, còn hạn đến ngày đi</span> : <span className="badge badge-danger">Giấy chưa đạt</span>}
                 </div>
                 <HorseDocChips horse={h} at={b.departAt} />
+                <div className={s.docFiles} aria-label="Giấy khách đã nộp">
+                  {HORSE_DOC_TYPES.map(d => { const f = h.docs[d]; return (
+                    <div key={d} className={s.docFile}>
+                      {f ? <ImageThumb name={f.fileName} size={64} /> : <span className={s.docEmpty}><i className="fa-regular fa-file" aria-hidden="true" /></span>}
+                      <div><b>{HORSE_DOC[d].label}</b><small>{f ? `${f.fileName} · nộp ${formatDateTime(f.uploadedAt)}${f.expiresAt ? ` · hạn ${formatDate(f.expiresAt)}` : ''}` : 'Khách chưa nộp'}</small></div>
+                    </div>
+                  ) })}
+                </div>
                 {bh && <div className={s.config}><span>Khách yêu cầu <b>{bh.targetTemp}°C</b></span>{bh.feeding && <span>Dinh dưỡng: <b>{bh.feeding}</b></span>}</div>}
                 {b.medical?.status === 'pending' && (
                   <label className={s.check}><input type="checkbox" checked={checked.includes(h.id)} disabled={!r.ok} onChange={e => { const on = e.target.checked; setChecked(c => (on ? [...c, h.id] : c.filter(x => x !== h.id))) }} />
@@ -121,7 +130,7 @@ export default function VerifyPage() {
   const { data: horses } = useLoad(async () => {
     const booking = await bookingsApi.get(id)
     if (!booking) return []
-    return (await Promise.all(booking.horses.map(h => horsesApi.get(booking.customer, h.horseId)))).filter(Boolean) as HorseProfile[]
+    return (await Promise.all(booking.horses.map(h => horsesApi.byId(h.horseId)))).filter(Boolean) as HorseProfile[]
   }, [id, b?.medical?.status])
 
   if (!b || !horses) return <div className="page"><div className="wrap"><p className="text-muted">Đang tải…</p></div></div>

@@ -123,3 +123,12 @@
 .tab { padding: 10px 16px; border: 0; border-radius: 0; box-shadow: none; border-bottom: 3px solid transparent; background: none; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .tab:hover { color: var(--text); }
 .tabOn { color: var(--orange); border-bottom-color: var(--orange); }
+
+/* Lịch trình dự kiến ở bước chờ đặt cọc */
+.eta { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 16px; align-items: center; padding: 12px 14px; border: 1px solid #bbf7d0; border-radius: var(--radius-sm); background: #f0fdf4; }
+.eta > i { grid-row: span 2; font-size: 1.3rem; color: var(--green); }
+.eta div { display: grid; }
+.eta span { font-size: 0.78rem; color: var(--muted); }
+.eta b { font-size: 0.98rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+.eta small { grid-column: 2 / -1; font-size: 0.76rem; color: var(--muted); }
+@media (max-width: 560px) { .eta { grid-template-columns: auto 1fr; } .eta small { grid-column: 1 / -1; } }

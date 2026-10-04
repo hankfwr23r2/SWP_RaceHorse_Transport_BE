@@ -16,6 +16,10 @@ describe('hồ sơ ngựa mẫu', () => {
     expect(new Set(horses.map(h => h.id)).size).toBe(horses.length)
     expect(new Set(horses.map(h => h.microchip)).size).toBe(horses.length)
   })
+  it('mọi ngựa trong đơn mẫu đều có hồ sơ để Specialist xem giấy khách nộp', () => {
+    const ids = new Set(horses.map(h => h.id))
+    for (const b of bookings) for (const h of b.horses) expect(ids.has(h.horseId), `${b.id}: ${h.horseId}`).toBe(true)
+  })
   it('có cả ngựa sẵn sàng đặt và ngựa thiếu giấy / hết hạn', () => {
     const ok = horses.filter(h => horseReadiness(h).ok).length
     expect(ok).toBeGreaterThan(0)
@@ -64,8 +68,8 @@ describe('xe và ngựa trên xe', () => {
     const six = multi.find(b => b.horses.length === 6)!
     expect(six.trips!.map(t => t.horseIds.length)).toEqual([3, 3])
   })
-  it('mọi đơn đã qua thẩm định có xe; đơn trước thẩm định chưa gán xe chỉ khi chờ tiếp nhận', () => {
-    bookings.forEach(b => expect(!!b.trips, b.id).toBe(b.status !== 'pending_intake'))
+  it('đơn đã chốt phương án mới có xe; đơn chưa chốt thì chưa có chuyến nào (Điều phối viên chọn khi lập lộ trình)', () => {
+    bookings.forEach(b => expect(!!b.trips, b.id).toBe(!((b.status === 'pending_intake' || b.status === 'under_review') && !b.plan)))
   })
 })
 
@@ -181,7 +185,7 @@ describe('đơn mẫu Flow 4', () => {
 describe('đơn mẫu của khách demo', () => {
   const mine = bookings.filter(b => b.customer === CUSTOMER.name)
   it('khách demo chỉ có một số đơn đại diện, các đơn còn lại thuộc khách khác (nhân viên vẫn thấy đủ)', () => {
-    expect(mine.length).toBeLessThanOrEqual(14)
+    expect(mine.length).toBeLessThanOrEqual(20)
     expect(bookings.length - mine.length).toBeGreaterThan(5)
     expect(new Set(mine.map(b => b.status)).size).toBeGreaterThanOrEqual(7)
   })

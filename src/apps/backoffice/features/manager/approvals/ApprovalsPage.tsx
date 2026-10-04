@@ -2,16 +2,16 @@
 // Báo giá do hệ thống tính; Manager chỉ điều chỉnh phụ phí và chiết khấu thương mại rồi gửi cho khách.
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
-import { QUOTE_VALID_HOURS, VEHICLE_CLASS } from '@shared/config/booking-rules'
-import { finalizeQuote, vehicleClassOf } from '@shared/lib/booking'
+import { QUOTE_VALID_HOURS } from '@shared/config/booking-rules'
+import { finalizeQuote } from '@shared/lib/booking'
 import { formatDate, formatDateTime, formatVND } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
-import { crewApi, vehiclesApi } from '@shared/services/fleet'
 import { useLoad } from '@shared/services/useLoad'
 import type { Booking } from '@shared/types/booking'
 import { Modal } from '@shared/ui/Modal'
 import { QuoteSheet } from '@shared/ui/QuoteSheet'
 import { useToast } from '@shared/ui/toast'
+import { ClearanceSection, FleetRouteSection, HorseDocsSection } from '../../../shared/BookingEvidence'
 import { HorseConfigList, TripSummary } from '../../../shared/BookingParts'
 import { ListPage, idCell, routeCell, statusCell, type Column } from '../../../shared/ListPage'
 import { placeShort } from '../../../shared/place'
@@ -26,13 +26,10 @@ function QuoteModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
   const toast = useToast()
   const { session } = useAuth()
   const { data: draft } = useLoad(() => bookingsApi.quoteDraft(b.id), [b.id])
-  const { data: vehicles } = useLoad(vehiclesApi.list)
-  const { data: crew } = useLoad(crewApi.list)
   const [rows, setRows] = useState<AdjRow[]>([])
   const [busy, setBusy] = useState(false)
   const adjustments = rows.filter(r => r.label.trim() && digits(r.amount) > 0).map(r => ({ label: r.label.trim(), amount: r.kind === 'discount' ? -digits(r.amount) : digits(r.amount) }))
   const preview = draft && finalizeQuote(draft.lines, adjustments, Date.now(), session!.name)
-  const nameOf = (id?: string) => crew?.find(c => c.id === id)?.name ?? '—'
   const set = (i: number, patch: Partial<AdjRow>) => setRows(r => r.map((x, j) => (j === i ? { ...x, ...patch } : x)))
 
   const send = async () => {
@@ -46,19 +43,10 @@ function QuoteModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; o
       wide onClose={onClose} title={`Duyệt báo giá ${b.id}`} subtitle={`${b.customer} · khởi hành ${formatDate(b.departAt)}`}
       footer={<><button className="btn btn-ghost" onClick={onClose}>Đóng</button><button className="btn btn-primary" disabled={busy || !preview} onClick={send}><i className="fa-solid fa-paper-plane" /> Duyệt và gửi báo giá</button></>}
     >
-      <h4 style={{ marginBottom: 10 }}>Kết quả thẩm định</h4>
-      <dl className={s.grid}>
-        <div><dt>Y tế</dt><dd>Đạt · {b.medical?.by}</dd></div>
-        <div><dt>Lộ trình</dt><dd>{b.route ? `${b.route.legs.length} chặng, ${b.route.rests.length} trạm trung chuyển` : '—'}<div className={s.sub}>{b.route && `Khởi hành ${formatDateTime(b.route.legs[0].departAt)} · đến ${formatDateTime(b.route.legs[b.route.legs.length - 1].arriveAt)}`}</div></dd></div>
-      </dl>
-
-      <h4 style={{ margin: '18px 0 10px' }}>{b.trips && b.trips.length > 1 ? `${b.trips.length} xe của đơn` : 'Xe của đơn'}</h4>
-      <dl className={s.grid}>
-        {(b.trips ?? []).map((t, i) => {
-          const v = vehicles?.find(x => x.id === t.vehicleId)
-          return <div key={t.tripId}><dt>Xe {i + 1} · {t.tripId}</dt><dd>{v ? `${v.plate} · ${VEHICLE_CLASS[vehicleClassOf(v.capacity)].label} (${v.capacity} ngăn)` : '—'}<div className={s.sub}>{nameOf(t.driverId)} · {nameOf(t.escortId)} · {t.horseIds.length} ngựa</div></dd></div>
-        })}
-      </dl>
+      <div className="alert alert-info"><i className="fa-solid fa-eye" /><div><b>Giấy tờ bên dưới chỉ để Quản lý xem.</b> Khi bấm “Duyệt và gửi báo giá”, khách chỉ nhận chi tiết đơn và bảng giá, không kèm giấy tờ nào.</div></div>
+      <ClearanceSection b={b} quiet />
+      <HorseDocsSection b={b} />
+      <FleetRouteSection b={b} />
 
       <h4 style={{ margin: '18px 0 10px' }}>Chuyến đi</h4>
       <TripSummary b={b} />

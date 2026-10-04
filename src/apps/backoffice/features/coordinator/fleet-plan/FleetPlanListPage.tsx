@@ -1,4 +1,4 @@
-// Coordinator: đơn được giao chốt xe, tài xế, hộ tống và lộ trình (PRD mục 2.4, nhánh B). Xe đã được hệ thống tự gán.
+// Coordinator: đơn được giao chốt xe, tài xế, hộ tống và lộ trình (PRD mục 2.4, nhánh B). Coordinator tự chọn xe, tài xế, hộ tống.
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
@@ -28,7 +28,7 @@ export default function FleetPlanListPage() {
     { head: 'Thao tác', cell: b => <Link to={`/coordinator/fleet-plan/${b.id}`} className={`btn btn-sm ${tab === 'todo' ? 'btn-primary' : 'btn-ghost'}`}>{tab === 'todo' ? 'Xem và xác nhận' : 'Xem'}</Link>, right: true },
   ]
   return (
-    <ListPage title="Xe và lộ trình" subtitle="Hệ thống đã tự gán xe, tài xế và hộ tống. Bạn xem lại, sửa nếu cần, lập lộ trình chi tiết rồi xác nhận."
+    <ListPage title="Xe và lộ trình" subtitle="Chọn xe, tài xế và hộ tống cho từng chuyến, chia ngựa lên xe, lập lộ trình chi tiết rồi xác nhận."
       tabs={[['todo', 'Cần xác nhận', todo.length], ['done', 'Đã chốt', done.length]]} tab={tab} onTab={setTab} hot={['todo']}
       rows={tab === 'todo' ? todo : done} rowKey={b => b.id} columns={columns} haystack={b => [b.id, b.customer, b.origin.name, b.dest.name]} dateOf={b => b.departAt} loaded={!!all}
       emptyText="Không có đơn nào ở mục này." />

@@ -1,6 +1,8 @@
 // Sự cố khẩn cấp và chi phí trên app Tài xế / Hộ tống (Flow 5, PRD mục 6; Flow 6, PRD mục 7.3).
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
+import { IncidentPlanView } from './IncidentPlanView'
+import { needsFitCheck } from '@shared/lib/booking'
 import { EXPENSE_CATEGORY, INCIDENT_ACTION, INCIDENT_KIND, type ExpenseCategory, type IncidentKind } from '@shared/config/booking-rules'
 import { formatDateTime, formatVND } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
@@ -64,7 +66,7 @@ function ExpenseForm({ b, inc, run }: { b: Booking; inc: Incident; run: Run }) {
 export function IncidentPanel({ b, inc, role, run }: { b: Booking; inc: Incident; role: 'driver' | 'escort'; run: Run }) {
   const { session } = useAuth()
   const spent = inc.expenses.reduce((n, e) => n + e.amount, 0)
-  const needFit = inc.kind === 'horse_health'
+  const needFit = needsFitCheck(inc.kind)
   return (
     <>
       <Panel title={`Sự cố: ${INCIDENT_KIND[inc.kind].label}`} icon="fa-triangle-exclamation" tone="warn">
@@ -72,7 +74,10 @@ export function IncidentPanel({ b, inc, role, run }: { b: Booking; inc: Incident
         {inc.status === 'reported' && <p>{inc.rejection ? <><b>Quản lý trả phương án về:</b> {inc.rejection.reason}. Điều phối viên đang lập lại.</> : 'Điều phối viên đang lập phương án.'}</p>}
         {inc.status === 'pending_approval' && <p>Phương án đã gửi, chờ Quản lý duyệt.</p>}
         {inc.status === 'active' && inc.plan && inc.approval && (
+          <>
+          <IncidentPlanView b={b} i={inc} height={300} />
           <p><b>Đã duyệt:</b> {INCIDENT_ACTION[inc.plan.action]}. ETA mới {formatDateTime(inc.plan.newEta)}. Hạn mức chi {formatVND(inc.approval.budget)}{inc.plan.note ? `. Ghi chú: ${inc.plan.note}` : ''}.</p>
+          </>
         )}
       </Panel>
       {inc.status === 'active' && (

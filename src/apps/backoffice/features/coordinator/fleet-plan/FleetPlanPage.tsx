@@ -1,15 +1,15 @@
 // Coordinator: chốt xe, nhân sự và lộ trình một đơn trong một trang (PRD mục 2.4, nhánh B).
-// Hệ thống đã tự gán xe, tài xế, hộ tống và chia ngựa lúc tiếp nhận; Coordinator xem lại, sửa nếu cần, lập lộ trình rồi xác nhận.
+// Coordinator tự chọn xe, tài xế, hộ tống cho từng chuyến, chia ngựa lên xe, lập lộ trình rồi xác nhận.
 import { ReadMore } from '@shared/ui/ReadMore'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { MAX_CONTINUOUS_HOURS, VEHICLE_CLASS } from '@shared/config/booking-rules'
-import { TRANSIT_STATIONS } from '@shared/config/network'
+import { MAX_CONTINUOUS_HOURS, MIN_REST_MINUTES, VEHICLE_CLASS } from '@shared/config/booking-rules'
+import { GATES, TRANSIT_STATIONS } from '@shared/config/network'
 import { AVG_SPEED_KMH } from '@shared/config/public-pricing'
-import { borderOutsideWindow, buildRoutePlan, busyResources, estimateBorderEta, gatesFor, layoutLegs, routeKm, suggestGate, validateRoutePlan, vehicleClassOf, vehicleDocsOk } from '@shared/lib/booking'
+import { borderOutsideWindow, buildRoutePlan, clashOf, estimateBorderEta, findLocation, gatesFor, layoutLegs, routeKm, suggestGate, routeOutline, schedulesOf, validateRoutePlan, vehicleClassOf } from '@shared/lib/booking'
 import { atHour } from '@shared/lib/dates'
-import { formatClock, formatDateTime } from '@shared/lib/format'
+import { formatClock, formatDate, formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import { crewApi, vehiclesApi, type CrewMember, type Vehicle } from '@shared/services/fleet'
 import { useLoad } from '@shared/services/useLoad'
@@ -19,6 +19,11 @@ import { useToast } from '@shared/ui/toast'
 import { HorseConfigList, History, ReviewChips, TripSummary } from '../../../shared/BookingParts'
 import s from '../../../shared/booking.module.css'
 import { FormSelect } from '@shared/ui/FormSelect'
+import { ResourcePicker, type PickKind } from './ResourcePicker'
+import { RouteMapPicker } from './RouteMapPicker'
+import { roadNote } from '@shared/services/routing'
+import { useRoadRoute } from '@shared/services/useRoadRoute'
+import type { Booked } from '@shared/lib/booking'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocal = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }
@@ -31,65 +36,67 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
   const navigate = useNavigate()
   const { session } = useAuth()
   const international = b.type === 'international'
-  const busy = useMemo(() => busyResources(all, b.departAt, b.id), [all, b.departAt, b.id])
-  const drivers = crew.filter(c => c.role === 'driver')
-  const escorts = crew.filter(c => c.role === 'escort')
+  // Lịch các đơn khác đang giữ từng xe, tài xế, hộ tống: để khóa người trùng lịch và cho Coordinator biết họ bận gì
+  const sched = useMemo(() => schedulesOf(all, b.id), [all, b.id])
 
   // ----- xe, nhân sự, ngựa -----
-  const [trips, setTrips] = useState<Draft[]>((b.trips ?? []).map(t => ({ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds })))
+  // Chưa chốt phương án thì chưa có xe nào: bắt đầu với một chuyến trống chở cả đơn, Coordinator tự chọn xe, tài xế, hộ tống
+  const [trips, setTrips] = useState<Draft[]>(b.trips?.length ? b.trips.map(t => ({ vehicleId: t.vehicleId, driverId: t.driverId, escortId: t.escortId, horseIds: t.horseIds })) : [{ vehicleId: '', driverId: '', escortId: '', horseIds: b.horses.map(h => h.horseId) }])
   const [note, setNote] = useState(b.plan?.note ?? '')
   const [working, setWorking] = useState(false)
   const [reason, setReason] = useState<string | null>(null) // không null = đang nhập lý do từ chối đơn
+  const [mapOpen, setMapOpen] = useState(false) // popup bản đồ chọn trạm trung chuyển
+  const [picking, setPicking] = useState<{ kind: PickKind; index: number } | null>(null) // chuyến và loại đang mở popup chọn
   const setTrip = (i: number, patch: Partial<Draft>) => setTrips(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)))
   const moveHorse = (horseId: string, to: number) => setTrips(ts => ts.map((t, j) => ({ ...t, horseIds: j === to ? [...t.horseIds.filter(x => x !== horseId), horseId] : t.horseIds.filter(x => x !== horseId) })))
   const usedVehicles = new Set(trips.map(t => t.vehicleId))
   const usedDrivers = new Set(trips.map(t => t.driverId))
   const usedEscorts = new Set(trips.map(t => t.escortId))
-  const capacityOf = (id: string) => vehicles.find(v => v.id === id)?.capacity ?? 0
   const tripErrors = trips.flatMap((t, i) => {
     const out: string[] = []
-    if (t.horseIds.length > capacityOf(t.vehicleId)) out.push(`Xe ${i + 1} chỉ có ${capacityOf(t.vehicleId)} ngăn, đang xếp ${t.horseIds.length} ngựa.`)
+    const v = vehicles.find(x => x.id === t.vehicleId)
+    const driver = crew.find(c => c.id === t.driverId)
+    const escort = crew.find(c => c.id === t.escortId)
     if (!t.horseIds.length) out.push(`Xe ${i + 1} chưa có ngựa nào.`)
-    if (!t.driverId) out.push(`Xe ${i + 1} chưa chọn tài xế.`)
-    if (!t.escortId) out.push(`Xe ${i + 1} chưa chọn nhân viên hộ tống.`)
+    if (!v) out.push(`Xe ${i + 1} chưa chọn xe.`)
+    else if (t.horseIds.length > v.capacity) out.push(`Xe ${i + 1} chỉ có ${v.capacity} ngăn, đang xếp ${t.horseIds.length} ngựa.`)
+    if (!driver) out.push(`Xe ${i + 1} chưa chọn tài xế.`)
+    if (!escort) out.push(`Xe ${i + 1} chưa chọn nhân viên hộ tống.`)
+    // Chọn trước khi lịch đổi (hoặc sửa phương án cũ): vẫn báo nếu trùng lịch
+    ;([[v && `Xe ${v.plate}`, sched.vehicles.get(t.vehicleId)], [driver && `Tài xế ${driver.name}`, sched.drivers.get(t.driverId)], [escort && `Hộ tống ${escort.name}`, sched.escorts.get(t.escortId)]] as const).forEach(([who, booked]) => {
+      const clash = who ? clashOf(booked, b.departAt) : undefined
+      if (clash) out.push(`${who} trùng lịch với ${clash.order} (khởi hành ${formatDate(clash.departAt)}).`)
+    })
     return out
   })
 
-  // Thêm một xe còn rảnh (kèm tài xế và hộ tống rảnh) rồi chuyển ngựa sang; bỏ một xe thì ngựa của xe đó chuyển sang xe đầu tiên còn lại
-  const addTrip = () => {
-    const v = vehicles.find(x => vehicleDocsOk(x, international) && !busy.vehicles.has(x.id) && !usedVehicles.has(x.id))
-    const d = drivers.find(c => !busy.crew.has(c.id) && !usedDrivers.has(c.id))
-    const e = escorts.find(c => !busy.crew.has(c.id) && !usedEscorts.has(c.id))
-    if (!v || !d || !e) { toast('Không còn xe, tài xế hoặc nhân viên hộ tống rảnh để thêm.', 'error'); return }
-    setTrips(ts => [...ts, { vehicleId: v.id, driverId: d.id, escortId: e.id, horseIds: [] }])
-  }
+  // Thêm một chuyến trống (chọn xe, tài xế, hộ tống sau); bỏ một chuyến thì ngựa của chuyến đó chuyển sang chuyến đầu tiên còn lại
+  const addTrip = () => setTrips(ts => [...ts, { vehicleId: '', driverId: '', escortId: '', horseIds: [] }])
   const removeTrip = (i: number) => setTrips(ts => {
     if (ts.length < 2) return ts
     const rest = ts.filter((_, j) => j !== i)
     rest[0] = { ...rest[0], horseIds: [...rest[0].horseIds, ...ts[i].horseIds] }
     return rest
   })
-  const reassign = async () => {
-    setWorking(true)
-    try {
-      const r = await bookingsApi.assignPreview(b.id)
-      if (!r.ok) toast(r.reason ?? 'Không gán được', 'error')
-      else { setTrips(r.trips); toast('Đã gán lại tự động, kiểm tra rồi xác nhận') }
-    } finally { setWorking(false) }
-  }
-
   // ----- lộ trình (một lộ trình dùng chung cho mọi xe) -----
   // Cửa khẩu do Coordinator chọn (khách không chọn): mặc định là cửa khẩu có tổng quãng đường ngắn nhất
   const gates = gatesFor(b.origin, b.dest)
   const suggested = suggestGate(b.origin, b.dest)
   const [gate, setGate] = useState(b.gate ?? suggested ?? '')
-  const driveHours = routeKm(b.origin, b.dest, gate || undefined) / AVG_SPEED_KMH
+  const origin = findLocation(b.origin.id), dest = findLocation(b.dest.id)
+  const gateGeo = gate ? GATES.find(g => g.name === gate) : undefined
+  const estHours = routeKm(b.origin, b.dest, gate || undefined) / AVG_SPEED_KMH // ước lượng khi chưa lấy được đường bộ
   const initial = useMemo(() => b.route ?? buildRoutePlan({ ...b, gate: gate || undefined }, atHour(new Date(b.departAt), 5)), [b]) // eslint-disable-line react-hooks/exhaustive-deps
   const [etd, setEtd] = useState(toLocal(initial.legs[0].departAt))
   const [rests, setRests] = useState<RestStop[]>(initial.rests)
   const [borderText, setBorderText] = useState(initial.borderEta ? toLocal(initial.borderEta) : '')
   const [borderTouched, setBorderTouched] = useState(!!b.route?.borderEta)
   const etdT = fromLocal(etd)
+  // Thời gian lái lấy theo đường bộ thật (Google có giao thông theo giờ khởi hành, hoặc OSRM); chưa lấy được thì dùng ước lượng
+  const stationsOnRoute = rests.flatMap(r => TRANSIT_STATIONS.filter(x => x.name === r.name))
+  const roadPath = origin && dest ? routeOutline(origin, gateGeo, dest, stationsOnRoute).path : undefined
+  const { route: road, loading: roadLoading } = useRoadRoute(roadPath, Number.isNaN(etdT) ? undefined : etdT)
+  const driveHours = road?.hours ?? estHours
   // Gợi ý lại các trạm trung chuyển theo cửa khẩu (đổi cửa khẩu hoặc bấm "Gợi ý lại")
   const resuggest = (g: string) => {
     const plan = buildRoutePlan({ ...b, gate: g || undefined }, Number.isNaN(etdT) ? atHour(new Date(b.departAt), 5) : etdT)
@@ -104,7 +111,6 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
   if (Number.isNaN(etdT)) routeErrors.unshift('Nhập giờ khởi hành hợp lệ.')
   if (international && !gates.some(g => g.name === gate)) routeErrors.unshift('Chọn cửa khẩu cho tuyến này.')
   const errors = [...tripErrors, ...routeErrors]
-  const setRest = (i: number, patch: Partial<RestStop>) => setRests(r => r.map((x, j) => (j === i ? { ...x, ...patch } : x)))
 
   const confirm = async () => {
     setWorking(true)
@@ -129,41 +135,31 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
   return (
     <>
       <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-truck" /> {trips.length > 1 ? `${trips.length} xe của đơn` : 'Xe của đơn'}</h3><span style={{ display: 'flex', gap: 8 }}><button className="btn btn-outline btn-sm" onClick={addTrip}><i className="fa-solid fa-plus" /> Thêm xe</button><button className="btn btn-outline btn-sm" disabled={working} onClick={reassign}><i className="fa-solid fa-wand-magic-sparkles" /> Gán lại tự động</button></span></div>
-        <ReadMore className={s.hint} text={'Hệ thống đã chọn ít xe nhất và chia đều ngựa. Bạn có thể đổi xe, tài xế, hộ tống hoặc chuyển ngựa sang xe khác. Xe, tài xế hoặc hộ tống đã giữ cho đơn khác, hoặc xe không đủ ngăn thì không chọn được.'} />
+        <div className="card-header"><h3><i className="fa-solid fa-truck" /> {trips.length > 1 ? `${trips.length} xe của đơn` : 'Xe của đơn'}</h3><span style={{ display: 'flex', gap: 8 }}><button className="btn btn-outline btn-sm" onClick={addTrip}><i className="fa-solid fa-plus" /> Thêm xe</button></span></div>
+        <ReadMore className={s.hint} text={'Bạn tự chọn xe, tài xế và nhân viên hộ tống cho từng chuyến, rồi chia ngựa lên các xe (đơn đông ngựa thì bấm Thêm xe). Xe, tài xế hoặc hộ tống đã có đơn trùng lịch (ngày đi cách dưới 3 ngày) bị khóa và nêu rõ trùng với đơn nào; bấm vào từng thẻ để xem họ đang bận đơn nào.'} />
         {trips.map((t, i) => {
           const v = vehicles.find(x => x.id === t.vehicleId)
+          const driver = crew.find(c => c.id === t.driverId)
+          const escort = crew.find(c => c.id === t.escortId)
           return (
             <div key={i} className={s.pick} style={{ display: 'block', marginBottom: 12 }}>
               <div className={s.pickName} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>Xe {i + 1}{v ? ` · ${v.plate} (${VEHICLE_CLASS[vehicleClassOf(v.capacity)].label}, ${v.capacity} ngăn)` : ''}</span>{trips.length > 1 && <button className="btn btn-ghost btn-sm" onClick={() => removeTrip(i)}><i className="fa-solid fa-trash" /> Bỏ xe này</button>}</div>
               <div className={s.form2} style={{ marginTop: 10, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-                <div className="form-group">
-                  <label htmlFor={`veh${i}`}>Xe</label>
-                  <FormSelect id={`veh${i}`} className="form-control" value={t.vehicleId} onChange={e => setTrip(i, { vehicleId: e.target.value })}>
-                    {vehicles.map(x => {
-                      const why = !vehicleDocsOk(x, international) ? 'thiếu giấy đăng kiểm / liên vận' : busy.vehicles.has(x.id) ? 'đã giữ cho đơn khác' : usedVehicles.has(x.id) && x.id !== t.vehicleId ? 'đã chọn ở xe khác' : ''
-                      return <option key={x.id} value={x.id} disabled={!!why}>{x.plate} · {x.capacity} ngăn{why ? ` (${why})` : ''}</option>
-                    })}
-                  </FormSelect>
-                </div>
-                <div className="form-group">
-                  <label htmlFor={`drv${i}`}>Tài xế</label>
-                  <FormSelect id={`drv${i}`} className="form-control" value={t.driverId} onChange={e => setTrip(i, { driverId: e.target.value })}>
-                    {drivers.map(c => {
-                      const why = busy.crew.has(c.id) ? 'đã giữ cho đơn khác' : usedDrivers.has(c.id) && c.id !== t.driverId ? 'đã chọn ở xe khác' : ''
-                      return <option key={c.id} value={c.id} disabled={!!why}>{c.name}{why ? ` (${why})` : ''}</option>
-                    })}
-                  </FormSelect>
-                </div>
-                <div className="form-group">
-                  <label htmlFor={`esc${i}`}>Nhân viên hộ tống</label>
-                  <FormSelect id={`esc${i}`} className="form-control" value={t.escortId} onChange={e => setTrip(i, { escortId: e.target.value })}>
-                    {escorts.map(c => {
-                      const why = busy.crew.has(c.id) ? 'đã giữ cho đơn khác' : usedEscorts.has(c.id) && c.id !== t.escortId ? 'đã chọn ở xe khác' : ''
-                      return <option key={c.id} value={c.id} disabled={!!why}>{c.name}{why ? ` (${why})` : ''}</option>
-                    })}
-                  </FormSelect>
-                </div>
+                {([
+                  ['vehicle', 'Xe', v ? <b key="v">{v.plate}</b> : null, 'fa-truck', t.vehicleId, sched.vehicles.get(t.vehicleId)],
+                  ['driver', 'Tài xế', driver ? <b key="d">{driver.name}</b> : null, 'fa-id-card', t.driverId, sched.drivers.get(t.driverId)],
+                  ['escort', 'Nhân viên hộ tống', escort ? <b key="e">{escort.name}</b> : null, 'fa-horse-head', t.escortId, sched.escorts.get(t.escortId)],
+                ] as [PickKind, string, ReactNode, string, string, Booked[] | undefined][]).map(([kind, label, shown, icon, id, booked]) => (
+                  <div key={kind} className="form-group">
+                    <label htmlFor={`${kind}${i}`}>{label}</label>
+                    <button id={`${kind}${i}`} type="button" className={`form-control ${s.vehBtn}`} onClick={() => setPicking({ kind, index: i })}>
+                      <i className={`fa-solid ${icon}`} aria-hidden="true" />
+                      <span key={id} className={s.vehPop}>{shown ?? `Chọn ${label.toLowerCase()}`}</span>
+                      <em>{shown ? 'Đổi' : 'Chọn'}</em>
+                    </button>
+                    {id && <span className={`${s.busyNote} ${booked?.length ? s.busyOn : s.busyFree}`}><i className={`fa-solid ${booked?.length ? 'fa-calendar-check' : 'fa-circle-check'}`} />{booked?.length ? `Đang có ${booked.length} đơn khác: ${booked.slice(0, 2).map(x => `${x.order.slice(-4)} (${formatDate(x.departAt)})`).join(', ')}${booked.length > 2 ? '…' : ''}` : 'Rảnh, không bận đơn nào'}</span>}
+                  </div>
+                ))}
               </div>
               <ul style={{ display: 'grid', gap: 6, marginTop: 8 }}>
                 {t.horseIds.map(hid => {
@@ -186,7 +182,7 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
       </div>
 
       <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-route" /> Lộ trình chi tiết</h3><span className="sub-text">Tổng thời gian lái ≈ {driveHours.toFixed(1)} giờ · {legs.length} chặng · dùng chung cho mọi xe</span></div>
+        <div className="card-header"><h3><i className="fa-solid fa-route" /> Lộ trình chi tiết</h3><span className="sub-text">Tổng thời gian lái ≈ {driveHours.toFixed(1)} giờ ({roadNote(road, roadLoading)}) · {legs.length} chặng · dùng chung cho mọi xe</span></div>
         <div className="form-group" style={{ maxWidth: 320 }}><label htmlFor="etd" className="required">Giờ đón ngựa</label><input id="etd" type="datetime-local" className="form-control" value={etd} onChange={e => setEtd(e.target.value)} /></div>
         <div className="table-wrap">
           <table className="data-table">
@@ -215,20 +211,22 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
       )}
 
       <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-location-dot" /> Trạm trung chuyển</h3><button className="btn btn-outline btn-sm" onClick={() => resuggest(gate)}><i className="fa-solid fa-wand-magic-sparkles" /> Gợi ý lại</button></div>
-        <p className={s.hint} style={{ marginBottom: 10 }}>Các điểm xe đi qua giữa điểm đón và điểm trả{international ? ', theo cửa khẩu đã chọn' : ''}. Tại mỗi trạm ngựa dừng tối thiểu 30 phút, hộ tống kiểm tra thể trạng và ghi nhật ký an sinh. Ngựa không đi liên tục quá 3–4 giờ giữa hai trạm.</p>
-        <div className={s.stops}>
-          {rests.map((r, i) => (
-            <div key={i} className={s.stopRow} style={{ gridTemplateColumns: '1fr 110px 1fr 40px' }}>
-              <input className="form-control" list="transit-stations" aria-label={`Tên trạm trung chuyển ${i + 1}`} placeholder="Tên trạm trung chuyển" value={r.name} onChange={e => setRest(i, { name: e.target.value })} />
-              <input className="form-control" aria-label={`Phút dừng trạm ${i + 1}`} inputMode="numeric" placeholder="Phút" value={r.minutes || ''} onChange={e => setRest(i, { minutes: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
-              <input className="form-control" aria-label={`Ghi chú trạm ${i + 1}`} placeholder="Ghi chú" value={r.facilities} onChange={e => setRest(i, { facilities: e.target.value })} />
-              <button className={s.iconBtn} aria-label={`Xóa trạm ${i + 1}`} onClick={() => setRests(x => x.filter((_, j) => j !== i))}><i className="fa-solid fa-trash" /></button>
-            </div>
-          ))}
-          <datalist id="transit-stations">{TRANSIT_STATIONS.map(x => <option key={x.name} value={x.name} />)}</datalist>
-          <div><button className="btn btn-outline btn-sm" onClick={() => setRests(x => [...x, { afterLeg: x.length + 1, name: '', minutes: 45, facilities: 'Bóng mát, nguồn nước máy sạch' }])}><i className="fa-solid fa-plus" /> Thêm trạm trung chuyển</button></div>
-        </div>
+        <div className="card-header"><h3><i className="fa-solid fa-location-dot" /> Trạm trung chuyển</h3><span style={{ display: 'flex', gap: 8 }}><button className="btn btn-primary btn-sm" onClick={() => setMapOpen(true)}><i className="fa-solid fa-map-location-dot" /> Chọn trên bản đồ</button><button className="btn btn-outline btn-sm" onClick={() => resuggest(gate)}><i className="fa-solid fa-wand-magic-sparkles" /> Gợi ý lại</button></span></div>
+        <p className={s.hint} style={{ marginBottom: 10 }}>Các điểm xe đi qua giữa điểm đón và điểm trả{international ? ', theo cửa khẩu đã chọn' : ''}. Bấm <b>Chọn trên bản đồ</b> để chọn trạm và đặt thời gian nghỉ; hệ thống tự xếp thứ tự và vẽ đường đi. Ngựa không đi liên tục quá {MAX_CONTINUOUS_HOURS} giờ, mỗi trạm nghỉ tối thiểu {MIN_REST_MINUTES} phút.</p>
+        {rests.length ? (
+          <ol className={s.stopList}>
+            {rests.map((r, i) => (
+              <li key={r.name + i}>
+                <button type="button" className={s.stopItem} onClick={() => setMapOpen(true)} title="Mở bản đồ để đổi trạm hoặc thời gian nghỉ">
+                  <span className={s.stopNum}>{i + 1}</span>
+                  <span className={s.stopName}><b>{r.name}</b><small>{TRANSIT_STATIONS.find(x => x.name === r.name)?.area ?? 'Trạm ngoài danh mục'}</small></span>
+                  <span className={s.stopMin}><i className="fa-regular fa-clock" /> nghỉ {r.minutes} phút</span>
+                </button>
+                <button className={s.iconBtn} aria-label={`Bỏ trạm ${r.name}`} onClick={() => setRests(x => x.filter((_, j) => j !== i).map((y, j) => ({ ...y, afterLeg: j + 1 })))}><i className="fa-solid fa-xmark" /></button>
+              </li>
+            ))}
+          </ol>
+        ) : <div className={s.stopEmpty}><i className="fa-solid fa-map" /> Chưa chọn trạm nào. Bấm <b>Chọn trên bản đồ</b> hoặc <b>Gợi ý lại</b>.</div>}
       </div>
 
       {international && (
@@ -261,6 +259,23 @@ function Plan({ b, vehicles, crew, all, onDone }: { b: Booking; vehicles: Vehicl
           </div>
         )}
       </div>
+      {mapOpen && origin && dest && (
+        <RouteMapPicker
+          origin={{ ...origin, name: b.origin.name }} dest={{ ...dest, name: b.dest.name }} gate={gateGeo ? { ...gateGeo, name: gateGeo.name } : undefined}
+          departAt={Number.isNaN(etdT) ? undefined : etdT} value={rests} onApply={picked => { setRests(picked); setBorderTouched(false) }} onClose={() => setMapOpen(false)}
+        />
+      )}
+      {picking && trips[picking.index] && (
+        <ResourcePicker
+          kind={picking.kind} vehicles={vehicles} people={crew.filter(c => c.role === picking.kind)} departAt={b.departAt} international={international}
+          schedules={picking.kind === 'vehicle' ? sched.vehicles : picking.kind === 'driver' ? sched.drivers : sched.escorts}
+          usedHere={picking.kind === 'vehicle' ? usedVehicles : picking.kind === 'driver' ? usedDrivers : usedEscorts}
+          selected={picking.kind === 'vehicle' ? trips[picking.index].vehicleId : picking.kind === 'driver' ? trips[picking.index].driverId : trips[picking.index].escortId}
+          horses={trips[picking.index].horseIds.length}
+          onPick={id => setTrip(picking.index, picking.kind === 'vehicle' ? { vehicleId: id } : picking.kind === 'driver' ? { driverId: id } : { escortId: id })}
+          onClose={() => setPicking(null)}
+        />
+      )}
     </>
   )
 }

@@ -12,6 +12,7 @@ import { ReadMore } from '@shared/ui/ReadMore'
 import { useToast } from '@shared/ui/toast'
 import { ListPage, idCell, routeCell, statusCell, type Column } from '../../../shared/ListPage'
 import { placeShort } from '../../../shared/place'
+import { IncidentPlanView } from '../../../shared/IncidentPlanView'
 import s from '../../../shared/booking.module.css'
 import { FormSelect } from '@shared/ui/FormSelect'
 
@@ -38,6 +39,7 @@ function ApproveModal({ item, onClose, onDone }: { item: Item; onClose: () => vo
         <button className="btn btn-primary" disabled={busy || !called} onClick={() => act(() => bookingsApi.approveIncident(b.id, i.id, session!.name, { budget: Number(budget) || 0, calledCustomer: called }), 'Đã duyệt phương án khẩn cấp')}><i className="fa-solid fa-check" /> Duyệt phương án</button>
       </>}>
       <p><b>Báo từ hiện trường ({formatDateTime(i.reportedAt)}):</b> {i.note || 'Không có ghi chú.'} <ImageThumb name={i.photo} size={40} /></p>
+      {i.plan && <div style={{ margin: '10px 0' }}><IncidentPlanView b={b} i={i} /></div>}
       {i.plan && <div className="alert alert-info"><i className="fa-solid fa-route" /><div><b>{INCIDENT_ACTION[i.plan.action]}.</b> ETA mới {formatDateTime(i.plan.newEta)}. Đề nghị hạn mức {formatVND(i.plan.budget)}.{i.plan.note ? ` Ghi chú: ${i.plan.note}` : ''}</div></div>}
       <div className="form-group"><label htmlFor="bg">Hạn mức chi khẩn cấp được duyệt (VNĐ)</label><input id="bg" inputMode="numeric" className="form-control" value={budget} onChange={e => setBudget(e.target.value.replace(/\D/g, ''))} /></div>
       <label style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '8px 0 16px' }}><input type="checkbox" checked={called} onChange={e => setCalled(e.target.checked)} /> Tôi đã trực tiếp gọi điện cho khách {b.customer} thông báo tình hình và phương án</label>

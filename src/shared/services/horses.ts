@@ -11,6 +11,8 @@ const normalizeChip = (s: string) => s.trim().toUpperCase()
 export const horsesApi = {
   list: async (owner: string): Promise<HorseProfile[]> => structuredClone(store.all().filter(h => h.owner === owner)),
   get: async (owner: string, id: string): Promise<HorseProfile | undefined> => structuredClone(store.all().find(h => h.id === id && h.owner === owner)),
+  // Nhân viên (Specialist) xem hồ sơ ngựa của khách bất kỳ theo mã ngựa trong đơn
+  byId: async (id: string): Promise<HorseProfile | undefined> => structuredClone(store.all().find(h => h.id === id)),
   create: async (owner: string, data: NewHorse): Promise<HorseProfile> => {
     const microchip = normalizeChip(data.microchip)
     if (!microchip) throw new Error('Cần nhập mã microchip.')

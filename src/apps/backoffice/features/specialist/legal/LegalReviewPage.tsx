@@ -16,19 +16,17 @@ import { History, TripSummary } from '../../../shared/BookingParts'
 import s from '../../../shared/booking.module.css'
 import { FormSelect } from '@shared/ui/FormSelect'
 
-const STATUS_LABEL: Record<ClearanceStatus, string> = { todo: 'Chưa làm', doing: 'Đang làm', done: 'Xong' }
+const STATUS_LABEL: Record<ClearanceStatus, string> = { todo: 'Chưa nộp', done: 'Đã nộp' }
 
 function ItemRow({ b, item, editable, run }: { b: Booking; item: ClearanceItem; editable: boolean; run: (fn: () => Promise<unknown>, msg: string) => Promise<void> }) {
   const { session } = useAuth()
   const [note, setNote] = useState(item.note)
-  const patch = (p: { status?: ClearanceStatus; note?: string; photos?: string[] }, msg: string) => run(() => bookingsApi.updateClearanceItem(b.id, session!.name, item.type, p), msg)
+  const patch = (p: { note?: string; photos?: string[] }, msg: string) => run(() => bookingsApi.updateClearanceItem(b.id, session!.name, item.type, p), msg)
   return (
     <div className={s.horse}>
       <div className={s.horseTop}>
         <div><div className={s.horseName}>{CLEARANCE_DOC[item.type].label}</div><div className={s.horseMeta}>{CLEARANCE_DOC[item.type].hint}</div></div>
-        <FormSelect className="form-control" style={{ width: 140 }} aria-label={`Trạng thái ${CLEARANCE_DOC[item.type].short}`} disabled={!editable} value={item.status} onChange={e => patch({ status: e.target.value as ClearanceStatus }, `${CLEARANCE_DOC[item.type].short}: ${STATUS_LABEL[e.target.value as ClearanceStatus].toLowerCase()}`)}>
-          {(Object.keys(STATUS_LABEL) as ClearanceStatus[]).map(k => <option key={k} value={k}>{STATUS_LABEL[k]}</option>)}
-        </FormSelect>
+        <span className={`badge ${item.status === 'done' ? 'badge-success' : 'badge-muted'}`} title="Tự đổi theo ảnh: tải ảnh lên là Đã nộp"><i className={`fa-solid ${item.status === 'done' ? 'fa-circle-check' : 'fa-circle'}`} /> {STATUS_LABEL[item.status]}</span>
       </div>
       <div className="form-group" style={{ margin: '8px 0 0' }}>
         <input className="form-control" aria-label={`Ghi chú ${CLEARANCE_DOC[item.type].short}`} placeholder="Ghi chú tiến độ (khách và quản lý đều thấy)" disabled={!editable} value={note} onChange={e => setNote(e.target.value)} onBlur={() => { if (note !== item.note) patch({ note }, 'Đã lưu ghi chú') }} />
@@ -72,8 +70,8 @@ function Work({ b, onDone }: { b: Booking; onDone: () => void }) {
       )}
 
       <div className="card">
-        <div className="card-header"><h3><i className="fa-solid fa-file-signature" /> Hạng mục giấy tờ</h3><span className="sub-text">{p.done}/{p.total} xong</span></div>
-        <p className={s.hint} style={{ marginBottom: 10 }}>Giấy làm bên ngoài hệ thống (cơ quan thú y, hải quan). Cập nhật trạng thái và ảnh chụp để khách xem tiến độ.</p>
+        <div className="card-header"><h3><i className="fa-solid fa-file-signature" /> Hạng mục giấy tờ</h3><span className="sub-text">{p.done}/{p.total} đã nộp</span></div>
+        <p className={s.hint} style={{ marginBottom: 10 }}>Giấy làm bên ngoài hệ thống (cơ quan thú y, hải quan). Tải ảnh chụp giấy lên thì hạng mục tự chuyển Đã nộp, khách và Quản lý xem được tiến độ.</p>
         <div style={{ display: 'grid', gap: 10 }}>{c.items.map(i => <ItemRow key={i.type} b={b} item={i} editable={editable && !busy} run={run} />)}</div>
         {editable && extra.length > 0 && (
           <FormSelect className="form-control" style={{ maxWidth: 420, marginTop: 12 }} aria-label="Thêm hạng mục giấy" value="" onChange={e => { const t = e.target.value as ClearanceDocType; if (t) run(() => bookingsApi.addClearanceItem(b.id, session!.name, t), `Đã thêm ${CLEARANCE_DOC[t].short}`) }}>
