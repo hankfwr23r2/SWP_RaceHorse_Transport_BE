@@ -128,7 +128,7 @@
 .busyFree { color: var(--green); }
 @media (prefers-reduced-motion: reduce) { .vehPop { animation: none; } }
 
-/* Danh sách trạm trung chuyển đã chọn (chọn trên bản đồ) */
+/* Danh sách trạm nghỉ đã chọn (chọn trên bản đồ) */
 .stopList { display: grid; gap: 8px; list-style: none; }
 .stopList li { display: flex; align-items: center; gap: 6px; }
 .stopItem { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }

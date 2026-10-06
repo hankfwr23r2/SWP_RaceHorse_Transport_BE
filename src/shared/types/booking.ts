@@ -1,5 +1,5 @@
 // Đơn đặt chuyến theo quy trình mới (Flow 1). Khớp docs/PRD.md mục 2, 13. Các luồng 2–6 sẽ thêm trạng thái và trường vào đây.
-import type { BookingStatus, ClearanceDocType, ExpenseCategory, HorseDocType, IncidentAction, IncidentKind, IncidentStatus, Payer, WelfareCondition } from '../config/booking-rules'
+import type { BookingStatus, FeedPackageId, WaterPlanId, ClearanceDocType, ExpenseCategory, HorseDocType, IncidentAction, IncidentKind, IncidentStatus, Payer, WelfareCondition } from '../config/booking-rules'
 import type { CountryCode, GeoPoint } from '../config/network'
 
 export type Sex = 'stallion' | 'mare' | 'gelding'
@@ -35,15 +35,15 @@ export interface BookingHorse {
   breed: string
   sex: Sex
   stall: StallType
-  targetTemp: number
-  feeding: string
-  water: string
-  careNote: string
+  feedPackage: FeedPackageId // gói thức ăn
+  waterPlan: WaterPlanId // cữ nước
   insurance: { opted: boolean }
 }
 
 export interface StaffRef { id: string; name: string }
 
+// Manager trả đơn về Kiểm dịch viên (duyệt lại hồ sơ ngựa) hoặc Điều phối viên (làm lại xe và lộ trình)
+export interface SentBack { to: 'specialist' | 'coordinator'; reason: string; at: number; by: string }
 export interface MedicalReview {
   status: 'pending' | 'approved' | 'resubmit'
   at?: number
@@ -68,11 +68,9 @@ export interface Quote {
 // ===== Giấy tờ pháp lý do Specialist làm (Flow 2) =====
 export type ClearanceStatus = 'todo' | 'done' // Chưa nộp / Đã nộp (nộp cho cơ quan chức năng)
 export interface ClearanceItem { type: ClearanceDocType; status: ClearanceStatus; note: string; photos: string[]; updatedAt?: number; by?: string }
-export interface CustomerFlag { at: number; note: string; by: string } // khách báo sai thông tin, không chặn tiến độ
 export interface Clearance {
   items: ClearanceItem[]
   horsesCleared: string[] // horseId đã có giấy thông quan (quốc tế)
-  flags: CustomerFlag[]
   acceptedAt?: number // Specialist tiếp nhận Vận đơn
   acceptedBy?: string
   doneAt?: number
@@ -81,7 +79,7 @@ export interface Clearance {
 
 // ===== Lộ trình chi tiết và Trip Manifest (Flow 3) =====
 export interface RouteLeg { no: number; from: string; to: string; departAt: number; arriveAt: number }
-// Trạm trung chuyển (checkpoint dọc tuyến): ngựa dừng tối thiểu 30 phút, Escort ghi nhật ký an sinh
+// Trạm nghỉ (checkpoint dọc tuyến): ngựa dừng tối thiểu 30 phút, Escort ghi nhật ký an sinh
 export interface RestStop { afterLeg: number; name: string; minutes: number }
 export interface RoutePlan {
   legs: RouteLeg[]
@@ -118,7 +116,6 @@ export interface WelfareLog {
   condition: WelfareCondition
   waterLiters: number
   hay: boolean
-  temp: number // nhiệt độ khoang
   photo: string
   note: string
 }
@@ -143,7 +140,7 @@ export interface PlanConfirmed { at: number; by: string; note: string }
 // Nhà xe từ chối đơn: Manager (lúc tiếp nhận) hoặc Coordinator (không duyệt phương án xe, lộ trình)
 export interface Rejection { at: number; by: string; role: 'manager' | 'coordinator'; reason: string }
 
-export interface Cancellation { at: number; reason: string; rate: number; refund: number; forceMajeure: boolean }
+export interface Cancellation { at: number; reason: string; by: 'customer' | 'manager'; refund: number } // refund: số tiền trả lại khách
 
 export interface Payment { paidAt: number; amount: number; reference: string }
 
@@ -155,7 +152,6 @@ export interface IncidentPlan {
   action: IncidentAction
   note: string
   newEta: number
-  budget: number
   at: number
   by: string
   station?: string // trạm nghỉ đưa ngựa tới (sức khỏe ngựa, xe gặp sự cố)
@@ -177,7 +173,7 @@ export interface Incident {
   status: IncidentStatus
   plan?: IncidentPlan
   rejection?: { reason: string; at: number; by: string }
-  approval?: { budget: number; calledCustomer: boolean; at: number; by: string }
+  approval?: { at: number; by: string }
   fitConfirmedAt?: number // Escort xác nhận ngựa đủ sức đi tiếp (sự cố sức khỏe)
   resolvedAt?: number
   expenses: IncidentExpense[]
@@ -208,7 +204,8 @@ export interface Booking {
   // ----- kết quả từng bước -----
   medical?: MedicalReview
   trips?: VehicleTrip[] // Coordinator chọn khi chốt phương án; chưa chốt thì chưa có
-  plan?: PlanConfirmed // Coordinator đã xác nhận xe, nhân sự và lộ trình
+  plan?: PlanConfirmed // Coordinator đã xác nhận xe và lộ trình
+  sentBack?: SentBack // Manager trả lại để làm lại; xóa khi người đó làm xong
   route?: RoutePlan // một lộ trình dùng chung cho mọi xe
   quote?: Quote
   payment?: Payment // cọc 30%

@@ -1,5 +1,5 @@
 // Bảng giá: dùng chung cho trang chủ công khai và trang khách đã đăng nhập. Dùng đúng công thức báo giá thật (PRD mục 11).
-import { CLASS_FACTOR, CLEARANCE_FEE, CREW_FEE_PER_DAY, DEMURRAGE_PER_HOUR, DEPOSIT_RATE, FUEL_BOT_PER_KM, FUEL_BUFFER_RATE, HORSE_BREEDS, MARGIN_RATE, QUOTE_VALID_HOURS, SINGLE_STALL_FEE, VEHICLE_CLASS, type VehicleClass } from '@shared/config/booking-rules'
+import { FEED_PACKAGE, FEED_PACKAGE_IDS, WATER_PLAN, WATER_PLAN_IDS, CLASS_FACTOR, CLEARANCE_FEE, CREW_FEE_PER_DAY, DEMURRAGE_PER_HOUR, DEPOSIT_RATE, FUEL_BOT_PER_KM, FUEL_BUFFER_RATE, HORSE_BREEDS, MARGIN_RATE, QUOTE_VALID_HOURS, SINGLE_STALL_FEE, VEHICLE_CLASS, type VehicleClass } from '@shared/config/booking-rules'
 import { MIN_LEAD_DAYS } from '@shared/config/business-rules'
 import { insuranceFee } from '@shared/lib/booking'
 import { formatVND } from '@shared/lib/format'
@@ -31,6 +31,8 @@ export function PriceTable() {
               <tr><td>Nhân sự (01 tài xế + 01 hộ tống), mỗi xe</td><td>{formatVND(roundK(CREW_FEE_PER_DAY * (1 + MARGIN_RATE)))}/ngày</td></tr>
               <tr><td>Nhiên liệu và phí cầu đường, mỗi xe</td><td>{formatVND(roundK(100 * FUEL_BOT_PER_KM * (1 + FUEL_BUFFER_RATE) * (1 + MARGIN_RATE)))}/100 km</td></tr>
               <tr><td>Khoang đơn mở rộng</td><td>{formatVND(SINGLE_STALL_FEE)}/ngựa</td></tr>
+              {FEED_PACKAGE_IDS.filter(id => FEED_PACKAGE[id].fee > 0).map(id => <tr key={id}><td>Thức ăn · {FEED_PACKAGE[id].label}</td><td>{formatVND(FEED_PACKAGE[id].fee)}/ngựa</td></tr>)}
+              {WATER_PLAN_IDS.filter(id => WATER_PLAN[id].fee > 0).map(id => <tr key={id}><td>Cữ nước · {WATER_PLAN[id].label}</td><td>{formatVND(WATER_PLAN[id].fee)}/ngựa</td></tr>)}
               <tr><td>Thủ tục kiểm dịch (nội địa)</td><td>{CLEARANCE_FEE.domestic ? formatVND(CLEARANCE_FEE.domestic) : 'Đã gồm trong cước'}</td></tr>
               <tr><td>Thủ tục kiểm dịch và hải quan (quốc tế)</td><td>{formatVND(CLEARANCE_FEE.international)}/chuyến</td></tr>
               {HORSE_BREEDS.map(b => <tr key={b}><td>Bảo hiểm Động vật Sống · {b}</td><td>{formatVND(insuranceFee(b))}/ngựa</td></tr>)}

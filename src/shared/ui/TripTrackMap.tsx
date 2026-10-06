@@ -22,7 +22,7 @@ export function TripTrackMap({ b, trips, height = 360, plain }: Props) {
   const road = useRoadRoute(pts.length > 1 ? pts : undefined)
   const line = road.route?.path ?? pts.map(ll)
   const cars = trips.map((t, i) => ({ t, i, at: vehiclePoint(b, t) })).filter(x => x.at)
-  // Các mốc đã qua (trạm trung chuyển, cửa khẩu) của xe đi xa nhất
+  // Các mốc đã qua (trạm nghỉ, cửa khẩu) của xe đi xa nhất
   const passed = new Set(trips.flatMap(t => (t.run?.checkpoints ?? []).filter(c => c.arrivedAt && c.type !== 'pickup' && c.type !== 'delivery').map(c => c.place)))
   const sig = cars.map(c => `${c.at!.lat.toFixed(4)},${c.at!.lng.toFixed(4)}`).join('|') + [...passed].join(',') + line.length
 

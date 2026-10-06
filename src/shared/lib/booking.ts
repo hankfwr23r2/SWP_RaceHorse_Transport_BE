@@ -1,7 +1,7 @@
 // Hàm thuần của luồng đặt đơn → duyệt báo giá → đặt cọc (Flow 1). Khớp docs/PRD.md mục 2, 10, 11.
 import {
   BORDER_WINDOW, CLEARANCE_DOC, CLEARANCE_FEE, CLASS_FACTOR, CREW_FEE_PER_DAY, DEPOSIT_RATE, DOCS_CUTOFF_HOUR, FUEL_BOT_PER_KM, FUEL_BUFFER_RATE, HORSE_DOC, HORSE_DOC_TYPES, MARGIN_RATE,
-  BREED_INSURED_VALUE, INSURANCE_RATE_BOOKING, DELAY_ALERT_MINUTES, MAX_CONTINUOUS_HOURS, MIN_REST_MINUTES, QUOTE_VALID_HOURS, REFUND_RATE, TARGET_LEG_HOURS, SINGLE_STALL_FEE, VEHICLE_CLASS, EXPENSE_CATEGORY, type BookingStatus, type ClearanceDocType, type ExpenseCategory, type IncidentAction, type IncidentKind, type Payer, type HorseDocType, type VehicleClass,
+  BREED_INSURED_VALUE, INSURANCE_RATE_BOOKING, DELAY_ALERT_MINUTES, MAX_CONTINUOUS_HOURS, MIN_REST_MINUTES, QUOTE_VALID_HOURS, TARGET_LEG_HOURS, SINGLE_STALL_FEE, FEED_PACKAGE, WATER_PLAN, VEHICLE_CLASS, EXPENSE_CATEGORY, type BookingStatus, type ClearanceDocType, type ExpenseCategory, type IncidentAction, type IncidentKind, type Payer, type HorseDocType, type VehicleClass,
 } from '../config/booking-rules'
 import { DAY, HOUR, MIN_LEAD_DAYS } from '../config/business-rules'
 import { COUNTRY_LOCATIONS, GATES, PLACES, TRANSIT_STATIONS, type GeoPoint, type Gate } from '../config/network'
@@ -22,8 +22,16 @@ export function earliestDeparture(now = Date.now()) {
 export const toIsoDay = (t: number) => dayKey(new Date(t))
 export const fromIsoDay = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime() }
 export const isDepartureAllowed = (departAt: number, now = Date.now()) => departAt >= earliestDeparture(now)
-// 18:00 ngày D-1: mốc cảnh báo giấy tờ chưa xong và mốc hoàn cọc
+// 18:00 ngày D-1: mốc cảnh báo giấy tờ chưa xong
 export const docsDueAt = (departAt: number) => atHour(new Date(departAt - DAY), DOCS_CUTOFF_HOUR)
+
+// ===== Hủy đơn (PRD mục 8.3) =====
+// Sau cọc, xe chưa nhận ngựa thì còn hủy được. Đã nhận ngựa thì xử lý theo mục 8.1.
+export const CANCEL_AFTER_DEPOSIT: Booking['status'][] = ['waybill_issued', 'clearance_in_progress', 'clearance_done', 'ready_for_pickup', 'en_route_to_pickup']
+// Khách chỉ hủy được sau cọc (mất cọc). Lúc thẩm định chưa có báo giá thì phải đợi; lúc chờ cọc dùng Từ chối báo giá.
+// Tiền trả lại khi hủy: khách hủy mất 100% cọc, chỉ nhận lại số dư 70% đã trả; Manager hủy hoàn cả cọc.
+export const cancelRefund = (b: Pick<Booking, 'payment' | 'balance'>, by: 'customer' | 'manager') =>
+  (by === 'manager' ? b.payment?.amount ?? 0 : 0) + (b.balance?.amount ?? 0)
 
 // ===== Hồ sơ ngựa =====
 // Đủ 3 giấy và còn hiệu lực tại mốc `at` (mặc định: hôm nay; khi đặt đơn: ngày khởi hành)
@@ -64,7 +72,7 @@ export function suggestGate(origin: PlaceRef, dest: PlaceRef): string | undefine
   const gates = gatesFor(origin, dest)
   return [...gates].sort((a, b) => routeKm(origin, dest, a.name) - routeKm(origin, dest, b.name))[0]?.name
 }
-// Gợi ý trạm trung chuyển: chia đều đường đi (điểm đón → cửa khẩu → điểm trả), mỗi điểm chia lấy trạm gần nhất chưa dùng
+// Gợi ý trạm nghỉ: chia đều đường đi (điểm đón → cửa khẩu → điểm trả), mỗi điểm chia lấy trạm gần nhất chưa dùng
 export function suggestTransitStations(origin: PlaceRef, dest: PlaceRef, gate: string | undefined, count: number): string[] {
   const a = findLocation(origin.id), b = findLocation(dest.id)
   if (!a || !b || count <= 0) return []
@@ -136,6 +144,10 @@ export function quoteLines(b: QuoteInput, vehicles: Pick<Vehicle, 'capacity'>[])
   })
   const singles = b.horses.filter(h => h.stall === 'single').length
   if (singles) lines.push({ label: 'Khoang đơn mở rộng', detail: `${singles} ngựa`, amount: singles * SINGLE_STALL_FEE })
+  const feed = b.horses.filter(h => FEED_PACKAGE[h.feedPackage].fee > 0)
+  if (feed.length) lines.push({ label: 'Gói thức ăn', detail: `${feed.length} ngựa chọn gói trả phí`, amount: feed.reduce((t, h) => t + FEED_PACKAGE[h.feedPackage].fee, 0) })
+  const water = b.horses.filter(h => WATER_PLAN[h.waterPlan].fee > 0)
+  if (water.length) lines.push({ label: 'Cữ nước tăng cường', detail: `${water.length} ngựa chọn cữ dày hơn mặc định`, amount: water.reduce((t, h) => t + WATER_PLAN[h.waterPlan].fee, 0) })
   lines.push({ label: 'Thủ tục kiểm dịch và hải quan', detail: international ? 'Nhà xe làm trọn gói' : 'Nhà xe làm giấy kiểm dịch trong nước', amount: international ? CLEARANCE_FEE.international : CLEARANCE_FEE.domestic })
   const insured = b.horses.filter(h => h.insurance.opted)
   if (insured.length) lines.push({ label: 'Bảo hiểm Động vật Sống', detail: `${insured.length} ngựa mua bảo hiểm`, amount: insured.reduce((t, h) => t + insuranceFee(h.breed), 0) })
@@ -159,7 +171,7 @@ export function estimateQuote(input: { origin: PlaceRef; dest: PlaceRef; horses:
   const gate = suggestGate(input.origin, input.dest)
   const vehicles = capacitiesFor(input.horses.length)
   const horses = input.horses.map((h, i): BookingHorse => ({
-    horseId: `E${i}`, name: '', microchip: '', breed: h.breed, sex: 'gelding', stall: h.single ? 'single' : 'standard', targetTemp: 22, feeding: '', water: '', careNote: '', insurance: { opted: h.insured },
+    horseId: `E${i}`, name: '', microchip: '', breed: h.breed, sex: 'gelding', stall: h.single ? 'single' : 'standard', feedPackage: 'basic', waterPlan: 'every_3h', insurance: { opted: h.insured },
   }))
   const { lines, km, days } = quoteLines({ type: gate ? 'international' : 'domestic', origin: input.origin, dest: input.dest, gate, horses }, vehicles.map(capacity => ({ capacity })))
   const q = finalizeQuote(lines, [], 0, '')
@@ -176,22 +188,28 @@ export function finalizeQuote(lines: QuoteLine[], adjustments: Adjustment[], sen
 export const isQuoteExpired = (b: Pick<Booking, 'status' | 'quote'>, now = Date.now()) => b.status === 'awaiting_payment' && !!b.quote && now > b.quote.expiresAt
 
 // ===== Cổng chuyển bước =====
-// Cả thẩm định y tế và phương án xe + lộ trình được duyệt thì đơn mới sang Manager duyệt báo giá
+// Cả duyệt hồ sơ ngựa và phương án xe + lộ trình được duyệt thì đơn mới sang Manager duyệt báo giá
 export const reviewDone = (b: Pick<Booking, 'medical' | 'plan'>) => b.medical?.status === 'approved' && !!b.plan
 
 // ===== Xe, nhân sự =====
 // Đơn còn giữ xe và nhân sự: từ lúc thẩm định tới khi giao xong
 export const HOLDING: Booking['status'][] = ['under_review', 'pending_commercial', 'awaiting_payment', 'waybill_issued', 'clearance_in_progress', 'clearance_done', 'ready_for_pickup', 'en_route_to_pickup', 'in_transit', 'incident_reported', 'pending_emergency_approval', 'emergency_plan_active']
-// Xe, tài xế và Escort đang được giữ cho đơn khác có ngày đi cách ngày này dưới 3 ngày
+// Xe đang giữ cho đơn khác có ngày đi cách ngày này dưới 3 ngày. Tài xế và Escort theo kiểu giao việc (assign task):
+// đã được giao vào một chuyến của đơn còn đang giữ nhân sự thì không chọn được nữa, bất kể ngày đi, cho tới khi đơn giao xong.
 export function busyResources(all: Booking[], departAt: number, exceptId?: string) {
   const vehicles = new Set<string>()
   const crew = new Set<string>()
-  all.filter(o => o.id !== exceptId && HOLDING.includes(o.status) && Math.abs(o.departAt - departAt) < 3 * DAY)
-    .forEach(o => (o.trips ?? []).forEach(t => { vehicles.add(t.vehicleId); crew.add(t.driverId); crew.add(t.escortId) }))
+  all.filter(o => o.id !== exceptId && HOLDING.includes(o.status)).forEach(o => (o.trips ?? []).forEach(t => {
+    if (Math.abs(o.departAt - departAt) < 3 * DAY) vehicles.add(t.vehicleId)
+    if (t.driverId) crew.add(t.driverId)
+    if (t.escortId) crew.add(t.escortId)
+  }))
   return { vehicles, crew }
 }
 
-// ===== Chọn xe, tài xế, hộ tống (PRD mục 10.2): Coordinator tự chọn, hệ thống chỉ khóa người và xe trùng lịch =====
+// ===== Chọn xe, tài xế, hộ tống (PRD mục 10.2): Coordinator chọn xe, sau đó Manager chọn tài xế và hộ tống; hệ thống chỉ khóa người và xe trùng lịch =====
+// Xe đã có đủ tài xế và hộ tống chưa (Manager chọn lúc duyệt báo giá)
+export const crewAssigned = (t: Pick<VehicleTrip, 'driverId' | 'escortId'>) => !!t.driverId && !!t.escortId
 // Xe phải có giấy đăng kiểm; tuyến quốc tế còn cần giấy phép liên vận (PRD mục 2.4)
 export const vehicleDocsOk = (v: Pick<Vehicle, 'inspectionNo' | 'transitPermit'>, international: boolean) => !!v.inspectionNo && (!international || !!v.transitPermit)
 
@@ -207,28 +225,16 @@ export function schedulesOf(all: Booking[], exceptId: string): Schedules {
   }))
   return out
 }
-// Trùng lịch: đơn khác của họ có ngày đi cách ngày đi này dưới 3 ngày (cùng quy tắc với busyResources)
+// Xe trùng lịch: đơn khác của xe có ngày đi cách ngày đi này dưới 3 ngày (cùng quy tắc với busyResources)
 export const clashOf = (booked: Booked[] | undefined, departAt: number) => (booked ?? []).find(x => Math.abs(x.departAt - departAt) < 3 * DAY)
 
 export const tripIdFor = (bookingId: string, index: number) => `TRP-${bookingId.slice(-4)}-${index}`
 export const waybillNoOf = (bookingId: string) => `VD-${bookingId.slice(-4)}`
 
-type Task = 'specialist' | 'coordinator'
-// Số đơn người này đang phải làm (chưa xong phần việc của mình)
-// Các đơn đang giao cho nhân viên và chưa làm xong phần việc của họ
-export const staffJobs = (staffId: string, task: Task, all: Booking[]) => all.filter(o =>
-  o.status === 'under_review' && (task === 'specialist'
-    ? o.intake?.specialist.id === staffId && o.medical?.status !== 'approved'
-    : o.intake?.coordinator.id === staffId && !o.plan))
-export const staffLoad = (staffId: string, task: Task, all: Booking[]) => staffJobs(staffId, task, all).length
-
-// Người đang làm việc, ít việc nhất lên đầu
-export function suggestStaff(staff: StaffMember[], task: Task, all: Booking[]) {
+// Nhân viên đang hoạt động (không nghỉ), có thể giao việc. Manager chỉ cần biết điều này, không xem số đơn họ đang làm.
+export function activeStaff(staff: StaffMember[], task: 'specialist' | 'coordinator') {
   const role = task === 'specialist' ? 'inspector' : 'coordinator'
-  return staff
-    .filter(s => s.role === role && s.status === 'working')
-    .map(s => ({ ...s, load: staffLoad(s.id, task, all) }))
-    .sort((a, b) => a.load - b.load || a.id.localeCompare(b.id))
+  return staff.filter(s => s.role === role && s.status === 'working').sort((a, z) => a.id.localeCompare(z.id))
 }
 
 // ===== Mã đơn =====
@@ -243,7 +249,7 @@ export const defaultClearanceItems = (type: Booking['type']): ClearanceItem[] =>
   (Object.keys(CLEARANCE_DOC) as ClearanceDocType[])
     .filter(t => CLEARANCE_DOC[t].base && (type === 'international' || !CLEARANCE_DOC[t].international))
     .map(t => ({ type: t, status: 'todo', note: '', photos: [] }))
-export const blankClearance = (type: Booking['type']): Clearance => ({ items: defaultClearanceItems(type), horsesCleared: [], flags: [] })
+export const blankClearance = (type: Booking['type']): Clearance => ({ items: defaultClearanceItems(type), horsesCleared: [] })
 export const clearanceProgress = (c: Clearance) => ({ done: c.items.filter(i => i.status === 'done').length, total: c.items.length })
 
 // Lý do chưa hoàn tất được (null = được)
@@ -328,7 +334,8 @@ export const arrivalOf = (route?: Pick<RoutePlan, 'legs'>) => route?.legs.length
 export const managerCounts = (list: Pick<Booking, 'status' | 'incidents' | 'medical'>[]) => ({
   intake: list.filter(b => b.status === 'pending_intake').length,
   quote: list.filter(b => b.status === 'pending_commercial').length,
-  incident: list.reduce((n, b) => n + (b.incidents ?? []).filter(i => i.status === 'pending_approval').length + (b.status === 'expenses_submitted' ? 1 : 0), 0),
+  incident: list.reduce((n, b) => n + (b.incidents ?? []).filter(i => i.status === 'pending_approval').length, 0),
+  audit: list.filter(b => b.status === 'expenses_submitted').length, // đối soát chi phí, làm ở trang Tiến độ đơn
   moving: list.filter(b => orderGroupOf(b) === 'moving').length,
 })
 
@@ -366,11 +373,11 @@ export function deriveStatus(b: Pick<Booking, 'status' | 'trips' | 'clearance' |
 const placeName = (n: string) => n.split(' — ')[0]
 const MIN = 60_000
 
-// Chia chặng đều nhau theo danh sách trạm trung chuyển. Ngựa không đi liên tục quá 3–4 giờ.
+// Chia chặng đều nhau theo danh sách trạm nghỉ. Ngựa không đi liên tục quá 3–4 giờ.
 export function layoutLegs(from: string, to: string, etd: number, rests: Pick<RestStop, 'name' | 'minutes'>[], driveHours: number): RouteLeg[] {
   const n = rests.length + 1
   const legMs = (driveHours / n) * 60 * MIN
-  const names = [placeName(from), ...rests.map(r => r.name || `Trạm trung chuyển ${rests.indexOf(r) + 1}`), placeName(to)]
+  const names = [placeName(from), ...rests.map(r => r.name || `Trạm nghỉ ${rests.indexOf(r) + 1}`), placeName(to)]
   const legs: RouteLeg[] = []
   let t = etd
   for (let i = 0; i < n; i++) {
@@ -387,7 +394,7 @@ export function estimateBorderEta(legs: RouteLeg[]) {
   return Math.round(start + (end - start) * 0.6)
 }
 
-// Phương án mặc định cho Coordinator chỉnh: chia chặng vừa đủ, trạm trung chuyển gợi ý theo cửa khẩu, mỗi trạm dừng 45 phút
+// Phương án mặc định cho Coordinator chỉnh: chia chặng vừa đủ, trạm nghỉ gợi ý theo cửa khẩu, mỗi trạm dừng 45 phút
 export function buildRoutePlan(b: Pick<Booking, 'type' | 'origin' | 'dest' | 'gate'>, etd: number): RoutePlan {
   const international = b.type === 'international'
   const driveHours = routeKm(b.origin, b.dest, b.gate) / AVG_SPEED_KMH
@@ -407,11 +414,11 @@ export function validateRoutePlan(plan: Pick<RoutePlan, 'legs' | 'rests' | 'bord
   const warnings: string[] = []
   plan.legs.forEach(l => {
     const h = (l.arriveAt - l.departAt) / (60 * MIN)
-    if (h > MAX_CONTINUOUS_HOURS) errors.push(`Chặng ${l.no} đi liên tục ${h.toFixed(1)} giờ, vượt ${MAX_CONTINUOUS_HOURS} giờ. Thêm trạm trung chuyển.`)
+    if (h > MAX_CONTINUOUS_HOURS) errors.push(`Chặng ${l.no} đi liên tục ${h.toFixed(1)} giờ, vượt ${MAX_CONTINUOUS_HOURS} giờ. Thêm trạm nghỉ.`)
   })
   plan.rests.forEach((r, i) => {
-    if (r.minutes < MIN_REST_MINUTES) errors.push(`Trạm trung chuyển ${i + 1} chỉ ${r.minutes} phút, tối thiểu ${MIN_REST_MINUTES} phút.`)
-    if (!r.name.trim()) errors.push(`Trạm trung chuyển ${i + 1} chưa có tên.`)
+    if (r.minutes < MIN_REST_MINUTES) errors.push(`Trạm nghỉ ${i + 1} chỉ ${r.minutes} phút, tối thiểu ${MIN_REST_MINUTES} phút.`)
+    if (!r.name.trim()) errors.push(`Trạm nghỉ ${i + 1} chưa có tên.`)
   })
   if (international) {
     if (!plan.borderEta) errors.push('Chưa có giờ dự kiến tới cửa khẩu.')
@@ -443,12 +450,12 @@ export function manifestDocuments(b: Pick<Booking, 'type'>) {
 }
 
 // ===== Hành trình thực tế (Flow 4, PRD mục 5) =====
-// Các mốc check-in của chuyến: đón ngựa, từng trạm trung chuyển, cửa khẩu và thông quan (quốc tế), giao ngựa
+// Các mốc check-in của chuyến: đón ngựa, từng trạm nghỉ, cửa khẩu và thông quan (quốc tế), giao ngựa
 export function buildCheckpoints(b: Pick<Booking, 'type' | 'origin' | 'dest' | 'route' | 'gate'>): Checkpoint[] {
   const r = b.route
   if (!r) return []
   const place = (n: string) => n.split(' — ')[0]
-  const rests: Checkpoint[] = r.rests.map((x, i) => ({ id: `rest-${i + 1}`, type: 'rest', label: `Trạm trung chuyển ${i + 1}`, place: x.name, plannedAt: r.legs[i]?.arriveAt ?? r.legs[0].departAt }))
+  const rests: Checkpoint[] = r.rests.map((x, i) => ({ id: `rest-${i + 1}`, type: 'rest', label: `Trạm nghỉ ${i + 1}`, place: x.name, plannedAt: r.legs[i]?.arriveAt ?? r.legs[0].departAt }))
   const mid: Checkpoint[] = [...rests]
   if (b.type === 'international' && r.borderEta) {
     mid.push({ id: 'border', type: 'border', label: 'Tới cửa khẩu', place: b.gate ?? 'Cửa khẩu', plannedAt: r.borderEta })
@@ -466,13 +473,13 @@ export function buildCheckpoints(b: Pick<Booking, 'type' | 'origin' | 'dest' | '
 // Mốc đang chờ làm: mốc đầu tiên chưa hoàn tất
 export const currentCheckpoint = (t: { run?: TripRun }) => t.run?.checkpoints.find(c => !c.doneAt)
 export const checkpointState = (cp: Checkpoint, current?: Checkpoint): 'done' | 'current' | 'locked' => (cp.doneAt ? 'done' : cp === current ? 'current' : 'locked')
-// Mốc nhỏ của bước Vận chuyển: các mốc (đón, trạm trung chuyển, cửa khẩu, giao) đã xong / tổng và mốc hiện tại
+// Mốc nhỏ của bước Vận chuyển: các mốc (đón, trạm nghỉ, cửa khẩu, giao) đã xong / tổng và mốc hiện tại
 export function transitProgress(t: { run?: TripRun }): { done: number; total: number; current?: string } | undefined {
   const cps = t.run?.checkpoints
   if (!cps?.length) return undefined
   return { done: cps.filter(c => c.doneAt).length, total: cps.length, current: currentCheckpoint(t)?.label }
 }
-// "In Transit - Leg N": số trạm trung chuyển đã qua + 1
+// "In Transit - Leg N": số trạm nghỉ đã qua + 1
 export const legNumber = (t: { run?: TripRun }) => (t.run?.checkpoints.filter(c => c.type === 'rest' && c.doneAt).length ?? 0) + 1
 
 // Thông quan xong mà Driver chưa bấm tiếp tục hành trình (xe còn ở cửa khẩu). Mốc sau đã check-in rồi (dữ liệu cũ) thì coi như đã rời.
@@ -498,11 +505,11 @@ export function spotLabel(t: { run?: TripRun; departedAt?: number }): string {
   const cps = t.run?.checkpoints, spot = vehicleSpot(t)
   if (!cps?.length) return t.departedAt ? 'Đang trên đường tới điểm đón' : 'Chưa xuất phát'
   if (!cps[0].arrivedAt) return 'Đang trên đường tới điểm đón'
-  const name = (c: Checkpoint) => (c.type === 'rest' ? c.place.replace(/^Trạm trung chuyển /, 'trạm ') : c.type === 'pickup' ? 'điểm đón' : c.type === 'delivery' ? 'điểm giao' : `cửa khẩu ${c.place}`)
+  const name = (c: Checkpoint) => (c.type === 'rest' ? c.place.replace(/^Trạm nghỉ /, 'trạm ') : c.type === 'pickup' ? 'điểm đón' : c.type === 'delivery' ? 'điểm giao' : `cửa khẩu ${c.place}`)
   if (spot.kind === 'at') return t.run?.deliveredAt ? 'Đã giao ngựa tại điểm giao' : `Đang ở ${name(cps[spot.index])}`
   return `Đang trên đường từ ${name(cps[spot.from])} tới ${name(cps[spot.to])}`
 }
-// Toạ độ của một mốc trên bản đồ: điểm đón, trạm trung chuyển, cửa khẩu, điểm giao
+// Toạ độ của một mốc trên bản đồ: điểm đón, trạm nghỉ, cửa khẩu, điểm giao
 export function checkpointPoint(b: Pick<Booking, 'origin' | 'dest'>, cp: Checkpoint): GeoPoint | undefined {
   if (cp.type === 'pickup') return findLocation(b.origin.id)
   if (cp.type === 'delivery') return findLocation(b.dest.id)
@@ -528,21 +535,6 @@ export function delayedCheckpoint(t: { run?: TripRun }, now = Date.now()) {
 export const lastWelfare = (t: { run?: TripRun }): WelfareLog | undefined => t.run?.welfare[t.run.welfare.length - 1]
 export const needsAttention = (w?: WelfareLog) => !!w && w.condition !== 'normal'
 
-// ===== Hủy đơn và hoàn cọc (PRD mục 8.3) =====
-// Tính theo mốc thời gian thực lúc khách bấm Hủy: ≥ 7 ngày 80%, từ 3 đến dưới 7 ngày 50%, từ 72 giờ đến 18:00 D-1 20%, sau đó 0%. Bất khả kháng 70%.
-export function refundOf(departAt: number, deposit: number, now = Date.now(), forceMajeure = false) {
-  const daysLeft = (departAt - now) / 86_400_000
-  const rate = forceMajeure ? REFUND_RATE.forceMajeure : daysLeft >= 7 ? REFUND_RATE.d7 : daysLeft >= 3 ? REFUND_RATE.d3 : now <= docsDueAt(departAt) ? REFUND_RATE.beforeCutoff : REFUND_RATE.afterCutoff
-  const refund = roundK(deposit * rate)
-  return { rate, refund, lost: deposit - refund }
-}
-// Hủy đơn: hoàn cọc theo mốc cộng 100% số dư 70% nếu khách đã trả (PRD mục 8.3)
-export function cancelRefund(departAt: number, deposit: number, balance: number, now = Date.now(), forceMajeure = false) {
-  const d = refundOf(departAt, deposit, now, forceMajeure)
-  return { rate: d.rate, depositRefund: d.refund, balanceRefund: balance, refund: d.refund + balance, lost: d.lost }
-}
-// Còn hủy được khi xe chưa nhận ngựa. Sau thông quan hay trên đường thì xử lý theo ngoại lệ (mục 8.1).
-export const CANCELLABLE: Booking['status'][] = ['pending_intake', 'under_review', 'pending_commercial', 'awaiting_payment', 'waybill_issued', 'clearance_in_progress', 'clearance_done', 'ready_for_pickup', 'en_route_to_pickup']
 
 // ===== Sự cố và quyết toán (Flow 5, 6; PRD mục 6, 7, 11.5) =====
 export const openIncidentOf = (b: Pick<Booking, 'incidents'>, tripId: string) => b.incidents?.find(i => i.tripId === tripId && i.status !== 'resolved')

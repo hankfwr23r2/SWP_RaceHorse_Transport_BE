@@ -24,7 +24,7 @@ export default function HistoryPage() {
   const rows = fits.filter(b => tab === 'all' || orderTabOf(b) === tab).sort((a, z) => z.departAt - a.departAt)
   const count = (t: Tab) => fits.filter(b => t === 'all' || orderTabOf(b) === t).length
   // Kết quả tài chính của đơn: hoàn tất thì tổng đã trả, đã hủy thì số tiền được hoàn
-  const money = (b: (typeof finished)[number]) => b.status === 'cancelled' ? (b.cancellation?.refund ? `Hoàn ${formatVND(b.cancellation.refund)}` : 'Không phát sinh') : b.quote ? formatVND(b.quote.total + (b.settlement?.total ?? 0)) : '-'
+  const money = (b: (typeof finished)[number]) => b.status === 'cancelled' ? (b.cancellation?.refund ? `Hoàn ${formatVND(b.cancellation.refund)}` : b.payment ? `Mất cọc ${formatVND(b.payment.amount)}` : 'Không phát sinh') : b.quote ? formatVND(b.quote.total + (b.settlement?.total ?? 0)) : '-'
 
   return (
     <div className="page">

@@ -1,7 +1,7 @@
-// Việc của Hộ tống theo từng mốc (Flow 4, PRD mục 5): quét microchip tại điểm đón, nhật ký an sinh tại trạm trung chuyển và điểm giao.
+// Việc của Hộ tống theo từng mốc (Flow 4, PRD mục 5): quét microchip tại điểm đón, nhật ký an sinh tại trạm nghỉ và điểm giao.
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
-import { TARGET_TEMP, WELFARE_CONDITION, type WelfareCondition } from '@shared/config/booking-rules'
+import { WELFARE_CONDITION, type WelfareCondition } from '@shared/config/booking-rules'
 import { openIncidentOf, currentCheckpoint } from '@shared/lib/booking'
 import { formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
@@ -42,13 +42,12 @@ function WelfareForm({ b, t, cp, run }: { b: Booking; t: VehicleTrip; cp: Checkp
   const [condition, setCondition] = useState<WelfareCondition>('normal')
   const [water, setWater] = useState('8')
   const [hay, setHay] = useState(true)
-  const [temp, setTemp] = useState(String(b.horses.find(h => t.horseIds.includes(h.horseId))?.targetTemp ?? TARGET_TEMP.default))
   const [photo, setPhoto] = useState<string>()
   const [note, setNote] = useState('')
-  const valid = !!photo && Number(temp) > 0 && water !== ''
+  const valid = !!photo && water !== ''
   return (
     <Panel title={final ? 'Kiểm tra thể trạng lần cuối' : `Nhật ký an sinh · ${cp.place}`} icon="fa-heart-pulse" tone="warn">
-      <p>{final ? 'Hạ ngựa an toàn, kiểm tra lần cuối cùng người nhận.' : 'Trong lúc xe dừng ở trạm trung chuyển, kiểm tra ngựa và ghi nhật ký.'}</p>
+      <p>{final ? 'Hạ ngựa an toàn, kiểm tra lần cuối cùng người nhận.' : 'Trong lúc xe dừng ở trạm nghỉ, kiểm tra ngựa và ghi nhật ký.'}</p>
       <div role="radiogroup" aria-label="Thể trạng" style={{ display: 'grid', gap: 8 }}>
         {(Object.keys(WELFARE_CONDITION) as WelfareCondition[]).map(k => (
           <label key={k} style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 52, padding: '0 14px', border: `1.5px solid ${condition === k ? 'var(--orange)' : 'var(--line)'}`, borderRadius: 'var(--radius)', background: condition === k ? 'var(--orange-soft)' : 'white', cursor: 'pointer', fontWeight: 600 }}>
@@ -58,10 +57,9 @@ function WelfareForm({ b, t, cp, run }: { b: Booking; t: VehicleTrip; cp: Checkp
       </div>
       <div className="form-group" style={{ margin: 0 }}><label htmlFor="water">Nước đã cấp (lít, ước tính)</label><input id="water" inputMode="decimal" className="form-control" style={{ minHeight: 48 }} value={water} onChange={e => setWater(e.target.value.replace(/[^\d.]/g, ''))} /></div>
       <label style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 48 }}><input type="checkbox" checked={hay} onChange={e => setHay(e.target.checked)} style={{ width: 22, height: 22, accentColor: 'var(--orange)' }} />Đã bổ sung cỏ khô</label>
-      <div className="form-group" style={{ margin: 0 }}><label htmlFor="temp">Nhiệt độ khoang hiện tại (°C)</label><input id="temp" inputMode="decimal" className="form-control" style={{ minHeight: 48 }} value={temp} onChange={e => setTemp(e.target.value.replace(/[^\d.]/g, ''))} /></div>
       <CaptureField label="Ảnh ngựa trong khoang" required value={photo} onChange={setPhoto} />
       <div className="form-group" style={{ margin: 0 }}><label htmlFor="wnote">Ghi chú</label><input id="wnote" className="form-control" style={{ minHeight: 48 }} value={note} onChange={e => setNote(e.target.value)} placeholder="VD: ngựa đổ mồ hôi nhẹ, đã xịt nước" /></div>
-      <button className={`btn btn-primary ${s.big}`} disabled={!valid} onClick={() => run(() => bookingsApi.submitWelfare(b.id, t.tripId, session!.name, { condition, waterLiters: Number(water), hay, temp: Number(temp), photo: photo!, note: note.trim() }), 'Đã gửi nhật ký an sinh')}><i className="fa-solid fa-paper-plane" /> Gửi nhật ký an sinh</button>
+      <button className={`btn btn-primary ${s.big}`} disabled={!valid} onClick={() => run(() => bookingsApi.submitWelfare(b.id, t.tripId, session!.name, { condition, waterLiters: Number(water), hay, photo: photo!, note: note.trim() }), 'Đã gửi nhật ký an sinh')}><i className="fa-solid fa-paper-plane" /> Gửi nhật ký an sinh</button>
     </Panel>
   )
 }

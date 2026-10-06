@@ -33,8 +33,7 @@ export default function LegalListPage() {
     { head: 'Hạng mục đã nộp', cell: b => { const p = clearanceProgress(b.clearance!); return `${p.done}/${p.total}` }, nowrap: true },
     { head: 'Cảnh báo', minWidth: 120, cell: b => {
       const late = isClearanceOverdue(b, now)
-      const flags = b.clearance!.flags.length
-      return late || flags ? <span style={{ color: 'var(--red)', fontSize: '0.82rem' }}>{late && <>Quá {formatDateTime(docsDueAt(b.departAt))} mà giấy chưa xong. </>}{flags > 0 && <>Khách báo sai {flags} chỗ.</>}</span> : '-'
+      return late ? <span style={{ color: 'var(--red)', fontSize: '0.82rem' }}>Quá {formatDateTime(docsDueAt(b.departAt))} mà giấy chưa xong.</span> : '-'
     } },
     { head: 'Thao tác', cell: b => <Link to={`/specialist/legal/${b.id}`} className={`btn btn-sm ${tab === 'done' ? 'btn-ghost' : 'btn-primary'}`}>{tab === 'todo' ? 'Tiếp nhận' : tab === 'working' ? 'Làm giấy tờ' : 'Xem'}</Link>, right: true },
   ]

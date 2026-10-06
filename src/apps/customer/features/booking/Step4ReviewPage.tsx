@@ -25,8 +25,6 @@ export default function Step4ReviewPage() {
   const owner = session!.name
   const { draft, clear } = useBookingDraft()
   const { data: horses } = useLoad(() => horsesApi.list(owner), [owner])
-  const [agree, setAgree] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false) // đã gửi: bản nháp bị xóa, không chuyển ngược về bước 1
 
@@ -35,7 +33,7 @@ export default function Step4ReviewPage() {
   // Đã gửi: hiện popup xác nhận, khách chọn xem đơn vừa đặt hoặc chi tiết đơn
   if (sent) {
     if (!placed) return null
-    const toList = () => navigate('/orders?group=confirm')
+    const toList = () => navigate(`/orders?group=confirm&new=${placed.id}`)
     return (
       <Modal onClose={toList} title={<><i className="fa-solid fa-circle-check" style={{ color: 'var(--green)' }} /> Đã gửi đơn {placed.id}</>} subtitle="Đơn của bạn đã được ghi nhận"
         footer={<><button className="btn btn-ghost" onClick={() => navigate(`/orders/${placed.id}`)}>Xem chi tiết đơn</button><button className="btn btn-primary" onClick={toList}>Xem đơn vừa đặt</button></>}>
@@ -44,7 +42,7 @@ export default function Step4ReviewPage() {
           <div><dt>Ngày khởi hành</dt><dd>{placed.date}</dd></div>
           <div><dt>Số ngựa</dt><dd>{placed.horses} con</dd></div>
         </dl>
-        <p className="form-hint" style={{ marginTop: 14 }}>Đơn nằm ở mục <b>Vừa đặt</b> trong Đơn của tôi. Quản lý sẽ tiếp nhận, Kiểm dịch viên và Điều phối viên thẩm định, rồi gửi báo giá cho bạn. Bạn theo dõi từng bước ở đó.</p>
+        <p className="form-hint" style={{ marginTop: 14 }}>Đơn nằm ở <b>Đơn hàng của tôi › Chờ xác nhận</b>, đang ở <b>bước 1/8: Gửi đơn</b>, chờ quản lý tiếp nhận. Quản lý sẽ tiếp nhận, Kiểm dịch viên và Điều phối viên thẩm định, rồi gửi báo giá cho bạn. Bạn theo dõi từng bước ở đó.</p>
       </Modal>
     )
   }
@@ -61,8 +59,7 @@ export default function Step4ReviewPage() {
   const cls = VEHICLE_CLASS[classForHorses(rows.length)]
 
   const submit = async () => {
-    setSubmitted(true)
-    if (!agree || busy) return
+    if (busy) return
     setBusy(true)
     try {
       const order = await customerBookingsApi.create(owner, {
@@ -70,7 +67,7 @@ export default function Step4ReviewPage() {
         departAt: fromIsoDay(draft.departDate), consignor: draft.consignor, consignee: draft.consignee,
         horses: rows.map(h => {
           const c = draft.config[h.id]
-          return { horseId: h.id, name: h.name, microchip: h.microchip, breed: h.breed, sex: h.sex, stall: c.stall, targetTemp: c.targetTemp, feeding: c.feeding, water: c.water, careNote: c.careNote, insurance: { opted: c.insurance === 'buy' } }
+          return { horseId: h.id, name: h.name, microchip: h.microchip, breed: h.breed, sex: h.sex, stall: c.stall, feedPackage: c.feedPackage, waterPlan: c.waterPlan, insurance: { opted: c.insurance === 'buy' } }
         }),
       })
       setPlaced({ id: order.id, route: `${origin.name.split(' — ')[0]} → ${dest.name.split(' — ')[0]}`, date: formatDate(fromIsoDay(draft.departDate)), horses: rows.length })
@@ -104,7 +101,7 @@ export default function Step4ReviewPage() {
           return (
             <div key={h.id} className={s.reviewHorse}>
               <div><b>{h.name}</b> <small>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</small></div>
-              <div className="text-right">{c.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {c.targetTemp}°C</div>
+              <div className="text-right">{c.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'}</div>
               <small>{c.insurance === 'buy' ? 'Mua bảo hiểm chuyến đi' : 'Từ chối bảo hiểm (trách nhiệm hạn chế)'}</small>
               <small className="text-right">{c.insurance === 'buy' ? `Phí ${formatVND(insuranceFee(h.breed))}` : ''}</small>
             </div>
@@ -115,14 +112,6 @@ export default function Step4ReviewPage() {
       <div className="alert alert-info" data-card>
         <i className="fa-solid fa-circle-info" />
         <ReadMore text={'Bạn không cần làm giấy kiểm dịch hay thủ tục hải quan. Nhà xe sẽ làm trọn gói sau khi bạn đặt cọc và báo tiến độ cho bạn. Bạn chỉ cần giao bản gốc hồ sơ ngựa cho tài xế khi nhận ngựa.'} />
-      </div>
-
-      <div className="card" data-card>
-        <label className={s.commit}>
-          <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} />
-          <span>Tôi xác nhận thông tin chính xác và hiểu rằng công ty chỉ vận chuyển, tôi tự chuẩn bị và nộp hồ sơ pháp lý, kiểm dịch, hải quan với cơ quan chức năng.</span>
-        </label>
-        {submitted && !agree && <div className="form-error">Cần xác nhận để gửi đơn.</div>}
       </div>
 
       <div className={s.actions}>

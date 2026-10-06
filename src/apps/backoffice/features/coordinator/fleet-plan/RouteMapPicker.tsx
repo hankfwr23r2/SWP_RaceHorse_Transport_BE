@@ -1,4 +1,4 @@
-// Chọn trạm trung chuyển trên bản đồ: có điểm đón, điểm trả, cửa khẩu (tuyến quốc tế) và các trạm của hệ thống.
+// Chọn trạm nghỉ trên bản đồ: có điểm đón, điểm trả, cửa khẩu (tuyến quốc tế) và các trạm của hệ thống.
 // Bấm một trạm để chọn và đặt thời gian nghỉ ở góc trên bên trái; hệ thống tự xếp thứ tự trạm và vẽ đường đi qua các điểm.
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -100,10 +100,10 @@ export function RouteMapPicker({ origin, dest, gate, departAt, value, onApply, o
   const total = [...picked.values()].reduce((t, x) => t + x, 0)
 
   return (
-    <Modal wide onClose={onClose} title="Chọn trạm trung chuyển" subtitle="Bấm vào các chấm trạm trên bản đồ; hệ thống tự xếp thứ tự và vẽ đường đi qua các điểm."
+    <Modal wide onClose={onClose} title="Chọn trạm nghỉ" subtitle="Bấm vào các chấm trạm trên bản đồ; hệ thống tự xếp thứ tự và vẽ đường đi qua các điểm."
       footer={<><button className="btn btn-ghost" onClick={onClose}>Hủy</button><button className="btn btn-primary" onClick={apply}><i className="fa-solid fa-check" /> Áp dụng {outline.stations.length} trạm</button></>}>
       <div className="rm-wrap">
-        <div ref={box} className="rm-map" role="application" aria-label="Bản đồ chọn trạm trung chuyển" />
+        <div ref={box} className="rm-map" role="application" aria-label="Bản đồ chọn trạm nghỉ" />
         <div className="rm-panel">
           {act ? (
             <>

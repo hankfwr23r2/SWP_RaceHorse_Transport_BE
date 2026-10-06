@@ -75,7 +75,7 @@
 .horseHead .badge { margin-left: auto; }
 .horseName { font-weight: 800; font-size: 1.05rem; color: var(--navy); }
 .horseChip { font-size: 0.78rem; color: var(--muted); }
-.optRow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.optRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .opt { display: grid; gap: 2px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); background: white; cursor: pointer; }
 .opt:has(input:checked) { border-color: var(--orange); background: var(--orange-soft); }
 .opt:has(input:focus-visible) { outline: 2px solid var(--orange); outline-offset: 2px; }
@@ -83,9 +83,6 @@
 .opt b { font-size: 0.9rem; }
 .opt span { font-size: 0.8rem; color: var(--muted); }
 .fieldLabel { font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
-.tempRow { display: flex; align-items: center; gap: 14px; }
-.tempRow input[type='range'] { flex: 1; accent-color: var(--orange); height: 28px; }
-.tempVal { min-width: 56px; text-align: right; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
 .labelRow { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
 .labelRow .fieldLabel { margin-bottom: 0; }
 .note { position: relative; display: inline-flex; }
@@ -112,8 +109,6 @@
 .reviewHorse:last-child { border-bottom: none; }
 .reviewHorse small { color: var(--muted); }
 .editLink { font-size: 0.82rem; font-weight: 600; color: var(--orange); }
-.commit { display: flex; gap: 10px; align-items: flex-start; font-size: 0.88rem; }
-.commit input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--orange); }
 
 .actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 

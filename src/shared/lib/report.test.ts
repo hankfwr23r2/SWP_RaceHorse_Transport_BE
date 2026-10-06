@@ -36,12 +36,6 @@ describe('doanh thu và chi phí vận hành của một đơn', () => {
     expect(withInc.cost - base.cost).toBe(800_000)
     expect(withInc.revenue - base.revenue).toBe(500_000)
   })
-  it('đơn hủy: doanh thu là phần tiền khách đã trả mà không được hoàn', () => {
-    const b = quoted({ status: 'cancelled', cancellation: { at: 1, reason: '', rate: 0.5, refund: 1_000_000, forceMajeure: false } })
-    const f = orderFinance(b)!
-    expect(f.revenue).toBe(b.payment!.amount + (b.balance?.amount ?? 0) - 1_000_000)
-    expect(f.cost).toBe(0)
-  })
 })
 
 describe('tổng hợp báo cáo', () => {
@@ -67,5 +61,11 @@ describe('tổng hợp báo cáo', () => {
   it('changePct không so được khi kỳ trước bằng 0', () => {
     expect(changePct(120, 100)).toBe(20)
     expect(changePct(5, 0)).toBeUndefined()
+  })
+  it('đơn hủy: doanh thu là phần tiền khách đã trả mà không được hoàn', () => {
+    const b = quoted({ status: 'cancelled', cancellation: { at: 1, reason: '', by: 'customer', refund: 1_000_000 } })
+    const f = orderFinance(b)!
+    expect(f.revenue).toBe(b.payment!.amount + (b.balance?.amount ?? 0) - 1_000_000)
+    expect(f.cost).toBe(0)
   })
 })

@@ -65,9 +65,6 @@ function Work({ b, onDone }: { b: Booking; onDone: () => void }) {
         <div className="alert alert-info"><i className="fa-solid fa-file-contract" /><div style={{ flex: 1 }}><b>Vận đơn {b.waybill?.no} chờ bạn tiếp nhận.</b> Bấm tiếp nhận để bắt đầu làm giấy tờ.</div><button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(() => bookingsApi.acceptWaybill(b.id, session!.name), 'Đã tiếp nhận Vận đơn')}>Tiếp nhận Vận đơn</button></div>
       )}
       {isClearanceOverdue(b) && <div className="alert alert-danger"><i className="fa-solid fa-triangle-exclamation" /><div>Đã quá mốc 18:00 ngày trước ngày khởi hành ({formatDateTime(docsDueAt(b.departAt))}) mà giấy tờ chưa xong. Quản lý đã được cảnh báo.</div></div>}
-      {c.flags.length > 0 && (
-        <div className="alert alert-warning"><i className="fa-solid fa-flag" /><div><b>Khách báo sai thông tin:</b><ul>{c.flags.map(f => <li key={f.at}>{f.note} <span className={s.sub}>({formatDateTime(f.at)})</span></li>)}</ul></div></div>
-      )}
 
       <div className="card">
         <div className="card-header"><h3><i className="fa-solid fa-file-signature" /> Hạng mục giấy tờ</h3><span className="sub-text">{p.done}/{p.total} đã nộp</span></div>

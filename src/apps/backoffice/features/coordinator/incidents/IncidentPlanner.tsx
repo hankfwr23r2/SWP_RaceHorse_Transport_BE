@@ -49,7 +49,7 @@ export function IncidentPlanner({ item, onClose, onDone }: { item: { b: Booking;
   const [rest, setRest] = useState(i.plan?.restMinutes ?? 60)
   const [altIdx, setAltIdx] = useState(0)
   const [note, setNote] = useState(i.plan?.note ?? '')
-  const [budget, setBudget] = useState(String(i.plan?.budget ?? 0))
+  const [allStations, setAllStations] = useState(false) // xem mọi trạm, không chỉ các trạm gần xe nhất
   const [etaText, setEtaText] = useState<string | null>(null) // null = dùng giờ hệ thống gợi ý
   const [busy, setBusy] = useState(false)
 
@@ -94,7 +94,7 @@ export function IncidentPlanner({ item, onClose, onDone }: { item: { b: Booking;
     setBusy(true)
     try {
       await bookingsApi.planIncident(b.id, i.id, session!.name, {
-        action, note, newEta, budget: Number(budget) || 0,
+        action, note, newEta,
         ...(horses ? { station: stationName, restMinutes: rest, toStation: toStationLine } : {}),
         ...(kind === 'vehicle_breakdown' ? { rescue: { name: rescuePt.name, phone: rescuePt.phone, lat: rescuePt.lat, lng: rescuePt.lng }, rescueLine } : {}),
         ...(kind === 'traffic_jam' ? { detour } : {}),
@@ -104,16 +104,27 @@ export function IncidentPlanner({ item, onClose, onDone }: { item: { b: Booking;
     } catch (e) { toast(e instanceof Error ? e.message : 'Không gửi được', 'error'); setBusy(false) }
   }
 
-  // Danh sách chọn: 3 điểm gần nhất, và điểm đang chọn nếu nằm ngoài
+  // Danh sách chọn: 3 điểm gần nhất (cứu hộ), và điểm đang chọn nếu nằm ngoài
   const top = <T extends { name: string }>(list: (T & { km: number })[], chosen: string) => [...list.slice(0, 3), ...list.slice(3).filter(x => x.name === chosen)]
+  // Trạm nghỉ gần chỗ xe nhất đánh số 1, 2, 3… cả trên bản đồ lẫn trong danh sách, như lúc lập lộ trình; bấm vào bản đồ hoặc danh sách đều chọn được
+  const NEAR = 5
+  const shownStations = allStations ? stations : stations.slice(0, NEAR)
   const stationOptions = (
-    <div className="im-list">
-      {top(stations, stationName).map((x, idx) => (
-        <button key={x.name} type="button" className={`im-opt ${x.name === stationName ? 'on' : ''}`} onClick={() => setStationName(x.name)}>
-          <b>{x.name}</b><small>{x.area} · cách xe {x.km.toFixed(0)} km (đường chim bay)</small>{idx === 0 && x.name === stations[0].name && <span className="im-tag">Gần nhất</span>}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="im-list" style={allStations ? { maxHeight: 260, overflowY: 'auto' } : undefined}>
+        {shownStations.map((x, idx) => (
+          <button key={x.name} type="button" className={`im-opt ${x.name === stationName ? 'on' : ''}`} onClick={() => setStationName(x.name)}>
+            <b>{idx < NEAR && <span className="im-rank">{idx + 1}</span>}{x.name}</b><small>{x.area} · cách xe {x.km.toFixed(0)} km (đường chim bay)</small>{idx === 0 && <span className="im-tag">Gần nhất</span>}
+          </button>
+        ))}
+        {!allStations && stationName && !shownStations.some(x => x.name === stationName) && (
+          <button type="button" className="im-opt on"><b>{stationName}</b><small>Trạm đang chọn, ngoài {NEAR} trạm gần nhất</small></button>
+        )}
+      </div>
+      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={() => setAllStations(v => !v)}>
+        {allStations ? `Chỉ xem ${NEAR} trạm gần nhất` : `Xem tất cả ${stations.length} trạm nghỉ`}
+      </button>
+    </>
   )
   const restChips = (
     <div><h4>Thời gian nghỉ ngựa tại trạm</h4><div className="rm-chips" style={{ marginTop: 6 }}>{MINUTES.map(m => <button key={m} type="button" className={rest === m ? 'on' : ''} onClick={() => setRest(m)}>{m} phút</button>)}</div></div>
@@ -125,7 +136,7 @@ export function IncidentPlanner({ item, onClose, onDone }: { item: { b: Booking;
       {i.rejection && <div className="alert alert-danger" style={{ marginBottom: 10 }}><i className="fa-solid fa-rotate-left" /><div><b>Quản lý trả về:</b> {i.rejection.reason}</div></div>}
       <IncidentMap
         height="min(64vh, 600px)" location={loc} origin={{ ...origin, name: b.origin.name }} dest={{ ...dest, name: b.dest.name }} gate={gate ? { ...gate } : undefined}
-        stations={horses ? TRANSIT_STATIONS : []} rescues={kind === 'vehicle_breakdown' ? RESCUE_POINTS : []}
+        stations={horses ? stations : []} nearest={NEAR} rescues={kind === 'vehicle_breakdown' ? RESCUE_POINTS : []}
         selectedStation={horses ? stationName : undefined} selectedRescue={kind === 'vehicle_breakdown' ? rescueName : undefined}
         onStation={setStationName} onRescue={setRescueName} lines={lines}
       >
@@ -147,7 +158,7 @@ export function IncidentPlanner({ item, onClose, onDone }: { item: { b: Booking;
         )}
         {horses && (
           <>
-            <div><h4>{kind === 'vehicle_breakdown' ? '2. Đưa ngựa đến trạm nghỉ gần nhất' : 'Trạm nghỉ gần nhất'}</h4><div style={{ marginTop: 6 }}>{stationOptions}</div></div>
+            <div><h4>{kind === 'vehicle_breakdown' ? '2. Chọn trạm nghỉ gần chỗ xe để đưa ngựa tới' : 'Chọn trạm nghỉ gần chỗ xe'}</h4><div style={{ marginTop: 6 }}>{stationOptions}</div></div>
             {toStationLine && <div className="im-road"><span>Đưa ngựa tới trạm: <b>{toStationLine.km} km · {hm(toStationLine.hours)}</b></span><small>{toStation.route ? (toStation.route.traffic ? 'Theo Google, có giao thông' : 'Theo đường bộ') : 'Đường nối thẳng, chưa lấy được đường bộ'}</small></div>}
             {restChips}
           </>
@@ -168,13 +179,12 @@ export function IncidentPlanner({ item, onClose, onDone }: { item: { b: Booking;
         {loading && <p className="im-note"><i className="fa-solid fa-spinner fa-spin" /> Đang tính đường đi…</p>}
       </IncidentMap>
 
-      <div className={s.form2} style={{ marginTop: 14, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+      <div className={s.form2} style={{ marginTop: 14, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
         <div className="form-group">
           <label htmlFor="pe">Giờ đến đích mới</label>
           <input id="pe" type="datetime-local" className="form-control" value={etaValue} onChange={e => setEtaText(e.target.value)} />
           <div className="form-hint">{etaText === null ? 'Hệ thống gợi ý theo đường vừa vẽ và thời gian nghỉ.' : <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEtaText(null)}>Dùng giờ hệ thống gợi ý</button>}{oldEta && !Number.isNaN(newEta) ? ` Chậm ${hm(Math.max(0, (newEta - oldEta) / 3_600_000))} so với dự kiến cũ (${formatDateTime(oldEta)}).` : ''}</div>
         </div>
-        <div className="form-group"><label htmlFor="pb">Hạn mức chi khẩn cấp đề nghị (VNĐ)</label><input id="pb" inputMode="numeric" className="form-control" value={budget} onChange={e => setBudget(e.target.value.replace(/\D/g, ''))} /></div>
         <div className="form-group"><label htmlFor="pn">Ghi chú</label><input id="pn" className="form-control" placeholder="Số điện thoại liên hệ, lưu ý cho tài xế" value={note} onChange={e => setNote(e.target.value)} /></div>
       </div>
     </Modal>

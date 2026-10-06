@@ -7,7 +7,7 @@ import type { StaffMember } from '../services/mock/staff'
 import type { Booking, BookingHorse, HorseProfile, VehicleTrip, Checkpoint, TripRun } from '../types/booking'
 import {
   schedulesOf, clashOf, vehicleSpot, vehiclePoint, pendingDeparture, spotLabel, nearestTo, projectOnPath, pointsAhead, pointAlong, bookingPath, incidentLocation, needsFitCheck, transitProgress, defaultPayer, incidentActionsFor, settlementOf, approvedSubOf, APPROVED_SUBS, orderGroupOf, ORDER_GROUPS, capacitiesFor, estimateQuote, busyResources, buildRoutePlan, gatesFor, suggestGate, suggestTransitStations, canCompleteClearance, classForHorses, defaultClearanceItems, deriveStatus, docsDueAt, earliestDeparture, finalizeQuote, horseReadiness,
-  cancelRefund, insuranceFee, isClearanceOverdue, isDepartureAllowed, isQuoteExpired, layoutLegs, manifestDocuments, nextBookingId, quoteLines, refundOf, reviewDone, routeKm, suggestStaff,
+  insuranceFee, isClearanceOverdue, isDepartureAllowed, isQuoteExpired, layoutLegs, manifestDocuments, nextBookingId, quoteLines, reviewDone, routeKm, activeStaff,
   findLocation, arrivalOf, routeOutline, managerBoardOf, managerCounts, orderTabOf, tripIdFor, validateRoutePlan, vehicleClassOf,
 } from './booking'
 
@@ -15,7 +15,7 @@ const NOW = new Date(2026, 9, 1, 10, 0).getTime() // 01/10/2026 10:00
 
 const horse = (docs: HorseProfile['docs']): HorseProfile => ({ id: 'H1', owner: 'x', name: 'A', microchip: 'VN-1', breed: 'Thoroughbred', sex: 'mare', color: 'Nâu', birthYear: 2020, marks: '', docs, completedTrips: 0, createdAt: NOW })
 const doc = (expiresAt?: number) => ({ fileName: 'f.pdf', uploadedAt: NOW, expiresAt })
-const bh = (over: Partial<BookingHorse> = {}): BookingHorse => ({ horseId: 'H1', name: 'A', microchip: 'VN-1', breed: 'Thoroughbred', sex: 'mare', stall: 'standard', targetTemp: 22, feeding: '', water: '', careNote: '', insurance: { opted: false }, ...over })
+const bh = (over: Partial<BookingHorse> = {}): BookingHorse => ({ horseId: 'H1', name: 'A', microchip: 'VN-1', breed: 'Thoroughbred', sex: 'mare', stall: 'standard', feedPackage: 'basic', waterPlan: 'every_3h', insurance: { opted: false }, ...over })
 
 describe('ngày khởi hành', () => {
   it('sớm nhất là hôm nay + 30 ngày', () => {
@@ -147,19 +147,20 @@ describe('xe và nhân sự', () => {
     { id: 'KD-03', name: 'C', phone: '', role: 'inspector', status: 'off', kpi: { late: 0, transferredOut: 0 } },
     { id: 'DP-01', name: 'D', phone: '', role: 'coordinator', status: 'working', kpi: { late: 0, transferredOut: 0 } },
   ]
-  const intake = { at: NOW, by: 'M', specialist: { id: 'KD-01', name: 'A' }, coordinator: { id: 'DP-01', name: 'D' } }
 
-  it('xe và nhân sự đã giữ cho đơn khác cùng ngày đi thì bận, ngày xa thì rảnh', () => {
+  it('xe trùng ngày đi thì bận; tài xế và hộ tống đã được giao việc thì bận bất kể ngày đi', () => {
     const trip = (vehicleId: string): VehicleTrip => ({ tripId: 't', vehicleId, driverId: `D-${vehicleId}`, escortId: `E-${vehicleId}`, horseIds: [], acks: {} })
     const all = [order('ORD-2026-0001', { trips: [trip('VH-002')] }), order('ORD-2026-0002', { trips: [trip('VH-003')], departAt: NOW + 80 * DAY })]
     const busy = busyResources(all, NOW + 41 * DAY)
-    expect([...busy.vehicles]).toEqual(['VH-002'])
-    expect([...busy.crew].sort()).toEqual(['D-VH-002', 'E-VH-002'])
-    expect(busyResources(all, NOW + 41 * DAY, 'ORD-2026-0001').vehicles.size).toBe(0)
+    expect([...busy.vehicles]).toEqual(['VH-002']) // VH-003 đi cách 39 ngày: xe vẫn rảnh
+    expect([...busy.crew].sort()).toEqual(['D-VH-002', 'D-VH-003', 'E-VH-002', 'E-VH-003']) // người đã giao việc thì khóa, không xét ngày
+    expect(busyResources(all, NOW + 41 * DAY, 'ORD-2026-0001').crew.has('D-VH-002')).toBe(false)
+    const unassigned = [order('ORD-2026-0003', { trips: [{ ...trip('VH-004'), driverId: '', escortId: '' }] })]
+    expect(busyResources(unassigned, NOW + 41 * DAY).crew.size).toBe(0) // chưa chọn người thì không khóa ai
   })
-  it('gợi ý người ít việc nhất, bỏ người đang nghỉ', () => {
-    const all = [order('ORD-2026-0001', { intake }), order('ORD-2026-0002', { intake })]
-    expect(suggestStaff(staff, 'specialist', all).map(s => s.id)).toEqual(['KD-02', 'KD-01'])
+  it('nhân viên đang hoạt động: bỏ người đang nghỉ, không xét số đơn đang làm', () => {
+    expect(activeStaff(staff, 'specialist').map(s => s.id)).toEqual(['KD-01', 'KD-02'])
+    expect(activeStaff(staff, 'coordinator').map(s => s.id)).toEqual(['DP-01'])
   })
   it('mã đơn tăng dần theo năm', () => {
     expect(nextBookingId([], 2026)).toBe('ORD-2026-0001')
@@ -208,14 +209,14 @@ describe('giấy tờ do Specialist làm (Flow 2)', () => {
   it('chưa xong hạng mục hoặc thiếu cờ thông quan thì chưa hoàn tất được', () => {
     const items = defaultClearanceItems('international')
     const base = { type: 'international' as const, horses: [bh({ horseId: 'H1' }), bh({ horseId: 'H2' })] }
-    expect(canCompleteClearance({ ...base, clearance: { items, horsesCleared: [], flags: [] } })).toMatch(/hạng mục/)
+    expect(canCompleteClearance({ ...base, clearance: { items, horsesCleared: [] } })).toMatch(/hạng mục/)
     const done = items.map(i => ({ ...i, status: 'done' as const }))
-    expect(canCompleteClearance({ ...base, clearance: { items: done, horsesCleared: ['H1'], flags: [] } })).toMatch(/thông quan/)
-    expect(canCompleteClearance({ ...base, clearance: { items: done, horsesCleared: ['H1', 'H2'], flags: [] } })).toBeNull()
+    expect(canCompleteClearance({ ...base, clearance: { items: done, horsesCleared: ['H1'] } })).toMatch(/thông quan/)
+    expect(canCompleteClearance({ ...base, clearance: { items: done, horsesCleared: ['H1', 'H2'] } })).toBeNull()
   })
   it('nội địa không đòi cờ thông quan', () => {
     const done = defaultClearanceItems('domestic').map(i => ({ ...i, status: 'done' as const }))
-    expect(canCompleteClearance({ type: 'domestic', horses: [bh()], clearance: { items: done, horsesCleared: [], flags: [] } })).toBeNull()
+    expect(canCompleteClearance({ type: 'domestic', horses: [bh()], clearance: { items: done, horsesCleared: [] } })).toBeNull()
   })
   it('quá 18:00 D-1 mà giấy tờ chưa xong thì cảnh báo, xong rồi thì không', () => {
     const departAt = new Date(2026, 10, 15).getTime()
@@ -229,7 +230,7 @@ describe('giấy tờ do Specialist làm (Flow 2)', () => {
 
 describe('trạng thái đơn suy từ các chuyến', () => {
   const trip = (n: number, over: Partial<VehicleTrip> = {}): VehicleTrip => ({ tripId: tripIdFor('ORD-2026-0150', n), vehicleId: `V${n}`, driverId: 'd', escortId: 'e', horseIds: [], acks: { driver: 1, escort: 1 }, ...over })
-  const done = { items: [], horsesCleared: [], flags: [], doneAt: 1 }
+  const done = { items: [], horsesCleared: [], doneAt: 1 }
   it('Ready for Pickup khi giấy xong và mọi xe đã nhận lệnh', () => {
     expect(deriveStatus({ status: 'clearance_done', clearance: done, trips: [trip(1), trip(2, { acks: { driver: 1 } })] })).toBe('clearance_done')
     expect(deriveStatus({ status: 'clearance_done', clearance: done, trips: [trip(1), trip(2)] })).toBe('ready_for_pickup')
@@ -262,7 +263,7 @@ describe('lộ trình chi tiết (Flow 3)', () => {
     expect(plan.legs.length).toBeGreaterThan(1)
     expect(plan.rests.length).toBe(plan.legs.length - 1)
     expect('vets' in plan).toBe(false)
-    plan.rests.forEach(r => expect(r.name, 'trạm trung chuyển có tên gợi ý').toBeTruthy())
+    plan.rests.forEach(r => expect(r.name, 'trạm nghỉ có tên gợi ý').toBeTruthy())
     expect(validateRoutePlan(plan, true).errors).toEqual([])
   })
   it('chặng quá 4 giờ, nghỉ dưới 30 phút, thiếu trạm thú y đều bị chặn', () => {
@@ -290,32 +291,6 @@ describe('lộ trình chi tiết (Flow 3)', () => {
   })
 })
 
-describe('hủy đơn và hoàn cọc (PRD mục 8.3)', () => {
-  const departAt = new Date(2026, 10, 20).getTime()
-  const at = (days: number, hour = 12) => new Date(2026, 10, 20 - days, hour).getTime()
-  const r = (now: number, fm = false) => refundOf(departAt, 10_000_000, now, fm)
-  it('từ 7 ngày trở lên: hoàn 80%', () => expect(r(at(8))).toMatchObject({ rate: 0.8, refund: 8_000_000, lost: 2_000_000 }))
-  it('đúng 7 ngày vẫn tính mốc 80%', () => expect(r(departAt - 7 * DAY).rate).toBe(0.8))
-  it('từ 3 đến dưới 7 ngày: hoàn 50%', () => { expect(r(at(5)).rate).toBe(0.5); expect(r(departAt - 3 * DAY).rate).toBe(0.5) })
-  it('dưới 3 ngày đến 18:00 D-1: hoàn 20%', () => { expect(r(at(2)).rate).toBe(0.2); expect(r(at(1, 17)).rate).toBe(0.2) })
-  it('sau 18:00 D-1 hoặc đúng ngày đi: không hoàn', () => { expect(r(at(1, 19)).rate).toBe(0); expect(r(at(0, 6)).rate).toBe(0) })
-  it('bất khả kháng: hoàn 70% bất kể mốc', () => { expect(r(at(8), true).rate).toBe(0.7); expect(r(at(0, 6), true).refund).toBe(7_000_000) })
-})
-
-describe('hoàn tiền khi hủy gồm cả số dư đã trả', () => {
-  const departAt = new Date(2026, 10, 20).getTime()
-  const late = new Date(2026, 10, 19, 19).getTime() // sau 18:00 D-1: không hoàn cọc
-  it('chưa trả số dư: hoàn đúng phần cọc theo mốc', () => {
-    expect(cancelRefund(departAt, 3_000_000, 0, departAt - 8 * DAY)).toMatchObject({ rate: 0.8, depositRefund: 2_400_000, balanceRefund: 0, refund: 2_400_000, lost: 600_000 })
-  })
-  it('đã trả số dư: hoàn 100% số dư cộng cọc theo mốc, kể cả khi mất hết cọc', () => {
-    expect(cancelRefund(departAt, 3_000_000, 7_000_000, late)).toMatchObject({ rate: 0, depositRefund: 0, balanceRefund: 7_000_000, refund: 7_000_000, lost: 3_000_000 })
-  })
-  it('bất khả kháng: hoàn 70% cọc cộng 100% số dư', () => {
-    expect(cancelRefund(departAt, 3_000_000, 7_000_000, late, true).refund).toBe(2_100_000 + 7_000_000)
-  })
-})
-
 describe('thứ tự trạng thái đơn', () => {
   it('đi theo luồng từ gửi đơn đến giao ngựa, đơn đã đóng xếp cuối', () => {
     const flow = ['pending_intake', 'under_review', 'pending_commercial', 'awaiting_payment', 'waybill_issued', 'clearance_in_progress', 'clearance_done', 'ready_for_pickup', 'en_route_to_pickup', 'in_transit', 'incident_reported', 'pending_emergency_approval', 'emergency_plan_active', 'delivered_pending_settlement', 'expenses_submitted', 'settlement_issued', 'payment_overdue', 'completed', 'quote_expired', 'cancelled'] as const
@@ -326,7 +301,7 @@ describe('thứ tự trạng thái đơn', () => {
   })
 })
 
-describe('cửa khẩu và trạm trung chuyển do Coordinator lập', () => {
+describe('cửa khẩu và trạm nghỉ do Coordinator lập', () => {
   const place = (id: string) => { const l = findLocation(id)!; return { id, name: l.name, country: (Object.keys(COUNTRY_LOCATIONS) as (keyof typeof COUNTRY_LOCATIONS)[]).find(c => COUNTRY_LOCATIONS[c].some(x => x.id === id))! } }
   const dn = place('KHO-DN'), pnh = place('KHO-PNH'), vte = place('KHO-VTE'), sg = place('CLB-SG')
   it('chỉ có cửa khẩu của nước đến; tuyến nội địa không có cửa khẩu', () => {
@@ -343,7 +318,7 @@ describe('cửa khẩu và trạm trung chuyển do Coordinator lập', () => {
     }
     expect(suggestGate(dn, pnh)).toBe('Mộc Bài – Bavet')
   })
-  it('gợi ý đúng số trạm trung chuyển, không trùng tên, lấy từ danh mục', () => {
+  it('gợi ý đúng số trạm nghỉ, không trùng tên, lấy từ danh mục', () => {
     const names = suggestTransitStations(dn, vte, 'Lao Bảo – Densavanh', 3)
     expect(names).toHaveLength(3)
     expect(new Set(names).size).toBe(3)
@@ -440,7 +415,7 @@ const exp = (amount: number, payer: IncidentExpense['payer'], over: Partial<Inci
 
 describe('trạng thái đơn khi có sự cố (Flow 5)', () => {
   const trip = { tripId: 'T1', vehicleId: 'V', driverId: 'd', escortId: 'e', horseIds: [], acks: { driver: 1, escort: 1 }, run: { checkpoints: [], welfare: [], startedAt: 1 } }
-  const done = { items: [], horsesCleared: [], flags: [], doneAt: 1 }
+  const done = { items: [], horsesCleared: [], doneAt: 1 }
   const st = (incidents: Incident[], status: BookingStatus = 'in_transit') => deriveStatus({ status, trips: [trip], clearance: done, incidents })
   it('không có sự cố mở thì đang vận chuyển; có thì theo mức cần xử lý gấp nhất', () => {
     expect(st([])).toBe('in_transit')
@@ -505,14 +480,14 @@ describe('bước tiến độ khớp quy trình', () => {
 })
 
 describe('managerCounts', () => {
-  it('đếm đơn chờ tiếp nhận, chờ duyệt giá, sự cố và xe đang chạy', () => {
+  it('đếm đơn chờ tiếp nhận, chờ duyệt giá, sự cố, chờ đối soát và xe đang chạy', () => {
     const inc = (status: string) => ({ status }) as Incident
     const n = managerCounts([
       { status: 'pending_intake' }, { status: 'pending_commercial' }, { status: 'pending_commercial' },
       { status: 'in_transit', incidents: [inc('pending_approval'), inc('active')] },
       { status: 'expenses_submitted' },
     ])
-    expect(n).toEqual({ intake: 1, quote: 2, incident: 2, moving: 1 })
+    expect(n).toEqual({ intake: 1, quote: 2, incident: 1, audit: 1, moving: 1 })
   })
 })
 
@@ -595,7 +570,7 @@ describe('bản đồ sự cố: điểm gần nhất, đường còn lại, v�
     expect(half.lat).toBeGreaterThan(A.lat); expect(half.lat).toBeLessThan(B.lat)
   })
   it('bookingPath dựng đường đón → trạm → cửa khẩu → trả; incidentLocation nằm trên đường đó', () => {
-    const b = { origin: { id: 'KHO-DN', name: 'a', country: 'VN' as const }, dest: { id: 'KHO-PNH', name: 'b', country: 'KH' as const }, gate: 'Mộc Bài – Bavet', route: { legs: [], rests: [{ afterLeg: 1, name: 'Trạm trung chuyển Củ Chi', minutes: 45 }] } }
+    const b = { origin: { id: 'KHO-DN', name: 'a', country: 'VN' as const }, dest: { id: 'KHO-PNH', name: 'b', country: 'KH' as const }, gate: 'Mộc Bài – Bavet', route: { legs: [], rests: [{ afterLeg: 1, name: 'Trạm nghỉ Củ Chi', minutes: 45 }] } }
     const path = bookingPath(b)
     expect(path).toHaveLength(4) // điểm đón, Củ Chi, cửa khẩu, điểm trả
     const trip = { tripId: 't', vehicleId: 'v', driverId: 'd', escortId: 'e', horseIds: [], acks: {} }
@@ -609,7 +584,7 @@ describe('vị trí xe theo xác nhận thủ công của Driver', () => {
   const cp = (id: string, type: Checkpoint['type'], place: string, over: Partial<Checkpoint> = {}): Checkpoint => ({ id, type, label: id, place, plannedAt: 1, ...over })
   const run = (cps: Checkpoint[], extra: Partial<TripRun> = {}): { run: TripRun } => ({ run: { checkpoints: cps, welfare: [], startedAt: 1, ...extra } })
   const b = { origin: { id: 'KHO-DN', name: 'a', country: 'VN' as const }, dest: { id: 'KHO-LA', name: 'b', country: 'VN' as const } }
-  const mk = (rest: Partial<Checkpoint>, pick: Partial<Checkpoint> = { arrivedAt: 1, doneAt: 2 }) => [cp('pickup', 'pickup', 'a', pick), cp('rest-1', 'rest', 'Trạm trung chuyển Long Thành', rest), cp('delivery', 'delivery', 'b')]
+  const mk = (rest: Partial<Checkpoint>, pick: Partial<Checkpoint> = { arrivedAt: 1, doneAt: 2 }) => [cp('pickup', 'pickup', 'a', pick), cp('rest-1', 'rest', 'Trạm nghỉ Long Thành', rest), cp('delivery', 'delivery', 'b')]
   it('chưa tới trạm: xe đang chạy ở giữa điểm đón và trạm', () => {
     const t = run(mk({}))
     expect(vehicleSpot(t)).toEqual({ kind: 'between', from: 0, to: 1 })

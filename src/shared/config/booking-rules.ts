@@ -5,7 +5,7 @@ import { BIG_TRUCK_FACTOR } from './public-pricing'
 // ===== Cọc, báo giá =====
 export const DEPOSIT_RATE = 0.3 // cọc 30% để nhận Vận đơn; 70% còn lại trả ngày D (PRD mục 2.6, 11.1)
 export const QUOTE_VALID_HOURS = 48 // hạn giữ báo giá; quá hạn thì đơn hết hiệu lực
-export const DOCS_CUTOFF_HOUR = 18 // 18:00 ngày D-1: mốc cảnh báo nội bộ giấy tờ và mốc hoàn cọc (PRD mục 3.4, 8.3)
+export const DOCS_CUTOFF_HOUR = 18 // 18:00 ngày D-1: mốc cảnh báo nội bộ giấy tờ (PRD mục 3.4)
 
 // ===== Hạng xe (PRD mục 10) =====
 export type VehicleClass = 'light' | 'medium' | 'heavy'
@@ -26,7 +26,6 @@ export const HORSE_BREEDS = ['Thoroughbred', 'Arabian', 'Quarter Horse', 'Warmbl
 export const HORSE_DOC_TYPES = Object.keys(HORSE_DOC) as HorseDocType[]
 
 // ===== Chăm sóc trên xe (PRD mục 2.4) =====
-export const TARGET_TEMP = { min: 20, max: 24, default: 22 }
 
 // ===== Trạng thái đơn (PRD mục 13). Khách thấy nhãn tiếng Việt; nội bộ thấy thêm mã gốc. =====
 export type BookingStatus =
@@ -36,7 +35,7 @@ export type BookingStatus =
   | 'in_transit' | 'incident_reported' | 'pending_emergency_approval' | 'emergency_plan_active' // Flow 5
   | 'delivered_pending_settlement' // Flow 4
   | 'expenses_submitted' | 'settlement_issued' | 'payment_overdue' | 'completed' // Flow 6
-  | 'cancelled' // khách hủy đơn (PRD mục 8.3)
+  | 'cancelled' // khách từ chối báo giá (PRD mục 2.6)
   | 'rejected' // nhà xe từ chối đơn: Manager lúc tiếp nhận hoặc Coordinator không duyệt lộ trình (PRD mục 2.3, 2.4)
 export type Tone = 'info' | 'warning' | 'success' | 'danger' | 'muted' | 'orange'
 export const BOOKING_STATUS: Record<BookingStatus, { code: string; label: string; customerLabel: string; tone: Tone }> = {
@@ -59,7 +58,7 @@ export const BOOKING_STATUS: Record<BookingStatus, { code: string; label: string
   settlement_issued: { code: 'Settlement Issued - Awaiting Final Payment', label: 'Đã phát hành quyết toán, chờ khách trả', customerLabel: 'Chờ thanh toán quyết toán', tone: 'warning' },
   payment_overdue: { code: 'Payment Overdue', label: 'Khách quá hạn thanh toán quyết toán', customerLabel: 'Quá hạn thanh toán', tone: 'danger' },
   completed: { code: 'Order Completed', label: 'Đã hoàn tất', customerLabel: 'Đã hoàn tất', tone: 'success' },
-  cancelled: { code: 'Cancelled', label: 'Khách đã hủy đơn', customerLabel: 'Đã hủy', tone: 'muted' },
+  cancelled: { code: 'Cancelled', label: 'Khách từ chối báo giá', customerLabel: 'Đã hủy', tone: 'muted' },
   rejected: { code: 'Order Rejected', label: 'Nhà xe đã từ chối đơn', customerLabel: 'Đơn bị từ chối', tone: 'danger' },
 }
 
@@ -131,6 +130,21 @@ export const CLEARANCE_DOC: Record<ClearanceDocType, { label: string; short: str
 export const CLASS_FACTOR: Record<VehicleClass, number> = { light: 1, medium: BIG_TRUCK_FACTOR, heavy: 1.9 }
 export const CREW_FEE_PER_DAY = 1_800_000 // 01 Driver + 01 Escort, mỗi ngày
 export const SINGLE_STALL_FEE = 1_500_000 // khoang đơn mở rộng, mỗi ngựa
+// Dinh dưỡng và cữ nước khách chọn riêng cho từng ngựa (PRD mục 2.2). Gói cơ bản và cữ 3 giờ đã gồm trong cước; phí mỗi ngựa là số mẫu.
+export const FEED_PACKAGE = {
+  basic: { label: 'Gói cơ bản', fee: 0, items: ['Cỏ khô thường'] },
+  advanced: { label: 'Gói nâng cao', fee: 300_000, items: ['Cỏ khô Timothy cao cấp', 'Yến mạch'] },
+  sport: { label: 'Gói thể thao', fee: 500_000, items: ['Cỏ khô Timothy cao cấp', 'Yến mạch', 'Thức ăn bổ sung vitamin, khoáng'] },
+} as const satisfies Record<string, { label: string; fee: number; items: readonly string[] }>
+export type FeedPackageId = keyof typeof FEED_PACKAGE
+export const FEED_PACKAGE_IDS = Object.keys(FEED_PACKAGE) as FeedPackageId[]
+export const WATER_PLAN = {
+  every_3h: { label: 'Mỗi 3 giờ', fee: 0, hint: 'Cấp nước tại mỗi trạm dừng.' },
+  every_2h: { label: 'Mỗi 2 giờ', fee: 50_000, hint: 'Thêm một cữ giữa các chặng dài.' },
+  every_1h: { label: 'Mỗi giờ', fee: 100_000, hint: 'Dành cho ngựa hay mất nước, ngày nóng.' },
+} as const satisfies Record<string, { label: string; fee: number; hint: string }>
+export type WaterPlanId = keyof typeof WATER_PLAN
+export const WATER_PLAN_IDS = Object.keys(WATER_PLAN) as WaterPlanId[]
 export const CLEARANCE_FEE = { domestic: 0, international: 300_000 } // phí thủ tục kiểm dịch & hải quan, cố định (PRD mục 11.2)
 export const FUEL_BOT_PER_KM = 9_000 // nhiên liệu + BOT ước tính mỗi km (số mẫu)
 export const FUEL_BUFFER_RATE = 0.05 // dự phòng trên nhiên liệu và BOT
@@ -142,7 +156,7 @@ export const BREED_INSURED_VALUE: Record<string, number> = {
   Thoroughbred: 1_000_000_000, Arabian: 800_000_000, 'Quarter Horse': 600_000_000, Warmblood: 900_000_000, Appaloosa: 500_000_000, Khác: 400_000_000,
 }
 
-// ===== Lộ trình: trạm trung chuyển và Lệnh điều xe (Flow 1, 3, PRD mục 4.2) =====
+// ===== Lộ trình: trạm nghỉ và Lệnh điều xe (Flow 1, 3, PRD mục 4.2) =====
 export const MAX_CONTINUOUS_HOURS = 4 // ngựa không đi liên tục quá 3–4 giờ
 export const TARGET_LEG_HOURS = 3.5
 export const MIN_REST_MINUTES = 30
@@ -157,12 +171,3 @@ export const WELFARE_CONDITION: Record<WelfareCondition, { label: string; tone: 
   sweating: { label: 'Đổ mồ hôi nhiều', tone: 'warning' },
 }
 
-// ===== Hủy đơn và hoàn cọc (PRD mục 8.3) =====
-export const REFUND_RATE = { d7: 0.8, d3: 0.5, beforeCutoff: 0.2, afterCutoff: 0, forceMajeure: 0.7 } // tỷ lệ hoàn trên tiền cọc
-
-// ===== Chính sách chi phí sự cố (PRD mục 11.5): liên quan ngựa thì khách chịu, liên quan vận chuyển thì nhà xe chịu =====
-export const INCIDENT_COST_POLICY: { who: 'customer' | 'carrier'; group: string; items: string[] }[] = [
-  { who: 'customer', group: 'Liên quan đến ngựa', items: ['Thuốc, viện phí thú y', 'Chuồng đệm, cỏ và nước trong lúc chờ', 'Ngựa ốm hoặc chấn thương', 'Hồ sơ ngựa sai hoặc hết hạn', 'Người nhận từ chối', 'Hồi hương', 'Lưu xe do lỗi phía khách'] },
-  { who: 'carrier', group: 'Liên quan đến vận chuyển', items: ['Hỏng xe, cứu hộ cơ khí, xe cứu hộ', 'Hỏng điều hòa thùng xe', 'Tai nạn do xe hoặc tài xế', 'Chậm do nhà xe', 'Giấy nhà xe làm sai', 'Chênh lệch nhiên liệu và BOT'] },
-  { who: 'carrier', group: 'Giao thông tắc nghẽn', items: ['Nhà xe chịu toàn bộ phí đường tránh, chi phí chờ và chăm sóc ngựa. Khách chấp nhận giao trễ khi tắc nghẽn giao thông và không yêu cầu bồi thường.'] },
-]

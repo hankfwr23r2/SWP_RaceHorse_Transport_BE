@@ -1,9 +1,9 @@
 // Service đơn đặt chuyến (Flow 1–4). Tên hàm theo REST để sau này thay bằng API Spring Boot.
 // Mỗi hàm là một thao tác nghiệp vụ; trạng thái chỉ đổi qua các hàm này để giữ đúng cổng chuyển bước của PRD.
 import { BOOKING_STATUS, CLEARANCE_DOC, EXPENSE_CATEGORY, INCIDENT_ACTION, INCIDENT_KIND, MIN_REST_MINUTES, SETTLEMENT_GRACE_HOURS, publicStepOf, type ClearanceDocType, type ExpenseCategory, type IncidentAction, type IncidentKind, type Payer, type WelfareCondition } from '../config/booking-rules'
-import { CANCELLABLE, openIncidentOf, defaultPayer, incidentActionsFor, incidentLocation, pendingDeparture, needsFitCheck, settlementOf, blankClearance, buildCheckpoints, busyResources, cancelRefund, canCompleteClearance, vehicleDocsOk, currentCheckpoint, gatesFor, deriveStatus, finalizeQuote, isQuoteExpired, manifestDocuments, nextBookingId, quoteLines, reviewDone, tripIdFor, validateRoutePlan, waybillNoOf } from '../lib/booking'
+import { CANCEL_AFTER_DEPOSIT, cancelRefund, crewAssigned, openIncidentOf, defaultPayer, incidentActionsFor, incidentLocation, pendingDeparture, needsFitCheck, settlementOf, blankClearance, buildCheckpoints, busyResources, canCompleteClearance, vehicleDocsOk, currentCheckpoint, gatesFor, deriveStatus, finalizeQuote, isQuoteExpired, manifestDocuments, nextBookingId, quoteLines, reviewDone, tripIdFor, validateRoutePlan, waybillNoOf } from '../lib/booking'
 import { TRANSIT_STATIONS } from '../config/network'
-import type { Adjustment, Booking, Incident, IncidentPlan, Rating, ClearanceItem, HistoryEntry, MedicalReview, RoutePlan, StaffRef, TripRun, VehicleTrip, WelfareLog } from '../types/booking'
+import type { Adjustment, Booking, Incident, IncidentPlan, Rating, ClearanceItem, HistoryEntry, MedicalReview, RoutePlan, SentBack, StaffRef, TripRun, VehicleTrip, WelfareLog } from '../types/booking'
 import { formatVND } from '../lib/format'
 import { crewApi, vehiclesApi } from './fleet'
 import { horsesApi } from './horses'
@@ -197,22 +197,33 @@ export const customerBookingsApi = {
       }]
     })
   },
-  // Khách hủy đơn: tính hoàn cọc theo mốc thời gian thực; số dư 70% đã trả (nếu có) hoàn đủ. Chưa đặt cọc thì hủy miễn phí.
-  cancel: async (customer: string, id: string, reason: string, forceMajeure = false): Promise<CustomerBookingView> => {
+  // Khách từ chối báo giá: đơn đóng (Cancelled), chưa cọc nên miễn phí. Sau khi gửi báo giá khách không hủy đơn theo cách nào khác.
+  rejectQuote: async (customer: string, id: string, reason: string): Promise<CustomerBookingView> => {
     applySystemRules()
     const b = must(id)
     if (b.customer !== customer) throw new Error('Không có quyền với đơn này.')
-    if (!CANCELLABLE.includes(b.status)) throw new Error('Đơn này không hủy được ở bước hiện tại.')
-    if (!reason.trim()) throw new Error('Cần ghi lý do hủy.')
-    const now = Date.now()
-    const dep = b.payment ? cancelRefund(b.departAt, b.payment.amount, b.balance?.amount ?? 0, now, forceMajeure) : { rate: 0, refund: 0 }
-    const refund = dep.refund
+    if (b.status !== 'awaiting_payment') throw new Error('Chỉ từ chối được báo giá khi đơn đang chờ đặt cọc.')
     const out = toCustomerView(store.update(id, {
-      status: 'cancelled', cancellation: { at: now, reason: reason.trim(), rate: dep.rate, refund, forceMajeure },
-      history: log(b, customer, b.payment ? `Hủy đơn, hoàn ${Math.round(dep.rate * 100)}% tiền cọc${b.balance ? ' và 100% số dư đã trả' : ''} (${refund.toLocaleString('en-US')} ₫)` : 'Hủy đơn (chưa đặt cọc)'),
+      status: 'cancelled', cancellation: { at: Date.now(), reason: reason.trim(), by: 'customer', refund: 0 },
+      history: log(b, customer, `Từ chối báo giá${reason.trim() ? `: ${reason.trim()}` : ''}`),
     }))
-    const why = `Khách đã hủy đơn ${id}: ${reason.trim()}`
-    notify(b, ['manager', 'specialist', 'coordinator'], `Đơn ${id} đã bị hủy`, why)
+    notify(b, ['manager', 'specialist', 'coordinator'], `Đơn ${id}: khách từ chối báo giá`, reason.trim() || 'Khách không đồng ý báo giá.')
+    return out
+  },
+  // Khách hủy đơn (chỉ sau cọc): mất cọc, số dư 70% đã trả (nếu có) được hoàn đủ.
+  cancel: async (customer: string, id: string, reason: string): Promise<CustomerBookingView> => {
+    applySystemRules()
+    const b = must(id)
+    if (b.customer !== customer) throw new Error('Không có quyền với đơn này.')
+    if (b.status === 'awaiting_payment') throw new Error('Đơn đang chờ đặt cọc: dùng Từ chối báo giá.')
+    if (!CANCEL_AFTER_DEPOSIT.includes(b.status)) throw new Error(['pending_intake', 'under_review', 'pending_commercial'].includes(b.status) ? 'Đơn đang được thẩm định để báo giá, chỉ hủy được khi đã có báo giá.' : 'Đơn này không hủy được ở bước hiện tại.')
+    if (!reason.trim()) throw new Error('Cần ghi lý do hủy.')
+    const refund = cancelRefund(b, 'customer')
+    const out = toCustomerView(store.update(id, {
+      status: 'cancelled', cancellation: { at: Date.now(), reason: reason.trim(), by: 'customer', refund },
+      history: log(b, customer, `Hủy đơn, mất tiền cọc${refund ? `, hoàn số dư đã trả (${refund.toLocaleString('en-US')} ₫)` : ''}: ${reason.trim()}`),
+    }))
+    notify(b, ['manager', 'specialist', 'coordinator'], `Đơn ${id} đã bị hủy`, `Khách đã hủy đơn ${id}: ${reason.trim()}`)
     await notifyCrew(b, `Đơn ${id} đã bị hủy`, 'Khách đã hủy đơn, không cần thực hiện chuyến này.')
     return out
   },
@@ -266,16 +277,6 @@ export const customerBookingsApi = {
     notify(b, ['manager'], `Đơn ${id} đã hoàn tất`, b.settlement.total ? `Khách đã thanh toán ${formatVND(b.settlement.total)}. Xe và nhân sự được nhả.` : 'Khách đã xác nhận quyết toán. Xe và nhân sự được nhả.', { manager: LINK.manager.incidents })
     return out
   },
-  // Khách báo sai thông tin trong giấy tờ nhà xe làm: ghi chú cho Specialist, không chặn tiến độ
-  flagClearance: async (customer: string, id: string, note: string): Promise<CustomerBookingView> => {
-    const b = must(id)
-    if (b.customer !== customer) throw new Error('Không có quyền với đơn này.')
-    if (!b.clearance || !STAFF_ON_CLEARANCE.includes(b.status)) throw new Error('Chỉ báo sai được khi nhà xe còn đang làm giấy tờ.')
-    if (!note.trim()) throw new Error('Cần ghi rõ thông tin sai.')
-    const out = toCustomerView(store.update(id, { clearance: { ...b.clearance, flags: [...b.clearance.flags, { at: Date.now(), note: note.trim(), by: customer }] }, history: log(b, customer, `Báo sai thông tin giấy tờ: ${note.trim()}`) }))
-    notify(b, ['specialist', 'manager'], `Khách báo sai thông tin giấy tờ — đơn ${id}`, note.trim())
-    return out
-  },
 }
 
 const incidentById = (b: Booking, incidentId: string) => {
@@ -313,6 +314,22 @@ export const bookingsApi = {
     return activated
   },
 
+  // Manager hủy đơn đã cọc khi xe chưa nhận ngựa: hệ thống hủy nên hoàn đủ cọc và số dư đã trả cho khách.
+  managerCancel: async (id: string, by: string, reason: string): Promise<Booking> => {
+    const b = must(id)
+    if (!CANCEL_AFTER_DEPOSIT.includes(b.status)) throw new Error('Chỉ hủy được đơn đã cọc mà xe chưa nhận ngựa.')
+    if (!reason.trim()) throw new Error('Cần ghi lý do hủy.')
+    const refund = cancelRefund(b, 'manager')
+    const out = structuredClone(store.update(id, {
+      status: 'cancelled', cancellation: { at: Date.now(), reason: reason.trim(), by: 'manager', refund },
+      history: log(b, by, `Manager hủy đơn, hoàn ${refund.toLocaleString('en-US')} ₫ cho khách: ${reason.trim()}`),
+    }))
+    notify(out, ['customer'], `Đơn ${id} đã bị hủy`, `Nhà xe hủy đơn: ${reason.trim()}. Hoàn ${refund.toLocaleString('en-US')} ₫ về tài khoản bạn dùng để thanh toán.`)
+    notify(out, ['specialist', 'coordinator'], `Đơn ${id} đã bị hủy`, `Manager hủy đơn: ${reason.trim()}`)
+    await notifyCrew(out, `Đơn ${id} đã bị hủy`, 'Nhà xe đã hủy đơn, không cần thực hiện chuyến này.')
+    return out
+  },
+
   // Manager không nhận đơn lúc tiếp nhận, hoặc Coordinator không duyệt phương án xe và lộ trình: đơn đóng, khách nhận lý do và đặt lại.
   rejectOrder: async (id: string, by: string, role: 'manager' | 'coordinator', reason: string): Promise<Booking> => {
     const b = must(id)
@@ -328,17 +345,17 @@ export const bookingsApi = {
     return out
   },
 
-  // Specialist: xác nhận đạt y tế
+  // Specialist: duyệt hồ sơ ngựa
   approveMedical: async (id: string, by: string): Promise<Booking> => {
     const b = must(id)
     expect(b, 'under_review', 'Đơn không ở bước thẩm định.')
     const medical: MedicalReview = { status: 'approved', at: Date.now(), by }
     const next = { ...b, medical }
     const out = structuredClone(store.update(id, {
-      medical, status: reviewDone(next) ? 'pending_commercial' : 'under_review',
-      history: log(b, by, reviewDone(next) ? 'Xác nhận đạt y tế. Đủ điều kiện, chuyển quản lý duyệt báo giá' : 'Xác nhận đạt y tế'),
+      medical, sentBack: b.sentBack?.to === 'specialist' ? undefined : b.sentBack, status: reviewDone(next) ? 'pending_commercial' : 'under_review',
+      history: log(b, by, reviewDone(next) ? 'Duyệt hồ sơ ngựa. Đủ điều kiện, chuyển quản lý duyệt báo giá' : 'Duyệt hồ sơ ngựa'),
     }))
-    notify(b, ['manager'], `Đạt y tế — đơn ${id}`, reviewDone(next) ? 'Đơn đã đủ điều kiện, chờ bạn duyệt báo giá.' : 'Kiểm dịch viên đã xác nhận đạt y tế, còn chờ Điều phối viên chốt xe.', { manager: reviewDone(next) ? LINK.manager.approvals : LINK.manager.intake })
+    notify(b, ['manager'], `Hồ sơ ngựa đã duyệt — đơn ${id}`, reviewDone(next) ? 'Đơn đã đủ điều kiện, chờ bạn duyệt báo giá.' : 'Kiểm dịch viên đã duyệt hồ sơ ngựa, còn chờ Điều phối viên chốt xe.', { manager: reviewDone(next) ? LINK.manager.approvals : LINK.manager.intake })
     return out
   },
 
@@ -356,43 +373,73 @@ export const bookingsApi = {
     return out
   },
 
-  // Coordinator: xác nhận xe, tài xế, hộ tống, ngựa trên từng xe và lộ trình chi tiết (một lộ trình cho cả đơn)
-  confirmPlan: async (id: string, by: string, input: { trips: Pick<VehicleTrip, 'vehicleId' | 'driverId' | 'escortId' | 'horseIds'>[]; route: Pick<RoutePlan, 'legs' | 'rests' | 'borderEta'>; gate?: string; note: string }): Promise<Booking> => {
+  // Coordinator: xác nhận xe, ngựa trên từng xe và lộ trình chi tiết (một lộ trình cho cả đơn). Tài xế và hộ tống do Manager chọn sau (assignCrew).
+  confirmPlan: async (id: string, by: string, input: { trips: Pick<VehicleTrip, 'vehicleId' | 'horseIds'>[]; route: Pick<RoutePlan, 'legs' | 'rests' | 'borderEta'>; gate?: string; note: string }): Promise<Booking> => {
     const b = must(id)
     expect(b, 'under_review', 'Đơn không ở bước thẩm định.')
     const international = b.type === 'international'
     if (!input.trips.length) throw new Error('Chưa có xe nào.')
     if (input.trips.some(t => !t.horseIds.length)) throw new Error('Mỗi xe phải chở ít nhất một ngựa.')
-    const [vehicles, crew] = await Promise.all([vehiclesApi.list(), crewApi.list()])
+    const vehicles = await vehiclesApi.list()
     const busy = busyResources(store.all(), b.departAt, id)
     const placed = input.trips.flatMap(t => t.horseIds)
     if (placed.length !== b.horses.length || b.horses.some(h => placed.filter(x => x === h.horseId).length !== 1)) throw new Error('Mỗi ngựa phải nằm trên đúng một xe.')
     if (new Set(input.trips.map(t => t.vehicleId)).size !== input.trips.length) throw new Error('Một xe không được chọn hai lần.')
-    if (new Set(input.trips.map(t => t.driverId)).size !== input.trips.length) throw new Error('Mỗi xe cần một tài xế riêng.')
-    if (new Set(input.trips.map(t => t.escortId)).size !== input.trips.length) throw new Error('Mỗi xe cần một nhân viên hộ tống riêng.')
     input.trips.forEach(t => {
       const v = vehicles.find(x => x.id === t.vehicleId)
       if (!v) throw new Error('Chưa chọn xe cho tất cả các chuyến.')
       if (!vehicleDocsOk(v, international)) throw new Error(`Xe ${v.plate} thiếu giấy đăng kiểm${international ? ' hoặc giấy phép liên vận' : ''}, chọn xe khác.`)
       if (t.horseIds.length > v.capacity) throw new Error(`Xe ${v.plate} chỉ có ${v.capacity} ngăn, đang xếp ${t.horseIds.length} ngựa.`)
       if (busy.vehicles.has(v.id)) throw new Error(`Xe ${v.plate} đã được giữ cho đơn khác có ngày đi gần ngày này.`)
-      if (!t.driverId || !crew.some(c => c.id === t.driverId && c.role === 'driver')) throw new Error('Chưa chọn tài xế.')
-      if (busy.crew.has(t.driverId)) throw new Error('Tài xế đã được giữ cho đơn khác có ngày đi gần ngày này.')
-      if (!t.escortId) throw new Error('Chưa chọn nhân viên hộ tống.')
-      if (busy.crew.has(t.escortId)) throw new Error('Nhân viên hộ tống đã được giữ cho đơn khác có ngày đi gần ngày này.')
     })
     if (international && !gatesFor(b.origin, b.dest).some(g => g.name === input.gate)) throw new Error('Chưa chọn cửa khẩu hợp lệ cho tuyến này.')
     const { errors } = validateRoutePlan(input.route, international)
     if (errors.length) throw new Error(errors[0])
-    const trips: VehicleTrip[] = input.trips.map((t, i) => ({ ...t, tripId: tripIdFor(id, i + 1), acks: {} }))
+    const trips: VehicleTrip[] = input.trips.map((t, i) => ({ ...t, driverId: '', escortId: '', tripId: tripIdFor(id, i + 1), acks: {} }))
     const next = { ...b, plan: { at: Date.now(), by, note: input.note } }
     const out = structuredClone(store.update(id, {
-      trips, route: { ...input.route, completedAt: Date.now(), by }, plan: next.plan, gate: international ? input.gate : undefined,
+      trips, route: { ...input.route, completedAt: Date.now(), by }, plan: next.plan, sentBack: b.sentBack?.to === 'coordinator' ? undefined : b.sentBack, gate: international ? input.gate : undefined,
       status: reviewDone(next) ? 'pending_commercial' : 'under_review',
       history: log(b, by, reviewDone(next) ? `Xác nhận ${trips.length} xe và lộ trình. Đủ điều kiện, chuyển quản lý duyệt báo giá` : `Xác nhận ${trips.length} xe và lộ trình`),
     }))
     notify(b, ['manager'], `Điều phối viên đã chốt xe và lộ trình — đơn ${id}`, reviewDone(next) ? `${trips.length} xe. Đơn đã đủ điều kiện, chờ bạn duyệt báo giá.` : `${trips.length} xe. Còn chờ Kiểm dịch viên thẩm định hồ sơ ngựa.`, { manager: reviewDone(next) ? LINK.manager.approvals : LINK.manager.intake })
     return out
+  },
+
+  // Manager: trả đơn đang chờ duyệt báo giá về Kiểm dịch viên (duyệt lại hồ sơ ngựa) hoặc Điều phối viên (làm lại xe và lộ trình), bắt buộc ghi lý do
+  sendBack: async (id: string, by: string, to: 'specialist' | 'coordinator', reason: string): Promise<Booking> => {
+    const b = must(id)
+    expect(b, 'pending_commercial', 'Chỉ trả lại được đơn đang chờ duyệt báo giá.')
+    if (!reason.trim()) throw new Error('Cần ghi lý do trả lại.')
+    const sentBack: SentBack = { to, reason: reason.trim(), at: Date.now(), by }
+    const label = to === 'specialist' ? 'Kiểm dịch viên duyệt lại hồ sơ ngựa' : 'Điều phối viên làm lại xe và lộ trình'
+    const patch: Partial<Booking> = to === 'specialist'
+      ? { medical: { status: 'pending' } }
+      : { plan: undefined, route: undefined, trips: undefined, gate: undefined } // chọn lại xe nên Driver, Escort đã chọn cũng bỏ
+    const out = structuredClone(store.update(id, { ...patch, sentBack, status: 'under_review', history: log(b, by, `Trả lại ${label}: ${reason.trim()}`) }))
+    notify(out, [to], `Đơn ${id} được trả lại`, `Quản lý yêu cầu ${label.toLowerCase()}: ${reason.trim()}`, to === 'specialist' ? {} : { coordinator: LINK.coordinator(id) })
+    return out
+  },
+
+  // Manager: chọn tài xế và hộ tống cho từng xe Coordinator đã chọn (sau khi Coordinator chốt xe và lộ trình, trước khi gửi báo giá)
+  assignCrew: async (id: string, by: string, picks: { tripId: string; driverId: string; escortId: string }[]): Promise<Booking> => {
+    const b = must(id)
+    expect(b, 'pending_commercial', 'Chỉ chọn tài xế và hộ tống khi đơn đang chờ duyệt báo giá.')
+    const trips = b.trips ?? []
+    if (picks.length !== trips.length || trips.some(t => picks.filter(p => p.tripId === t.tripId).length !== 1)) throw new Error('Cần chọn tài xế và hộ tống cho tất cả các xe.')
+    if (picks.some(p => !p.driverId || !p.escortId)) throw new Error('Mỗi xe cần một tài xế và một nhân viên hộ tống.')
+    if (new Set(picks.map(p => p.driverId)).size !== picks.length) throw new Error('Mỗi xe cần một tài xế riêng.')
+    if (new Set(picks.map(p => p.escortId)).size !== picks.length) throw new Error('Mỗi xe cần một nhân viên hộ tống riêng.')
+    const crew = await crewApi.list()
+    const busy = busyResources(store.all(), b.departAt, id)
+    picks.forEach(p => {
+      if (!crew.some(c => c.id === p.driverId && c.role === 'driver')) throw new Error('Tài xế không có trong danh bạ.')
+      if (!crew.some(c => c.id === p.escortId && c.role === 'escort')) throw new Error('Nhân viên hộ tống không có trong danh bạ.')
+      if (busy.crew.has(p.driverId)) throw new Error('Tài xế đã được giữ cho đơn khác có ngày đi gần ngày này.')
+      if (busy.crew.has(p.escortId)) throw new Error('Nhân viên hộ tống đã được giữ cho đơn khác có ngày đi gần ngày này.')
+    })
+    const next = trips.map(t => { const p = picks.find(x => x.tripId === t.tripId)!; return { ...t, driverId: p.driverId, escortId: p.escortId } })
+    return structuredClone(store.update(id, { trips: next, history: log(b, by, `Chọn tài xế và hộ tống cho ${next.length} xe`) }))
   },
 
   // Manager: dòng báo giá do hệ thống tính (chưa gồm phụ phí và chiết khấu)
@@ -409,6 +456,7 @@ export const bookingsApi = {
   sendQuote: async (id: string, by: string, adjustments: Adjustment[]): Promise<Booking> => {
     const b = must(id)
     expect(b, 'pending_commercial', 'Đơn không ở bước duyệt báo giá.')
+    if (!(b.trips ?? []).every(crewAssigned)) throw new Error('Chọn tài xế và hộ tống cho tất cả các xe trước khi gửi báo giá.')
     const { lines } = await bookingsApi.quoteDraft(id)
     const quote = finalizeQuote(lines, adjustments.filter(a => a.label.trim() && a.amount !== 0), Date.now(), by)
     const out = structuredClone(store.update(id, { quote, status: 'awaiting_payment', history: log(b, by, 'Duyệt và gửi báo giá') }))
@@ -578,7 +626,7 @@ export const bookingsApi = {
     return out
   },
 
-  // Driver: check-in tại trạm trung chuyển, cửa khẩu hoặc điểm giao
+  // Driver: check-in tại trạm nghỉ, cửa khẩu hoặc điểm giao
   arriveCheckpoint: async (id: string, tripId: string, by: string, photo: string): Promise<Booking> => {
     const b = must(id)
     const t = liveTrip(b, tripId)
@@ -594,20 +642,20 @@ export const bookingsApi = {
     return commitTrips(b, by, `Xác nhận có mặt ${tripId}: ${cp.label.toLowerCase()} tại ${cp.place}`)
   },
 
-  // Escort: nhật ký an sinh tại trạm trung chuyển hoặc điểm giao
-  submitWelfare: async (id: string, tripId: string, by: string, data: { condition: WelfareCondition; waterLiters: number; hay: boolean; temp: number; photo: string; note: string }): Promise<Booking> => {
+  // Escort: nhật ký an sinh tại trạm nghỉ hoặc điểm giao
+  submitWelfare: async (id: string, tripId: string, by: string, data: { condition: WelfareCondition; waterLiters: number; hay: boolean; photo: string; note: string }): Promise<Booking> => {
     const b = must(id)
     const t = liveTrip(b, tripId)
     const run = running(t)
     const cp = currentCheckpoint(t)
-    if (!cp?.arrivedAt || !['rest', 'delivery'].includes(cp.type)) throw new Error('Chỉ ghi nhật ký an sinh khi xe đã tới trạm trung chuyển hoặc điểm giao.')
+    if (!cp?.arrivedAt || !['rest', 'delivery'].includes(cp.type)) throw new Error('Chỉ ghi nhật ký an sinh khi xe đã tới trạm nghỉ hoặc điểm giao.')
     if (!data.photo) throw new Error('Cần chụp ảnh ngựa trong khoang.')
     const entry: WelfareLog = { id: `WL-${run.welfare.length + 1}`, checkpointId: cp.id, at: Date.now(), by, ...data }
     run.welfare = [...run.welfare, entry]
-    return commitTrips(b, by, `Nhật ký an sinh ${tripId}: ${data.condition === 'normal' ? 'bình thường' : data.condition === 'stress' ? 'căng thẳng' : 'đổ mồ hôi nhiều'}, ${data.temp}°C`)
+    return commitTrips(b, by, `Nhật ký an sinh ${tripId}: ${data.condition === 'normal' ? 'bình thường' : data.condition === 'stress' ? 'căng thẳng' : 'đổ mồ hôi nhiều'}`)
   },
 
-  // Driver: tiếp tục hành trình sau khi dừng ở trạm trung chuyển (cần đã có nhật ký an sinh của trạm)
+  // Driver: tiếp tục hành trình sau khi dừng ở trạm nghỉ (cần đã có nhật ký an sinh của trạm)
   continueJourney: async (id: string, tripId: string, by: string): Promise<Booking> => {
     const b = must(id)
     const t = liveTrip(b, tripId)
@@ -615,7 +663,7 @@ export const bookingsApi = {
     const left = pendingDeparture(t) // thông quan xong: rời cửa khẩu
     if (left) { left.leftAt = Date.now(); return commitTrips(b, by, `Xe ${tripId} rời cửa khẩu, tiếp tục hành trình`) }
     const cp = currentCheckpoint(t)
-    if (cp?.type !== 'rest' || !cp.arrivedAt) throw new Error('Chưa ở trạm trung chuyển.')
+    if (cp?.type !== 'rest' || !cp.arrivedAt) throw new Error('Chưa ở trạm nghỉ.')
     if (!run.welfare.some(w => w.checkpointId === cp.id)) throw new Error('Hộ tống chưa gửi nhật ký an sinh của trạm này.')
     cp.doneAt = Date.now()
     return commitTrips(b, by, `Tiếp tục hành trình ${tripId} (chặng ${run.checkpoints.filter(c => c.type === 'rest' && c.doneAt).length + 1})`)
@@ -666,27 +714,26 @@ export const bookingsApi = {
     notify(b, ['manager', 'coordinator'], `SOS xe ${tripId} — đơn ${id}`, note.trim() || 'Tài xế / hộ tống báo sự cố khẩn cấp.', { manager: LINK.manager.incidents, coordinator: '/coordinator/incidents' })
     return out
   },
-  // Coordinator: lập phương án xử lý trên bản đồ (đề nghị hạn mức) trình Manager. Mỗi nhóm sự cố có một cách xử lý:
+  // Coordinator: lập phương án xử lý trên bản đồ trình Manager. Mỗi nhóm sự cố có một cách xử lý:
   // sức khỏe ngựa → đưa ngựa tới trạm nghỉ gần nhất; xe gặp sự cố → gọi cứu hộ gần chỗ xe + đưa ngựa tới trạm nghỉ; tắc đường → đổi lộ trình.
-  planIncident: async (id: string, incidentId: string, by: string, input: { action: IncidentAction; note: string; newEta: number; budget: number } & Pick<IncidentPlan, 'station' | 'restMinutes' | 'rescue' | 'rescueLine' | 'toStation' | 'detour'>): Promise<Booking> => {
+  planIncident: async (id: string, incidentId: string, by: string, input: { action: IncidentAction; note: string; newEta: number } & Pick<IncidentPlan, 'station' | 'restMinutes' | 'rescue' | 'rescueLine' | 'toStation' | 'detour'>): Promise<Booking> => {
     const b = must(id)
     const inc = incidentById(b, incidentId)
     if (inc.status !== 'reported') throw new Error('Sự cố này không ở bước lập phương án.')
     if (!incidentActionsFor(inc.kind).includes(input.action)) throw new Error('Phương án không phù hợp với nhóm sự cố này.')
     if (input.newEta <= Date.now()) throw new Error('ETA mới phải sau thời điểm hiện tại.')
-    if (!(input.budget >= 0)) throw new Error('Hạn mức đề nghị không hợp lệ.')
     if (input.action !== 'reroute') {
       if (!input.station || !TRANSIT_STATIONS.some(s => s.name === input.station)) throw new Error('Chọn trạm nghỉ trong danh mục để đưa ngựa tới.')
       if (!((input.restMinutes ?? 0) >= MIN_REST_MINUTES)) throw new Error(`Ngựa nghỉ tại trạm tối thiểu ${MIN_REST_MINUTES} phút.`)
     }
     if (input.action === 'rescue_and_station' && !input.rescue) throw new Error('Chọn điểm cứu hộ gần chỗ xe gặp sự cố.')
     if (input.action === 'reroute' && !input.detour) throw new Error('Chọn lộ trình mới để tránh tắc nghẽn.')
-    const { action, newEta, budget, station, restMinutes, rescue, rescueLine, toStation, detour } = input
-    inc.plan = { action, newEta, budget, note: input.note.trim(), at: Date.now(), by, ...(action !== 'reroute' ? { station, restMinutes, toStation } : {}), ...(action === 'rescue_and_station' ? { rescue, rescueLine } : {}), ...(action === 'reroute' ? { detour } : {}) }
+    const { action, newEta, station, restMinutes, rescue, rescueLine, toStation, detour } = input
+    inc.plan = { action, newEta, note: input.note.trim(), at: Date.now(), by, ...(action !== 'reroute' ? { station, restMinutes, toStation } : {}), ...(action === 'rescue_and_station' ? { rescue, rescueLine } : {}), ...(action === 'reroute' ? { detour } : {}) }
     inc.status = 'pending_approval'
     delete inc.rejection
     const out = commitIncident(b, by, `Lập phương án sự cố ${incidentId} trên bản đồ: ${INCIDENT_ACTION[action]}, trình Quản lý duyệt`)
-    notify(b, ['manager'], `Phương án sự cố đơn ${id} chờ duyệt`, `${INCIDENT_ACTION[action]}. Đề nghị hạn mức ${formatVND(input.budget)}.`, { manager: LINK.manager.incidents })
+    notify(b, ['manager'], `Phương án sự cố đơn ${id} chờ duyệt`, `${INCIDENT_ACTION[action]}.`, { manager: LINK.manager.incidents })
     return out
   },
   // Manager: trả phương án về
@@ -701,18 +748,16 @@ export const bookingsApi = {
     notify(b, ['coordinator'], `Phương án sự cố đơn ${id} bị trả về`, reason.trim(), { coordinator: '/coordinator/incidents' })
     return out
   },
-  // Manager: duyệt phương án, đặt hạn mức khẩn cấp, xác nhận đã trực tiếp gọi khách
-  approveIncident: async (id: string, incidentId: string, by: string, input: { budget: number; calledCustomer: boolean }): Promise<Booking> => {
+  // Manager: duyệt phương án khẩn cấp
+  approveIncident: async (id: string, incidentId: string, by: string): Promise<Booking> => {
     const b = must(id)
     const inc = incidentById(b, incidentId)
     if (inc.status !== 'pending_approval') throw new Error('Sự cố này không ở bước chờ duyệt.')
-    if (!input.calledCustomer) throw new Error('Quản lý cần trực tiếp gọi khách thông báo trước khi duyệt.')
-    if (!(input.budget >= 0)) throw new Error('Hạn mức không hợp lệ.')
-    inc.approval = { budget: input.budget, calledCustomer: true, at: Date.now(), by }
+    inc.approval = { at: Date.now(), by }
     inc.status = 'active'
-    const out = commitIncident(b, by, `Duyệt phương án khẩn cấp ${incidentId}, hạn mức ${formatVND(input.budget)}`)
+    const out = commitIncident(b, by, `Duyệt phương án khẩn cấp ${incidentId}`)
     notify(b, ['customer', 'coordinator'], `Xe ${inc.tripId} đang xử lý sự cố — đơn ${id}`, 'Quản lý đã duyệt phương án. Ngựa đang được đội ngũ chăm sóc, ETA mới đã cập nhật.', { coordinator: '/coordinator/incidents' })
-    await notifyCrew(b, `Phương án sự cố đã duyệt — ${id}`, inc.plan ? `Thực hiện: ${INCIDENT_ACTION[inc.plan.action]}${inc.plan.station ? ` (${inc.plan.station})` : ''}. Hạn mức ${formatVND(input.budget)}.` : 'Phương án khẩn cấp đã duyệt.', [inc.tripId])
+    await notifyCrew(b, `Phương án sự cố đã duyệt — ${id}`, inc.plan ? `Thực hiện: ${INCIDENT_ACTION[inc.plan.action]}${inc.plan.station ? ` (${inc.plan.station})` : ''}.` : 'Phương án khẩn cấp đã duyệt.', [inc.tripId])
     return out
   },
   // Driver / Escort: tải chi phí tại chỗ, ảnh chứng từ trước, số tiền sau (Evidence-First)
@@ -756,7 +801,7 @@ export const bookingsApi = {
     const noExpenses = !(b.incidents ?? []).some(i => i.expenses.length)
     if (noExpenses) return issueSettlementOf(b, 'Hệ thống', 'Không có chi phí phát sinh: hệ thống phát hành bảng quyết toán 0 đồng')
     const out = structuredClone(store.update(id, { status: 'expenses_submitted', expensesSubmittedAt: Date.now(), history: log(b, by, 'Gửi bảng kê chi phí kèm chứng từ') }))
-    notify(b, ['manager'], `Bảng kê chi phí đơn ${id} chờ đối soát`, 'Tài xế đã gửi chi phí kèm chứng từ.', { manager: LINK.manager.incidents })
+    notify(b, ['manager'], `Bảng kê chi phí đơn ${id} chờ đối soát`, 'Tài xế đã gửi chi phí kèm chứng từ.', { manager: LINK.manager.overview })
     return out
   },
   // Manager: đối soát, chọn bên chịu từng khoản (theo chính sách 11.5), phát hành bảng quyết toán

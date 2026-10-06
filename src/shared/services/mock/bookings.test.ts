@@ -111,11 +111,10 @@ describe('đơn mẫu giấy tờ do Specialist làm', () => {
     })
     bookings.filter(b => ['clearance_done', ...FLOW34].includes(b.status)).forEach(b => expect(b.clearance!.doneAt, b.id).toBeTruthy())
   })
-  it('đơn đang làm giấy: có đơn đã làm xong hạng mục chưa đủ cờ thông quan, có đơn khách báo sai', () => {
+  it('đơn đang làm giấy: có đơn đã làm xong hạng mục chưa đủ cờ thông quan', () => {
     const doing = bookings.filter(b => b.status === 'clearance_in_progress')
     expect(doing.length).toBeGreaterThan(0)
     expect(doing.some(b => canCompleteClearance(b) !== null)).toBe(true)
-    expect(doing.some(b => b.clearance!.flags.length > 0)).toBe(true)
     expect(doing.some(b => canCompleteClearance(b) === null)).toBe(true)
   })
   it('hạng mục đã xong có ảnh chụp, hạng mục chưa làm thì chưa có', () => {

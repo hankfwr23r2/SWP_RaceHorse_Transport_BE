@@ -1,14 +1,12 @@
 // Bản nháp đơn đặt chuyến qua 4 bước, lưu sessionStorage (PRD mục 2.2).
 import { useSyncExternalStore } from 'react'
-import { TARGET_TEMP } from '@shared/config/booking-rules'
+import type { FeedPackageId, WaterPlanId } from '@shared/config/booking-rules'
 import type { Party, StallType, TransportType } from '@shared/types/booking'
 
 export interface HorseConfig {
   stall: StallType
-  targetTemp: number
-  feeding: string
-  water: string
-  careNote: string
+  feedPackage: FeedPackageId
+  waterPlan: WaterPlanId
   insurance: 'buy' | 'decline' | '' // phải chọn rõ cho từng ngựa
 }
 
@@ -35,7 +33,7 @@ export const emptyDraft = (): BookingDraft => ({
 })
 
 export const defaultConfig = (): HorseConfig => ({
-  stall: 'standard', targetTemp: TARGET_TEMP.default, feeding: '', water: '', careNote: '', insurance: '',
+  stall: 'standard', feedPackage: 'basic', waterPlan: 'every_3h', insurance: '',
 })
 
 // Bản nháp là một kho dùng chung: cột tóm tắt và các bước cùng đọc, nên khách gõ tới đâu tóm tắt cập nhật tới đó.

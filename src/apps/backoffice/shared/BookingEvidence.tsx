@@ -46,7 +46,7 @@ export function FleetRouteSection({ b }: { b: Booking }) {
         <>
           <h4 style={{ margin: '18px 0 10px' }}>Lộ trình Điều phối viên đã lập</h4>
           <p className={s.hint} style={{ marginTop: -4 }}>
-            {b.route.legs.length} chặng, {b.route.rests.length} trạm trung chuyển{b.gate ? `, cửa khẩu ${b.gate}` : ''}. Khởi hành {formatDateTime(b.route.legs[0].departAt)}, đến {formatDateTime(b.route.legs[b.route.legs.length - 1].arriveAt)}.
+            {b.route.legs.length} chặng, {b.route.rests.length} trạm nghỉ{b.gate ? `, cửa khẩu ${b.gate}` : ''}. Khởi hành {formatDateTime(b.route.legs[0].departAt)}, đến {formatDateTime(b.route.legs[b.route.legs.length - 1].arriveAt)}.
             {b.route.by ? ` Lập bởi ${b.route.by}.` : ''}
           </p>
           <TripTrackMap b={b} trips={[]} plain height={300} />
@@ -86,7 +86,6 @@ export function ClearanceSection({ b, quiet }: { b: Booking; quiet?: boolean }) 
       <p className={s.hint} style={{ marginTop: -4 }}>
         {p.done}/{p.total} hạng mục đã nộp{c.acceptedBy ? ` · ${c.acceptedBy} tiếp nhận` : ''}{c.doneAt ? ` · hoàn tất ${formatDateTime(c.doneAt)}` : ''}.
         {b.type === 'international' ? ` Thông quan từng ngựa: ${c.horsesCleared.length}/${b.horses.length}.` : ''}
-        {c.flags.length > 0 ? ` Khách báo sai ${c.flags.length} chỗ.` : ''}
       </p>
       <div className={s.docFiles}>
         {c.items.map(i => (

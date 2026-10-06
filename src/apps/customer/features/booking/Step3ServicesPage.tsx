@@ -1,13 +1,14 @@
-// Bước 3: cấu hình từng ngựa: khoang, nhiệt độ, dinh dưỡng, bảo hiểm mua hoặc từ chối (PRD mục 2.2).
+// Bước 3: cấu hình từng ngựa: khoang, gói thức ăn, cữ nước, bảo hiểm mua hoặc từ chối (PRD mục 2.2).
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { HORSE_BREEDS, TARGET_TEMP } from '@shared/config/booking-rules'
+import { FEED_PACKAGE, FEED_PACKAGE_IDS, HORSE_BREEDS, WATER_PLAN, WATER_PLAN_IDS } from '@shared/config/booking-rules'
 import { insuranceFee } from '@shared/lib/booking'
 import { formatVND } from '@shared/lib/format'
 import { horsesApi } from '@shared/services/horses'
 import { useLoad } from '@shared/services/useLoad'
 import { SEX_LABEL } from '@shared/types/booking'
+import { PolicyLink } from '@shared/ui/PolicyLink'
 import { BookingShell } from './BookingShell'
 import { defaultConfig, useBookingDraft, type HorseConfig } from './draft'
 import s from './Booking.module.css'
@@ -39,7 +40,7 @@ export default function Step3ServicesPage() {
   const owner = session!.name
   const { draft, save } = useBookingDraft()
   const { data: horses } = useLoad(() => horsesApi.list(owner), [owner])
-  const [config, setConfig] = useState<Record<string, HorseConfig>>(() => Object.fromEntries(draft.horseIds.map(id => [id, draft.config[id] ?? defaultConfig()])))
+  const [config, setConfig] = useState<Record<string, HorseConfig>>(() => Object.fromEntries(draft.horseIds.map(id => [id, { ...defaultConfig(), ...draft.config[id] }])))
   const [ack, setAck] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
@@ -82,20 +83,23 @@ export default function Step3ServicesPage() {
               </div>
             </div>
 
-            <div className="form-group" style={{ margin: 0 }}>
-              <label htmlFor={`temp-${h.id}`} className={s.fieldLabel}>Nhiệt độ khoang điều hòa</label>
-              <div className={s.tempRow}>
-                <input id={`temp-${h.id}`} type="range" min={TARGET_TEMP.min} max={TARGET_TEMP.max} step={0.5} value={c.targetTemp} onChange={e => set(h.id, { targetTemp: Number(e.target.value) })} />
-                <span className={s.tempVal}>{c.targetTemp}°C</span>
+            <div>
+              <div className={s.fieldLabel} id={`feed-${h.id}`}>Gói thức ăn</div>
+              <div className={s.optRow} role="radiogroup" aria-labelledby={`feed-${h.id}`}>
+                {FEED_PACKAGE_IDS.map(id => (
+                  <label key={id} className={s.opt}><input type="radio" name={`feed-${h.id}`} checked={c.feedPackage === id} onChange={() => set(h.id, { feedPackage: id })} /><b>{FEED_PACKAGE[id].label}</b><span>{FEED_PACKAGE[id].items.join(', ')}.</span><span>{FEED_PACKAGE[id].fee ? `+${formatVND(FEED_PACKAGE[id].fee)}` : 'Đã gồm trong cước.'}</span></label>
+                ))}
               </div>
-              <div className="form-hint">Khoảng khuyến nghị {TARGET_TEMP.min}–{TARGET_TEMP.max}°C.</div>
             </div>
 
-            <div className={s.grid2}>
-              <div className="form-group"><label htmlFor={`feed-${h.id}`}>Chế độ dinh dưỡng</label><input id={`feed-${h.id}`} className="form-control" value={c.feeding} onChange={e => set(h.id, { feeding: e.target.value })} placeholder="VD: Cỏ khô Timothy, yến mạch" /></div>
-              <div className="form-group"><label htmlFor={`water-${h.id}`}>Cữ nước</label><input id={`water-${h.id}`} className="form-control" value={c.water} onChange={e => set(h.id, { water: e.target.value })} placeholder="VD: Mỗi 3 giờ" /></div>
+            <div>
+              <div className={s.fieldLabel} id={`water-${h.id}`}>Cữ nước</div>
+              <div className={s.optRow} role="radiogroup" aria-labelledby={`water-${h.id}`}>
+                {WATER_PLAN_IDS.map(id => (
+                  <label key={id} className={s.opt}><input type="radio" name={`water-${h.id}`} checked={c.waterPlan === id} onChange={() => set(h.id, { waterPlan: id })} /><b>{WATER_PLAN[id].label}</b><span>{WATER_PLAN[id].hint}</span><span>{WATER_PLAN[id].fee ? `+${formatVND(WATER_PLAN[id].fee)}` : 'Đã gồm trong cước.'}</span></label>
+                ))}
+              </div>
             </div>
-            <div className="form-group" style={{ margin: 0 }}><label htmlFor={`note-${h.id}`}>Ghi chú chăm sóc</label><input id={`note-${h.id}`} className="form-control" value={c.careNote} onChange={e => set(h.id, { careNote: e.target.value })} placeholder="VD: Dễ căng thẳng khi nghe tiếng động lớn" /></div>
 
             <div>
               <div className={s.labelRow}>
@@ -116,7 +120,7 @@ export default function Step3ServicesPage() {
         <div className="card" data-card {...(submitted && !ack ? { 'data-problem': true } : {})}>
           <label className={s.ack}>
             <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} />
-            <span>Tôi hiểu và đồng ý <b>Điều khoản Trách nhiệm Hạn chế</b> của nhà xe cho {declined.map(h => h.name).join(', ')}, những ngựa tôi không mua bảo hiểm.</span>
+            <span>Tôi hiểu và đồng ý <PolicyLink doc="liability">Điều khoản Trách nhiệm Hạn chế</PolicyLink> của nhà xe cho {declined.map(h => h.name).join(', ')}, những ngựa tôi không mua bảo hiểm.</span>
           </label>
           {submitted && !ack && <div className="form-error">Cần xác nhận để tiếp tục.</div>}
         </div>

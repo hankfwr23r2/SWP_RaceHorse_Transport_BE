@@ -3,19 +3,20 @@ import type { ReactNode } from 'react'
 import { COUNTRIES } from '@shared/config/network'
 import { insuranceFee } from '@shared/lib/booking'
 import { formatDate, formatDateTime } from '@shared/lib/format'
+import { FEED_PACKAGE, WATER_PLAN } from '@shared/config/booking-rules'
 import { SEX_LABEL, type Booking } from '@shared/types/booking'
 import { formatVND } from '@shared/lib/format'
 import { placeShort } from './place'
 import s from './booking.module.css'
 
-// Hai việc thẩm định chạy song song: y tế (Specialist) và phương án xe (Coordinator)
+// Hai việc thẩm định chạy song song: duyệt hồ sơ ngựa (Specialist) và phương án xe (Coordinator)
 export function ReviewChips({ b }: { b: Booking }) {
   const med = b.medical?.status
   return (
     <div className={s.chips}>
       <span className={`${s.chip} ${med === 'approved' ? s.chipOk : med === 'resubmit' ? s.chipWarn : s.chipWait}`}>
         <i className={`fa-solid ${med === 'approved' ? 'fa-circle-check' : med === 'resubmit' ? 'fa-file-circle-exclamation' : 'fa-hourglass-half'}`} aria-hidden="true" />
-        Y tế: {med === 'approved' ? 'đạt' : med === 'resubmit' ? 'chờ khách bổ sung' : 'chờ thẩm định'}
+        Hồ sơ ngựa: {med === 'approved' ? 'đạt' : med === 'resubmit' ? 'chờ khách bổ sung' : 'chờ thẩm định'}
       </span>
       <span className={`${s.chip} ${b.plan ? s.chipOk : s.chipWait}`}>
         <i className={`fa-solid ${b.plan ? 'fa-circle-check' : 'fa-hourglass-half'}`} aria-hidden="true" />
@@ -52,12 +53,10 @@ export function HorseConfigList({ b }: { b: Booking }) {
           </div>
           <div className={s.config}>
             <span>Khoang: <b>{h.stall === 'single' ? 'đơn mở rộng' : 'tiêu chuẩn'}</b></span>
-            <span>Nhiệt độ yêu cầu: <b>{h.targetTemp}°C</b></span>
-            {h.feeding && <span>Dinh dưỡng: <b>{h.feeding}</b></span>}
-            {h.water && <span>Nước: <b>{h.water}</b></span>}
+            <span>Thức ăn: <b>{FEED_PACKAGE[h.feedPackage].label}</b> <small>({FEED_PACKAGE[h.feedPackage].items.join(', ')})</small></span>
+            <span>Cữ nước: <b>{WATER_PLAN[h.waterPlan].label}</b></span>
             <span>Bảo hiểm: <b>{h.insurance.opted ? `mua, phí ${formatVND(insuranceFee(h.breed))}` : 'từ chối'}</b></span>
           </div>
-          {h.careNote && <div className={s.hint}>Ghi chú của khách: {h.careNote}</div>}
         </div>
       ))}
     </div>

@@ -1,4 +1,4 @@
-/* Bản đồ chọn trạm trung chuyển (Leaflet dùng lớp .leaflet-*, phần dưới là điểm đánh dấu và bảng điều khiển) */
+/* Bản đồ chọn trạm nghỉ (Leaflet dùng lớp .leaflet-*, phần dưới là điểm đánh dấu và bảng điều khiển) */
 .rm-wrap { position: relative; }
 .rm-map { height: min(64vh, 560px); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #e8eef5; z-index: 0; }
 .rm-icon { background: none; border: 0; }

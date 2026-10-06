@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { BOOKING_STEPS, HORSE_DOC, INCIDENT_COST_POLICY, stepOf, VEHICLE_CLASS } from '@shared/config/booking-rules'
-import { BANK, HOTLINE, REFUND_POLICY } from '@shared/config/business-rules'
+import { BOOKING_STEPS, HORSE_DOC, stepOf, VEHICLE_CLASS } from '@shared/config/booking-rules'
+import { BANK, HOTLINE } from '@shared/config/business-rules'
 import { COUNTRIES } from '@shared/config/network'
-import { CANCELLABLE, arrivalOf, cancelRefund, insuranceFee, vehicleClassOf } from '@shared/lib/booking'
+import { CANCEL_AFTER_DEPOSIT, arrivalOf, cancelRefund, insuranceFee, vehicleClassOf } from '@shared/lib/booking'
 import { formatClock, formatDate, formatDateTime, formatVND } from '@shared/lib/format'
 import { customerBookingsApi, type CustomerBookingView, type TripTeam } from '@shared/services/bookings'
 import { horsesApi } from '@shared/services/horses'
@@ -13,6 +13,7 @@ import { useLoad } from '@shared/services/useLoad'
 import { SEX_LABEL, type HorseProfile } from '@shared/types/booking'
 import { BookingStatusBadge } from '@shared/ui/BookingStatusBadge'
 import { Modal } from '@shared/ui/Modal'
+import { PolicyLink } from '@shared/ui/PolicyLink'
 import { QuoteSheet } from '@shared/ui/QuoteSheet'
 import { TripTimeline } from '@shared/ui/TripTimeline'
 import { TripTrackMap } from '@shared/ui/TripTrackMap'
@@ -89,7 +90,7 @@ function PayCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; 
   // Khách không đồng ý báo giá: đóng đơn (Cancelled), chưa cọc nên miễn phí
   const reject = async () => {
     setBusy(true)
-    try { await customerBookingsApi.cancel(owner, b.id, `Từ chối báo giá${why.trim() ? `: ${why.trim()}` : ''}`); toast('Đã từ chối báo giá, đơn được đóng và không mất phí'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không từ chối được', 'error'); setBusy(false) }
+    try { await customerBookingsApi.rejectQuote(owner, b.id, why); toast('Đã từ chối báo giá, đơn được đóng và không mất phí'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không từ chối được', 'error'); setBusy(false) }
   }
   const pay = async () => {
     setBusy(true)
@@ -113,16 +114,7 @@ function PayCard({ b, owner, onDone }: { b: CustomerBookingView; owner: string; 
         <div><span>Chủ tài khoản</span><b>{BANK.owner}</b></div>
         <div><span>Nội dung</span><b>{b.id} COC</b></div>
       </div>
-      <details className={s.contract}>
-        <summary>Xem điều khoản vận chuyển</summary>
-        <ul>
-          <li>Nhà xe làm trọn gói giấy kiểm dịch và hải quan. Bạn chỉ cần cung cấp hồ sơ ngựa và giao bản gốc cho tài xế.</li>
-          <li>Giá cố định, đã gồm nhiên liệu và phí cầu đường. Không phụ thu ngoài phiếu báo giá.</li>
-          <li>Đặt cọc 30% để nhận vận đơn. {formatVND(b.quote!.balance)} còn lại thanh toán vào ngày bốc ngựa.</li>
-          <li>Các xe của đơn chỉ chở ngựa của đơn này, không ghép ngựa của đơn khác.</li>
-          <li>Hủy đơn sau khi đặt cọc theo bảng hoàn cọc ở cột bên phải.</li>
-        </ul>
-      </details>
+      <p className="form-hint"><PolicyLink doc="transport">Xem điều khoản vận chuyển</PolicyLink></p>
       <label className={s.ack}><input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} /><span>Tôi đã đọc và đồng ý điều khoản vận chuyển, đồng ý đặt cọc {formatVND(b.quote!.deposit)}.</span></label>
       <button className="btn btn-primary btn-lg btn-full" disabled={!ok || busy} onClick={pay}>{busy ? 'Đang xử lý…' : 'Thanh toán cọc'}</button>
       <p className="form-hint" style={{ textAlign: 'center' }}>Bản thử nghiệm: bấm thanh toán là ghi nhận đã nhận cọc.</p>
@@ -178,56 +170,39 @@ function BalanceCard({ b, owner, onDone, showAction = true }: { b: CustomerBooki
   )
 }
 
-// Chính sách chi phí sự cố (PRD mục 11.5), ẩn sau nút để đỡ rối
+// Chính sách chi phí sự cố (PRD mục 11.5): nội dung ở trang riêng
 function IncidentPolicy() {
   return (
-    <details className={`card ${s.fold}`}>
-      <summary><i className="fa-solid fa-shield-halved" /> Ai chịu chi phí khi có sự cố?</summary>
-      <div className={s.foldBody}>
-        {INCIDENT_COST_POLICY.map(p => (
-          <div key={p.group} style={{ marginBottom: 12 }}>
-            <b>{p.group}: {p.who === 'customer' ? 'khách chịu' : 'nhà xe chịu'}</b>
-            <ul>{p.items.map(i => <li key={i}>{i}</li>)}</ul>
-          </div>
-        ))}
-      </div>
-    </details>
+    <div className="card">
+      <p style={{ margin: 0 }}><i className="fa-solid fa-shield-halved text-orange" /> <PolicyLink doc="incident_cost">Ai chịu chi phí khi có sự cố? Xem chính sách</PolicyLink></p>
+    </div>
   )
 }
 
-// Hủy đơn: hiện số tiền hoàn theo mốc thời gian ngay lúc bấm (PRD mục 8.3)
+// Hủy đơn (chỉ sau cọc): mất cọc, số dư 70% đã trả (nếu có) được hoàn (PRD mục 8.3)
 function CancelModal({ b, owner, onClose, onDone }: { b: CustomerBookingView; owner: string; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
-  const now = useNow()
   const [reason, setReason] = useState('')
-  const [fm, setFm] = useState(false)
   const [busy, setBusy] = useState(false)
   const paid = b.payment?.amount ?? 0
-  const bal = b.balance?.amount ?? 0
-  const r = cancelRefund(b.departAt, paid, bal, now, fm)
+  const refund = cancelRefund(b, 'customer')
   const send = async () => {
     setBusy(true)
-    try { await customerBookingsApi.cancel(owner, b.id, reason, fm); toast('Đã hủy đơn'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không hủy được', 'error'); setBusy(false) }
+    try { await customerBookingsApi.cancel(owner, b.id, reason); toast('Đã hủy đơn'); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không hủy được', 'error'); setBusy(false) }
   }
   return (
-    <Modal onClose={onClose} title={`Hủy đơn ${b.id}`} subtitle="Số tiền hoàn được tính theo thời điểm bạn bấm xác nhận."
+    <Modal onClose={onClose} title={`Hủy đơn ${b.id}`} subtitle="Bạn đã đặt cọc nên sẽ mất tiền cọc."
       footer={<><button className="btn btn-ghost" onClick={onClose}>Giữ đơn</button><button className="btn btn-danger" disabled={busy || !reason.trim()} onClick={send}>Xác nhận hủy đơn</button></>}>
-      {paid > 0 ? (
-        <div className={s.refundBox}>
-          <div><span>Tiền cọc đã đặt</span><b>{formatVND(paid)}</b></div>
-          <div><span>Hoàn lại tiền cọc ({Math.round(r.rate * 100)}%)</span><b className="text-green">{formatVND(r.depositRefund)}</b></div>
-          {bal > 0 && <div><span>Số dư 70% đã trả (hoàn 100%)</span><b className="text-green">{formatVND(r.balanceRefund)}</b></div>}
-          <div><span>Tổng hoàn lại</span><b className="text-green">{formatVND(r.refund)}</b></div>
-          <div><span>Không hoàn</span><b className="text-red">{formatVND(r.lost)}</b></div>
-        </div>
-      ) : <div className="alert alert-info"><i className="fa-solid fa-circle-info" /><div>Bạn chưa đặt cọc nên hủy đơn không mất phí.</div></div>}
-      {paid > 0 && <label className={s.ack} style={{ margin: '14px 0' }}><input type="checkbox" checked={fm} onChange={e => setFm(e.target.checked)} /><span>Hủy vì bất khả kháng (dịch bệnh, thiên tai, ngựa ốm có giấy chứng nhận). Nhân viên sẽ đối chiếu giấy tờ.</span></label>}
-      <div className="form-group" style={{ margin: 0 }}><label htmlFor="cr" className="required">Lý do hủy</label><textarea id="cr" className="form-control" rows={3} value={reason} onChange={e => setReason(e.target.value)} /></div>
+      <div className={s.refundBox}>
+        <div><span>Tiền cọc đã đặt (không hoàn)</span><b className="text-red">{formatVND(paid)}</b></div>
+        {refund > 0 && <div><span>Số dư 70% đã trả (hoàn 100%)</span><b className="text-green">{formatVND(refund)}</b></div>}
+      </div>
+      <div className="form-group" style={{ margin: '14px 0 0' }}><label htmlFor="cr" className="required">Lý do hủy</label><textarea id="cr" className="form-control" rows={3} value={reason} onChange={e => setReason(e.target.value)} /></div>
     </Modal>
   )
 }
 
-// Lộ trình đã được Manager duyệt (Flow 3): các chặng, trạm trung chuyển, cửa khẩu và nhắc chuẩn bị bản gốc
+// Lộ trình đã được Manager duyệt (Flow 3): các chặng, trạm nghỉ, cửa khẩu và nhắc chuẩn bị bản gốc
 function RouteCard({ b }: { b: CustomerBookingView }) {
   const r = b.route!
   return (
@@ -238,7 +213,7 @@ function RouteCard({ b }: { b: CustomerBookingView }) {
           <li key={l.no}>
             <div><b>Chặng {l.no}:</b> {l.from} → {l.to}</div>
             <div className="sub-text">Khởi hành {formatDateTime(l.departAt)} · đến khoảng {formatClock(l.arriveAt)}</div>
-            {r.rests[i] && <div className="sub-text"><i className="fa-solid fa-location-dot" /> Trạm trung chuyển {r.rests[i].name}: dừng {r.rests[i].minutes} phút</div>}
+            {r.rests[i] && <div className="sub-text"><i className="fa-solid fa-location-dot" /> Trạm nghỉ {r.rests[i].name}: dừng {r.rests[i].minutes} phút</div>}
           </li>
         ))}
       </ol>
@@ -276,7 +251,7 @@ export default function OrderDetailPage() {
   const clsLabel = (team.length ? team.map(t => t.vehicle.stalls) : [Math.max(b.horses.length, 1)]).map(n => VEHICLE_CLASS[vehicleClassOf(n)].label).join(' + ')
   const events = [
     { time: b.createdAt, text: 'Bạn đã gửi đơn' },
-    ...(b.medical?.status === 'approved' && b.medical.at ? [{ time: b.medical.at, text: 'Thẩm định y tế đạt' }] : []),
+    ...(b.medical?.status === 'approved' && b.medical.at ? [{ time: b.medical.at, text: 'Duyệt hồ sơ ngựa đạt' }] : []),
     ...(b.route?.completedAt ? [{ time: b.route.completedAt, text: `Phương án ${b.trips?.length ?? 1} xe và lộ trình đã chốt` }] : []),
     ...(b.quote ? [{ time: b.quote.sentAt, text: 'Báo giá được gửi cho bạn' }] : []),
     ...(b.payment ? [{ time: b.payment.paidAt, text: `Đặt cọc ${formatVND(b.payment.amount)}, cấp vận đơn ${b.waybill?.no ?? ''}` }] : []),
@@ -348,7 +323,7 @@ export default function OrderDetailPage() {
             </>
           )}
 
-          {tab === 'docs' && <ClearanceProgressCard b={b} owner={owner} onDone={reloadAll} />}
+          {tab === 'docs' && <ClearanceProgressCard b={b} />}
 
           {tab === 'pay' && (
             <>
@@ -394,16 +369,18 @@ export default function OrderDetailPage() {
                 {b.horses.map(h => (
                   <div key={h.horseId} className={s.horseRow}>
                     <div><b>{h.name}</b> <small>Chip {h.microchip} · {h.breed} · {SEX_LABEL[h.sex]}</small></div>
-                    <div style={{ textAlign: 'right' }}>{h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {h.targetTemp}°C</div>
+                    <div style={{ textAlign: 'right' }}>{h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'}</div>
                     <small>{h.insurance.opted ? `Mua bảo hiểm, phí ${formatVND(insuranceFee(h.breed))}` : 'Từ chối bảo hiểm (trách nhiệm hạn chế)'}</small>
                   </div>
                 ))}
               </div>
-              <div className="card">
-                <div className="card-header"><h3><i className="fa-solid fa-rotate-left" /> Hủy đơn và hoàn cọc</h3></div>
-                <table className={s.policy}><tbody>{REFUND_POLICY.map(([c, r]) => <tr key={c}><td>{c}</td><td>{r}</td></tr>)}</tbody></table>
-                {CANCELLABLE.includes(b.status) && <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setCancelling(true)}><i className="fa-solid fa-ban" /> Hủy đơn này</button>}
-              </div>
+              {CANCEL_AFTER_DEPOSIT.includes(b.status) && (
+                <div className="card">
+                  <div className="card-header"><h3><i className="fa-solid fa-ban" /> Hủy đơn</h3></div>
+                  <p className="form-hint">Hủy sau khi đã đặt cọc: mất 100% tiền cọc. Số dư 70% (nếu đã trả) được hoàn đủ.</p>
+                  <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setCancelling(true)}><i className="fa-solid fa-ban" /> Hủy đơn này</button>
+                </div>
+              )}
             </>
           )}
 

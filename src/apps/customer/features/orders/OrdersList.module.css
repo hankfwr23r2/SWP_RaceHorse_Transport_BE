@@ -20,6 +20,9 @@
 .card { background: white; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .card:hover { border-color: #fdba74; }
 .alertCard { border-left: 4px solid var(--orange); }
+.freshCard { border-color: var(--green); box-shadow: 0 0 0 3px #bbf7d0; }
+.freshNote { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; margin-bottom: 14px; border: 1px solid #bbf7d0; border-radius: var(--radius); background: #f0fdf4; font-size: 0.9rem; }
+.freshNote i { color: var(--green); margin-top: 3px; }
 .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
 .id { font-weight: 800; color: var(--navy); }
 .headRight { margin-left: auto; }

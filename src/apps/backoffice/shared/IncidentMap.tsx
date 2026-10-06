@@ -19,6 +19,7 @@ interface Props {
   stations?: TransitStation[]
   rescues?: RescuePoint[]
   selectedStation?: string
+  nearest?: number // trạm đầu danh sách (đã xếp theo khoảng cách tới xe) được đánh số 1, 2, 3… trên bản đồ
   selectedRescue?: string
   lines?: MapLine[]
   onStation?: (name: string) => void
@@ -28,9 +29,9 @@ interface Props {
 
 const short = (name: string) => name.split(' — ')[0]
 const pin = (cls: string, label: string, size = 30) => L.divIcon({ className: 'rm-icon', html: `<span class="rm-pin ${cls}">${label}</span>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
-const dot = (on: boolean) => L.divIcon({ className: 'rm-icon', iconSize: [34, 34], iconAnchor: [17, 17], html: on ? '<span class="rm-st rm-on rm-active">✓</span>' : '<span class="rm-st"></span>' })
+const dot = (on: boolean, rank = 0) => L.divIcon({ className: 'rm-icon', iconSize: [34, 34], iconAnchor: [17, 17], html: on ? '<span class="rm-st rm-on rm-active">✓</span>' : rank ? `<span class="rm-st rm-on">${rank}</span>` : '<span class="rm-st"></span>' })
 
-export function IncidentMap({ height = 460, location, origin, dest, gate, stations = [], rescues = [], selectedStation, selectedRescue, lines = [], onStation, onRescue, children }: Props) {
+export function IncidentMap({ height = 460, location, origin, dest, gate, stations = [], rescues = [], selectedStation, nearest = 0, selectedRescue, lines = [], onStation, onRescue, children }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const layer = useRef<L.LayerGroup | null>(null)
@@ -60,9 +61,10 @@ export function IncidentMap({ height = 460, location, origin, dest, gate, statio
       if (l.label) line.bindTooltip(l.label, { sticky: true })
       if (l.onClick) line.on('click', l.onClick)
     })
-    stations.forEach(s => {
+    stations.forEach((s, idx) => {
       const on = s.name === selectedStation
-      const mk = L.marker([s.lat, s.lng], { icon: dot(on), zIndexOffset: on ? 600 : 0, title: s.name, interactive: !!onStation }).bindTooltip(s.name, { direction: 'top', offset: [0, -12] }).addTo(g)
+      const rank = idx < nearest ? idx + 1 : 0
+      const mk = L.marker([s.lat, s.lng], { icon: dot(on, rank), zIndexOffset: on ? 600 : rank ? 300 : 0, title: s.name, interactive: !!onStation }).bindTooltip(s.name, { direction: 'top', offset: [0, -12] }).addTo(g)
       if (onStation) mk.on('click', () => onStation(s.name))
     })
     rescues.forEach(r => {
@@ -76,11 +78,11 @@ export function IncidentMap({ height = 460, location, origin, dest, gate, statio
     L.marker([location.lat, location.lng], { icon: pin('rm-sos', '!', 36), zIndexOffset: 1000 }).bindTooltip('Vị trí xe lúc báo sự cố', { direction: 'top', offset: [0, -16], permanent: true }).addTo(g)
     // Lần vẽ đầu: zoom vào vị trí xe và các điểm của phương án
     if (!fitted.current) {
-      const pts: [number, number][] = [[location.lat, location.lng], ...lines.filter(l => !l.faded && !l.dashed).flatMap(l => l.path)]
-      if (pts.length > 1) m.fitBounds(L.latLngBounds(pts), { paddingTopLeft: [320, 50], paddingBottomRight: [50, 50], maxZoom: 12 })
+      const pts: [number, number][] = [[location.lat, location.lng], ...stations.slice(0, nearest).map((s): [number, number] => [s.lat, s.lng]), ...lines.filter(l => !l.faded && !l.dashed).flatMap(l => l.path)]
+      if (pts.length > 1) m.fitBounds(L.latLngBounds(pts), { paddingTopLeft: [320, 50], paddingBottomRight: [50, 50], maxZoom: 11 })
       fitted.current = true
     }
-  }, [lines, stations, rescues, selectedStation, selectedRescue, origin, dest, gate, location, onStation, onRescue])
+  }, [lines, stations, rescues, selectedStation, nearest, selectedRescue, origin, dest, gate, location, onStation, onRescue])
 
   return (
     <div className="im-wrap" style={{ height }}>

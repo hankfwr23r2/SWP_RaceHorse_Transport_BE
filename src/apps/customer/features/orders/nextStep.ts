@@ -76,7 +76,7 @@ function baseStep(b: CustomerBookingView, now: number): NextStep {
     case 'rejected':
       return { tone: 'danger', icon: 'fa-circle-xmark', title: 'Nhà xe không nhận đơn này', text: `${b.rejection?.role === 'coordinator' ? 'Điều phối viên không xếp được xe và lộ trình' : 'Quản lý không tiếp nhận đơn'}. Lý do: ${b.rejection?.reason ?? 'không nêu'}. Bạn có thể chỉnh lại và đặt chuyến mới.`, actionNeeded: false }
     case 'cancelled':
-      return { tone: 'muted', icon: 'fa-ban', title: 'Đơn đã hủy', text: b.cancellation ? (b.payment ? `Hoàn ${formatVND(b.cancellation.refund)} về tài khoản bạn dùng để thanh toán.` : 'Đơn hủy khi chưa đặt cọc, không phát sinh phí.') : 'Đơn đã hủy.', actionNeeded: false }
+      return { tone: 'muted', icon: 'fa-ban', title: 'Đơn đã hủy', text: !b.payment ? 'Đơn đã đóng khi chưa đặt cọc, không phát sinh phí.' : b.cancellation?.by === 'manager' ? `Nhà xe đã hủy đơn. Hoàn ${formatVND(b.cancellation.refund)} về tài khoản bạn dùng để thanh toán.` : b.cancellation?.refund ? `Tiền cọc không được hoàn. Số dư đã trả ${formatVND(b.cancellation.refund)} được hoàn về tài khoản bạn dùng để thanh toán.` : 'Tiền cọc không được hoàn theo chính sách hủy đơn.', actionNeeded: false }
     case 'delivered_pending_settlement': {
       const at = Math.max(0, ...(b.trips ?? []).map(t => t.run?.deliveredAt ?? 0))
       return { tone: 'success', icon: 'fa-flag-checkered', title: 'Đã giao ngựa an toàn', text: `Ngựa đã được bàn giao cho người nhận${at ? ` lúc ${formatDateTime(at)}` : ''}. Giá đã cố định nên bạn không phải trả thêm, trừ khi có khoản phát sinh liên quan đến ngựa (nếu có, chúng tôi sẽ gửi bảng quyết toán).`, actionNeeded: false }

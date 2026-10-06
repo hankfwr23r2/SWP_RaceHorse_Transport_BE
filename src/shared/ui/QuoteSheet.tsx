@@ -1,5 +1,6 @@
 import { DEPOSIT_RATE } from '../config/booking-rules'
 import { formatDateTime, formatVND } from '../lib/format'
+import { PolicyLink } from './PolicyLink'
 import type { Adjustment, QuoteLine } from '../types/booking'
 import s from './QuoteSheet.module.css'
 
@@ -44,7 +45,7 @@ export function QuoteSheet({ lines, adjustments = [], subtotal, total, deposit, 
       </div>
 
       <div className={s.after}>
-        <div><i className="fa-solid fa-lock" aria-hidden="true" /> <b>Không phụ thu ngoài phiếu:</b> chỉ phát sinh thêm khi có sự cố liên quan đến ngựa hoặc dịch vụ bạn chọn thêm (xem chính sách chi phí sự cố).</div>
+        <div><i className="fa-solid fa-lock" aria-hidden="true" /> <b>Không phụ thu ngoài phiếu:</b> chỉ phát sinh thêm khi có sự cố liên quan đến ngựa hoặc dịch vụ bạn chọn thêm (xem <PolicyLink doc="incident_cost">chính sách chi phí sự cố</PolicyLink>).</div>
         {expiresAt && <div><i className="fa-solid fa-hourglass-half" aria-hidden="true" /> <b>Báo giá có hiệu lực đến</b> {formatDateTime(expiresAt)}.</div>}
       </div>
     </div>

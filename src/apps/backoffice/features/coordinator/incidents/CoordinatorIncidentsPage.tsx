@@ -1,7 +1,7 @@
 // Điều phối viên: lập phương án xử lý sự cố, trình Manager duyệt (Flow 5, PRD mục 6.5).
 import { useState } from 'react'
 import { INCIDENT_KIND } from '@shared/config/booking-rules'
-import { formatDateTime, formatVND } from '@shared/lib/format'
+import { formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
 import { useAuth } from '@shared/auth/AuthContext'
 import { useLoad } from '@shared/services/useLoad'
@@ -32,7 +32,6 @@ export default function CoordinatorIncidentsPage() {
     { head: 'Tuyến', cell: ({ b }) => routeCell(placeShort(b.origin.name), placeShort(b.dest.name)) },
     { head: 'Sự cố', minWidth: 130, cell: ({ i }) => <><b>{INCIDENT_KIND[i.kind].label}</b><div className="sub-text">xe {i.tripId}</div></> },
     { head: 'Báo lúc', cell: ({ i }) => formatDateTime(i.reportedAt), nowrap: true },
-    { head: 'Hạn mức', cell: ({ i }) => (i.plan ? formatVND(i.plan.budget) : '-'), right: true },
     { head: 'Ghi chú', minWidth: 180, cell: ({ i }) => <span style={{ display: 'inline-block', maxWidth: 200, color: i.rejection ? 'var(--red)' : undefined }}>{i.rejection ? `Quản lý trả về: ${i.rejection.reason}` : i.note || '-'}</span> },
     { head: 'Thao tác', cell: ({ b, i }) => (i.status === 'reported' ? <button className="btn btn-primary btn-sm" onClick={() => setOpen({ b, i })}>{i.rejection ? 'Lập lại phương án' : 'Lập phương án'}</button> : null), right: true },
   ]

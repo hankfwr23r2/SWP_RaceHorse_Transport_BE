@@ -40,7 +40,7 @@ const consignee = (name: string, address: string): Party => ({ name, phone: '091
 
 const bookingHorse = (h: HorseProfile, over: Partial<BookingHorse> = {}): BookingHorse => ({
   horseId: h.id, name: h.name, microchip: h.microchip, breed: h.breed, sex: h.sex,
-  stall: 'standard', targetTemp: 22, feeding: 'Cỏ khô Timothy, yến mạch', water: 'Mỗi 3 giờ', careNote: '', insurance: { opted: false }, ...over,
+  stall: 'standard', feedPackage: 'basic', waterPlan: 'every_3h', insurance: { opted: false }, ...over,
 })
 
 type Route = { type: Booking['type']; origin: PlaceRef; dest: PlaceRef; gate?: string; id: string }
@@ -67,7 +67,7 @@ export const seedBookings = (): Booking[] => {
   const mkTrips = (id: string, specs: [string, string, number[]][], hs: BookingHorse[], over: (i: number) => Partial<VehicleTrip> = () => ({})): VehicleTrip[] =>
     specs.map(([vid, eid, idx], i) => ({ tripId: tripIdFor(id, i + 1), vehicleId: vid, driverId: seedDriverOf(vid), escortId: eid, horseIds: idx.map(k => hs[k].horseId), acks: {}, ...over(i) }))
   const tripEtd = (departIn: number) => daysFromToday(departIn, 5)
-  // Lộ trình dùng chung: chia chặng đều, trạm trung chuyển do hệ thống gợi ý theo cửa khẩu
+  // Lộ trình dùng chung: chia chặng đều, trạm nghỉ do hệ thống gợi ý theo cửa khẩu
   const routeFor = (b: Pick<Booking, 'type' | 'origin' | 'dest' | 'gate'>, etd: number, by: string, hoursAgo = 20): NonNullable<Booking['route']> => {
     const r = buildRoutePlan(b, etd)
     return { ...r, completedAt: NOW - hoursAgo * HOUR, by }
@@ -99,7 +99,8 @@ export const seedBookings = (): Booking[] => {
       ...common, ...route, createdAt: NOW - ageDays * DAY, departAt: daysFromToday(departIn),
       consignee: consignee(intlRoute ? 'Trung tâm Kiểm dịch Phnom Penh' : 'CLB Cưỡi ngựa Sài Gòn', intlRoute ? 'Phnom Penh, Campuchia' : 'Quận 2, TP.HCM'),
       horses: hs, status, intake: intake(NOW - (ageDays - 1) * DAY), medical: medicalOk(NOW - (ageDays - 2) * DAY, staffKD1.name),
-      trips: mkTrips(route.id, specs, hs), plan: planDone(staffDP1.name, 30), history: hist(ageDays),
+      // Tài xế và hộ tống do Manager chọn lúc duyệt báo giá: đơn chưa tới bước đó thì chưa có
+      trips: mkTrips(route.id, specs, hs).map(tr => (status === 'under_review' || status === 'pending_commercial' ? { ...tr, driverId: '', escortId: '' } : tr)), plan: planDone(staffDP1.name, 30), history: hist(ageDays),
     }
     base.route = routeFor(base, tripEtd(departIn), staffDP1.name, 30)
     base.quote = draftQuote(base, specs.map(s => s[0]), NOW - (ageDays - 3) * DAY)
@@ -128,11 +129,11 @@ export const seedBookings = (): Booking[] => {
       if (cp.type === 'delivery') { cp.handoverPhoto = 'bien_ban_ban_giao.jpg'; cp.returnedOriginals = true }
     })
     const welfare: WelfareLog[] = cps.filter(c => c.doneAt && (c.type === 'rest' || c.type === 'delivery')).map((c, i) => ({
-      id: `WL-${i + 1}`, checkpointId: c.id, at: c.arrivedAt! + 8 * 60_000, by: escort, condition: 'normal', waterLiters: 8, hay: true, temp: 22, photo: `ngua_${c.id}.jpg`, note: '', ...welfareOverride[i],
+      id: `WL-${i + 1}`, checkpointId: c.id, at: c.arrivedAt! + 8 * 60_000, by: escort, condition: 'normal', waterLiters: 8, hay: true, photo: `ngua_${c.id}.jpg`, note: '', ...welfareOverride[i],
     }))
     return { checkpoints: cps, welfare, startedAt: cps[0].doneAt, deliveredAt: done >= cps.length ? cps[cps.length - 1].doneAt : undefined }
   }
-  // Lộ trình một trạm trung chuyển cố định giờ xuất phát, để các đơn đang chạy có mốc quanh "bây giờ"
+  // Lộ trình một trạm nghỉ cố định giờ xuất phát, để các đơn đang chạy có mốc quanh "bây giờ"
   const runRoute = (b: Booking, etd: number, hours: number, restName: string, borderAt?: number) => {
     const rests = [{ name: restName, minutes: 45 }]
     b.route = {
@@ -157,7 +158,7 @@ export const seedBookings = (): Booking[] => {
   const b5 = reviewed(dom('ORD-2026-0105', 'KHO-BD', 'CLB-SG'), b5Horses, [['VH-009', 'NV-03', [0, 1, 2]]], 40, 4, 'awaiting_payment')
   const b7 = reviewed(dom('ORD-2026-0107', 'KHO-DN', 'KHO-LA'), b7Horses, [['VH-006', 'NV-05', [0]]], 33, 7, 'quote_expired')
   const b6 = paid(intl('ORD-2026-0106', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), b6Horses, [['VH-004', 'NV-04', [0, 1, 2]]], 55, 6, 'waybill_issued', clr('international', []))
-  const b10 = paid(dom('ORD-2026-0110', 'KHO-LA', 'KHO-BD'), b3Horses, [['VH-011', 'NV-04', [0]]], 47, 9, 'clearance_in_progress', clr('domestic', ['done', 'todo'], { ...accepted, flags: [{ at: NOW - 4 * HOUR, by: CUSTOMER.name, note: 'Tên người nhận trên giấy kiểm dịch bị sai chính tả' }] }, ['Đã nộp hồ sơ ở Chi cục Thú y, chờ cấp giấy']))
+  const b10 = paid(dom('ORD-2026-0110', 'KHO-LA', 'KHO-BD'), b3Horses, [['VH-011', 'NV-04', [0]]], 47, 9, 'clearance_in_progress', clr('domestic', ['done', 'todo'], accepted, ['Đã nộp hồ sơ ở Chi cục Thú y, chờ cấp giấy']))
   const b11 = paid(dom('ORD-2026-0111', 'KHO-DN', 'CLB-SG'), [bookingHorse(h(2)), bookingHorse(h(6))], [['VH-012', 'NV-05', [0, 1]]], 52, 10, 'clearance_in_progress', clr('domestic', allDone('domestic'), accepted))
   const b12 = paid(dom('ORD-2026-0112', 'KHO-BD', 'CLB-SG'), [bookingHorse(h(1))], [['VH-013', 'NV-01', [0]]], 44, 12, 'clearance_done', clr('domestic', allDone('domestic'), { ...accepted, doneAt: NOW - 18 * HOUR, doneBy: staffKD1.name }))
   const b13 = paid(intl('ORD-2026-0113', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(1)), bookingHorse(h(2))], [['VH-009', 'NV-03', [0, 1]]], 36, 14, 'clearance_in_progress', clr('international', allDone('international'), { ...accepted, horsesCleared: [h(1).id] }))
@@ -183,26 +184,26 @@ export const seedBookings = (): Booking[] => {
     return b
   }
 
-  const b17 = running(dom('ORD-2026-0117', 'KHO-DN', 'KHO-LA'), [bookingHorse(h(3)), bookingHorse(h(6))], [['VH-007', 'NV-02', [0, 1]]], 33, 'in_transit', NOW - 6.5 * HOUR, 5, 'Trạm trung chuyển Long Khánh', undefined, () => 2)
+  const b17 = running(dom('ORD-2026-0117', 'KHO-DN', 'KHO-LA'), [bookingHorse(h(3)), bookingHorse(h(6))], [['VH-007', 'NV-02', [0, 1]]], 33, 'in_transit', NOW - 6.5 * HOUR, 5, 'Trạm nghỉ Long Khánh', undefined, () => 2)
   b17.history = crewHist(b17, [6.5 * HOUR, 'Nguyễn Văn Hùng', 'Bắt đầu hành trình'], [3.2 * HOUR, 'Nguyễn Văn Hùng', 'Tiếp tục hành trình (Leg 2)'])
-  const b18 = running(intl('ORD-2026-0118', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(1)), bookingHorse(h(2))], [['VH-009', 'NV-03', [0, 1]]], 34, 'in_transit', NOW - 4 * HOUR, 6, 'Trạm trung chuyển Trảng Bàng', NOW + 1.5 * HOUR, () => 2)
-  b18.trips![0].run = fillRun(b18, b18.trips![0], 2, [{ condition: 'stress', temp: 24, note: 'Storm Runner đổ mồ hôi nhẹ, đã xịt nước làm mát', waterLiters: 10 }])
+  const b18 = running(intl('ORD-2026-0118', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(1)), bookingHorse(h(2))], [['VH-009', 'NV-03', [0, 1]]], 34, 'in_transit', NOW - 4 * HOUR, 6, 'Trạm nghỉ Trảng Bàng', NOW + 1.5 * HOUR, () => 2)
+  b18.trips![0].run = fillRun(b18, b18.trips![0], 2, [{ condition: 'stress', note: 'Storm Runner đổ mồ hôi nhẹ, đã xịt nước làm mát', waterLiters: 10 }])
   b18.history = crewHist(b18, [4 * HOUR, 'Trần Quốc Bảo', 'Bắt đầu hành trình'])
-  const b19 = running(dom('ORD-2026-0119', 'KHO-BD', 'CLB-SG'), [bookingHorse(h(2))], [['VH-004', 'NV-04', [0]]], 34, 'delivered_pending_settlement', NOW - 9 * HOUR, 5, 'Trạm trung chuyển Thủ Dầu Một', undefined, () => 3)
+  const b19 = running(dom('ORD-2026-0119', 'KHO-BD', 'CLB-SG'), [bookingHorse(h(2))], [['VH-004', 'NV-04', [0]]], 34, 'delivered_pending_settlement', NOW - 9 * HOUR, 5, 'Trạm nghỉ Thủ Dầu Một', undefined, () => 3)
   b19.history = crewHist(b19, [9 * HOUR, 'Phạm Văn D', 'Bắt đầu hành trình'], [3 * HOUR, 'Phạm Văn D', 'Hoàn tất giao ngựa. Chờ tài xế gửi chi phí để quyết toán'])
 
   // Bốn đơn của khách demo để thử bản đồ theo dõi: xe đang dừng ở trạm, đang chạy giữa đường, đang ở cửa khẩu, vừa thông quan chờ rời cửa khẩu
   const track = (b: Booking, who: string, ...more: [number, string, string][]) => { b.history = crewHist(b, [5 * HOUR, who, 'Bắt đầu hành trình'], ...more); return b }
-  const b34 = running(dom('ORD-2026-0134', 'KHO-DN', 'CLB-SG'), [bookingHorse(h(1))], [['VH-003', 'NV-05', [0]]], 36, 'in_transit', NOW - 3 * HOUR, 4, 'Trạm trung chuyển Biên Hòa', undefined, () => 2)
+  const b34 = running(dom('ORD-2026-0134', 'KHO-DN', 'CLB-SG'), [bookingHorse(h(1))], [['VH-003', 'NV-05', [0]]], 36, 'in_transit', NOW - 3 * HOUR, 4, 'Trạm nghỉ Biên Hòa', undefined, () => 2)
   const rest34 = b34.trips![0].run!.checkpoints[1]
   rest34.doneAt = undefined // đã tới trạm, đang nghỉ, chưa bấm tiếp tục
   b34.trips![0].run!.welfare = []
-  track(b34, crewName(b34.trips![0].driverId), [20 * 60_000, crewName(b34.trips![0].driverId), 'Xác nhận đã tới trạm trung chuyển'])
-  const b35 = running(dom('ORD-2026-0135', 'KHO-BD', 'KHO-LA'), [bookingHorse(h(2))], [['VH-005', 'NV-04', [0]]], 36, 'in_transit', NOW - 3.2 * HOUR, 4, 'Trạm trung chuyển Củ Chi', undefined, () => 2)
+  track(b34, crewName(b34.trips![0].driverId), [20 * 60_000, crewName(b34.trips![0].driverId), 'Xác nhận đã tới trạm nghỉ'])
+  const b35 = running(dom('ORD-2026-0135', 'KHO-BD', 'KHO-LA'), [bookingHorse(h(2))], [['VH-005', 'NV-04', [0]]], 36, 'in_transit', NOW - 3.2 * HOUR, 4, 'Trạm nghỉ Củ Chi', undefined, () => 2)
   track(b35, crewName(b35.trips![0].driverId), [HOUR, crewName(b35.trips![0].driverId), 'Tiếp tục hành trình'])
-  const b36 = running(intl('ORD-2026-0136', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(3))], [['VH-006', 'NV-05', [0]]], 36, 'in_transit', NOW - 5 * HOUR, 6, 'Trạm trung chuyển Củ Chi', NOW - 0.5 * HOUR, () => 3)
+  const b36 = running(intl('ORD-2026-0136', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(3))], [['VH-006', 'NV-05', [0]]], 36, 'in_transit', NOW - 5 * HOUR, 6, 'Trạm nghỉ Củ Chi', NOW - 0.5 * HOUR, () => 3)
   track(b36, crewName(b36.trips![0].driverId), [30 * 60_000, crewName(b36.trips![0].driverId), 'Xác nhận đã tới cửa khẩu'])
-  const b37 = running(intl('ORD-2026-0137', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(4))], [['VH-008', 'NV-03', [0]]], 36, 'in_transit', NOW - 6 * HOUR, 6, 'Trạm trung chuyển Củ Chi', NOW - 1.5 * HOUR, () => 4)
+  const b37 = running(intl('ORD-2026-0137', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), [bookingHorse(h(4))], [['VH-008', 'NV-03', [0]]], 36, 'in_transit', NOW - 6 * HOUR, 6, 'Trạm nghỉ Củ Chi', NOW - 1.5 * HOUR, () => 4)
   track(b37, crewName(b37.trips![0].driverId), [10 * 60_000, crewName(b37.trips![0].driverId), 'Đã thông quan thành công'])
 
   // Phương án sự cố mẫu theo từng nhóm: trạm / cứu hộ gần nhất với vị trí xe (đường nối thẳng, số mẫu)
@@ -210,7 +211,7 @@ export const seedBookings = (): Booking[] => {
   const line = (a: GeoPoint, z: GeoPoint): PlanLine => { const km = Math.round(Math.hypot((a.lat - z.lat) * 111, (a.lng - z.lng) * 108) * 1.3); return { path: [[a.lat, a.lng], [z.lat, z.lng]], km, hours: km / AVG_SPEED_KMH } }
   const samplePlan = (kind: Incident['kind'], at: GeoPoint, to: GeoPoint, over: Partial<IncidentPlan> & Pick<IncidentPlan, 'newEta' | 'at'>): IncidentPlan => {
     const station = nearestTo(at, TRANSIT_STATIONS, 1)[0]
-    const base = { note: '', budget: 2_500_000, by: 'Trần Minh', ...over }
+    const base = { note: '', by: 'Trần Minh', ...over }
     if (kind === 'traffic_jam') return { ...base, action: 'reroute', note: base.note || 'Đi vòng qua đường tránh', detour: line(at, to) }
     const toStation = line(at, station)
     if (kind === 'horse_health') return { ...base, action: 'to_station', station: station.name, restMinutes: 60, toStation }
@@ -220,13 +221,13 @@ export const seedBookings = (): Booking[] => {
 
   // Đã giao, có sự cố đã xử lý xong và tài xế đã gửi bảng kê chi phí: chờ Manager đối soát (Flow 6)
   const costed = (id: string, horse: number, kind: Incident['kind'], expenses: [Incident['expenses'][number]['category'], string, number, Incident['expenses'][number]['payer']][]): Booking => {
-    const b = running(dom(id, 'KHO-BD', 'CLB-SG'), [bookingHorse(h(horse))], [['VH-004', 'NV-04', [0]]], 34, 'expenses_submitted', NOW - 9 * HOUR, 5, 'Trạm trung chuyển Thủ Dầu Một', undefined, () => 3)
+    const b = running(dom(id, 'KHO-BD', 'CLB-SG'), [bookingHorse(h(horse))], [['VH-004', 'NV-04', [0]]], 34, 'expenses_submitted', NOW - 9 * HOUR, 5, 'Trạm nghỉ Thủ Dầu Một', undefined, () => 3)
     const driver = crewName('NV-04')
     b.incidents = [{
       id: `INC-${id.slice(-4)}-1`, tripId: b.trips![0].tripId, kind, reportedBy: driver, reportedAt: NOW - 7 * HOUR, location: mid('KHO-BD', 'CLB-SG'), photo: 'sos_scene.jpg', note: kind === 'horse_health' ? 'Ngựa đau bụng nhẹ, đổ mồ hôi' : 'Nổ lốp sau',
       status: 'resolved', resolvedAt: NOW - 5 * HOUR, fitConfirmedAt: NOW - 5.2 * HOUR,
-      plan: samplePlan(kind, mid('KHO-BD', 'CLB-SG'), findLocation('CLB-SG')!, { newEta: NOW - 4 * HOUR, budget: 2_000_000, at: NOW - 6.8 * HOUR }),
-      approval: { budget: 2_000_000, calledCustomer: true, at: NOW - 6.5 * HOUR, by: 'Quản lý' },
+      plan: samplePlan(kind, mid('KHO-BD', 'CLB-SG'), findLocation('CLB-SG')!, { newEta: NOW - 4 * HOUR, at: NOW - 6.8 * HOUR }),
+      approval: { at: NOW - 6.5 * HOUR, by: 'Quản lý' },
       expenses: expenses.map(([category, label, amount, payer], i) => ({ id: `EXP-${id.slice(-4)}-${i + 1}`, category, label, photo: `${category}_receipt.jpg`, amount, payer, at: NOW - 6 * HOUR, by: driver })),
     }]
     b.expensesSubmittedAt = NOW - 2 * HOUR
@@ -237,13 +238,13 @@ export const seedBookings = (): Booking[] => {
 
   // Xe đang chạy gặp sự cố ở từng bước xử lý (Flow 5)
   const stuck = (id: string, kind: Incident['kind'], state: Exclude<Incident['status'], 'resolved'>, from: string, to: string): Booking => {
-    const b = running(dom(id, from, to), [bookingHorse(h(3))], [['VH-007', 'NV-02', [0]]], 33, 'in_transit', NOW - 3 * HOUR, 5, 'Trạm trung chuyển Long Khánh', undefined, () => 2)
+    const b = running(dom(id, from, to), [bookingHorse(h(3))], [['VH-007', 'NV-02', [0]]], 33, 'in_transit', NOW - 3 * HOUR, 5, 'Trạm nghỉ Long Khánh', undefined, () => 2)
     const driver = crewName('NV-02')
     const where = mid(from, to)
     const plan = samplePlan(kind, where, findLocation(to)!, { note: 'Theo phương án trên bản đồ', newEta: NOW + 3 * HOUR, at: NOW - 1 * HOUR })
     const inc: Incident = { id: `INC-${id.slice(-4)}-1`, tripId: b.trips![0].tripId, kind, reportedBy: driver, reportedAt: NOW - 2 * HOUR, location: where, photo: 'sos_scene.jpg', note: kind === 'horse_health' ? 'Ngựa đau bụng, đổ mồ hôi' : kind === 'vehicle_breakdown' ? 'Hỏng điều hòa thùng xe' : 'Kẹt xe kéo dài do tai nạn phía trước', status: state, expenses: [] }
     if (state !== 'reported') inc.plan = plan
-    if (state === 'active') { inc.approval = { budget: 2_500_000, calledCustomer: true, at: NOW - 0.5 * HOUR, by: 'Quản lý' }; inc.expenses = [{ id: `EXP-${id.slice(-4)}-1`, category: 'other', label: 'Phí đường tránh', photo: 'other_receipt.jpg', amount: 150_000, payer: 'carrier', at: NOW - 0.3 * HOUR, by: driver }] }
+    if (state === 'active') { inc.approval = { at: NOW - 0.5 * HOUR, by: 'Quản lý' }; inc.expenses = [{ id: `EXP-${id.slice(-4)}-1`, category: 'other', label: 'Phí đường tránh', photo: 'other_receipt.jpg', amount: 150_000, payer: 'carrier', at: NOW - 0.3 * HOUR, by: driver }] }
     b.incidents = [inc]
     b.status = state === 'reported' ? 'incident_reported' : state === 'pending_approval' ? 'pending_emergency_approval' : 'emergency_plan_active'
     b.history = crewHist(b, [3 * HOUR, driver, 'Bắt đầu hành trình'], [2 * HOUR, driver, `SOS xe ${b.trips![0].tripId}`])
@@ -275,8 +276,8 @@ export const seedBookings = (): Booking[] => {
   // ===== Đơn nhiều xe: 6 ngựa chia 3 + 3 cho hai xe 4 chỗ =====
   const six = [1, 2, 3, 4, 5, 6].map(n => bookingHorse(h(n)))
   const b21 = paid(intl('ORD-2026-0121', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), six, [['VH-009', 'NV-01', [0, 1, 2]], ['VH-010', 'NV-05', [3, 4, 5]]], 70, 5, 'waybill_issued', clr('international', []))
-  // Hai xe, 4 ngựa: xe 1 đã chạy qua trạm trung chuyển, xe 2 đang đến điểm đón
-  const b22 = running(dom('ORD-2026-0122', 'KHO-DN', 'KHO-LA'), [bookingHorse(h(1)), bookingHorse(h(2)), bookingHorse(h(3)), bookingHorse(h(6))], [['VH-002', 'NV-01', [0, 1]], ['VH-003', 'NV-05', [2, 3]]], 33, 'in_transit', NOW - 5 * HOUR, 5, 'Trạm trung chuyển Long Khánh', undefined, i => (i === 0 ? 2 : undefined))
+  // Hai xe, 4 ngựa: xe 1 đã chạy qua trạm nghỉ, xe 2 đang đến điểm đón
+  const b22 = running(dom('ORD-2026-0122', 'KHO-DN', 'KHO-LA'), [bookingHorse(h(1)), bookingHorse(h(2)), bookingHorse(h(3)), bookingHorse(h(6))], [['VH-002', 'NV-01', [0, 1]], ['VH-003', 'NV-05', [2, 3]]], 33, 'in_transit', NOW - 5 * HOUR, 5, 'Trạm nghỉ Long Khánh', undefined, i => (i === 0 ? 2 : undefined))
   b22.trips![1] = { ...b22.trips![1], departedAt: NOW - 1 * HOUR }
   b22.history = crewHist(b22, [5 * HOUR, 'Lê Văn C', 'Xe 1 bắt đầu hành trình'])
 
@@ -292,7 +293,7 @@ export const seedBookings = (): Booking[] => {
       trips: mkTrips('ORD-2026-0102', [['VH-002', 'NV-01', [0, 1, 2]]], b2Horses), clearance: blankClearance('domestic'),
       history: [log(NOW - 1 * DAY, CUSTOMER.name, 'Gửi yêu cầu đặt đơn'), log(NOW - 20 * HOUR, 'Quản lý', 'Tiếp nhận. Giao Phạm Văn Hưng (kiểm dịch) và Trần Minh (điều phối)')] },
 
-    // Hai đơn quốc tế đang thẩm định, chưa có xe và lộ trình: để Coordinator thử chọn cửa khẩu và trạm trung chuyển trên bản đồ
+    // Hai đơn quốc tế đang thẩm định, chưa có xe và lộ trình: để Coordinator thử chọn cửa khẩu và trạm nghỉ trên bản đồ
     { ...common, ...intl('ORD-2026-0131', 'KHO-DN', 'KHO-PNH', 'Mộc Bài – Bavet'), gate: undefined, createdAt: NOW - 8 * HOUR, departAt: daysFromToday(42), consignee: consignee('Trung tâm Kiểm dịch Phnom Penh', 'Phnom Penh, Campuchia'),
       horses: [bookingHorse(h(4)), bookingHorse(h(5))], status: 'under_review', intake: intake(NOW - 6 * HOUR, staffKD1, staffDP1), medical: { status: 'pending' }, clearance: blankClearance('international'),
       history: [log(NOW - 8 * HOUR, CUSTOMER.name, 'Gửi yêu cầu đặt đơn'), log(NOW - 6 * HOUR, 'Quản lý', 'Tiếp nhận. Giao Phạm Văn Hưng (kiểm dịch) và Trần Minh (điều phối)')] },
@@ -307,7 +308,7 @@ export const seedBookings = (): Booking[] => {
       history: [log(NOW - 2 * DAY, CUSTOMER.name, 'Gửi yêu cầu đặt đơn'), log(NOW - 40 * HOUR, 'Quản lý', 'Tiếp nhận, giao Phạm Văn Hưng và Phạm Tâm'), log(NOW - 20 * HOUR, staffDP3.name, 'Xác nhận phương án xe và lộ trình'), log(NOW - 5 * HOUR, staffKD1.name, 'Yêu cầu khách bổ sung xét nghiệm EIA của Kim Lân')] },
 
     { ...b4, quote: undefined, clearance: blankClearance('international'), intake: intake(NOW - 2 * DAY, staffKD2, staffDP1), medical: medicalOk(NOW - 30 * HOUR, staffKD2.name),
-      history: [log(NOW - 3 * DAY, CUSTOMER.name, 'Gửi yêu cầu đặt đơn'), log(NOW - 2 * DAY, 'Quản lý', 'Tiếp nhận, giao Nguyễn Thị Thu và Trần Minh'), log(NOW - 36 * HOUR, staffDP1.name, 'Xác nhận phương án xe và lộ trình'), log(NOW - 30 * HOUR, staffKD2.name, 'Xác nhận đạt y tế')] },
+      history: [log(NOW - 3 * DAY, CUSTOMER.name, 'Gửi yêu cầu đặt đơn'), log(NOW - 2 * DAY, 'Quản lý', 'Tiếp nhận, giao Nguyễn Thị Thu và Trần Minh'), log(NOW - 36 * HOUR, staffDP1.name, 'Xác nhận phương án xe và lộ trình'), log(NOW - 30 * HOUR, staffKD2.name, 'Duyệt hồ sơ ngựa')] },
 
     { ...b5, clearance: blankClearance('domestic'), intake: intake(NOW - 3 * DAY, staffKD2, staffDP1), medical: medicalOk(NOW - 2 * DAY, staffKD2.name), quote: draftQuote(b5, ['VH-009'], NOW - 10 * HOUR),
       history: [log(NOW - 4 * DAY, CUSTOMER.name, 'Gửi yêu cầu đặt đơn'), log(NOW - 10 * HOUR, 'Quản lý', 'Duyệt và gửi báo giá')] },

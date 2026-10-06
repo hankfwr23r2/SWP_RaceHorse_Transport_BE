@@ -1,10 +1,10 @@
 // Manager: tiếp nhận đơn mới và kích hoạt thẩm định song song (PRD mục 2.3).
-// Hệ thống gợi ý Kiểm dịch viên và Điều phối viên ít việc nhất; Manager có thể đổi người.
+// Manager chọn Kiểm dịch viên và Điều phối viên đang hoạt động để giao việc (không xem số đơn họ đang làm).
 import { ReadMore } from '@shared/ui/ReadMore'
 import { useState } from 'react'
 import { useAuth } from '@shared/auth/AuthContext'
 import { formatDate, formatDateTime } from '@shared/lib/format'
-import { suggestStaff } from '@shared/lib/booking'
+import { activeStaff } from '@shared/lib/booking'
 import { bookingsApi } from '@shared/services/bookings'
 import { staffApi } from '@shared/services/staff'
 import { useLoad } from '@shared/services/useLoad'
@@ -20,28 +20,27 @@ import { StaffPicker } from '../../../shared/StaffPicker'
 type Tab = 'new' | 'running'
 
 // Nút chọn người giao việc: bấm mở popup thẻ
-function PickButton({ person, icon, suggested, onClick }: { person?: { name: string; load: number }; icon: string; suggested: boolean; onClick: () => void }) {
+function PickButton({ person, icon, onClick }: { person?: { name: string }; icon: string; onClick: () => void }) {
   return (
     <button type="button" className="btn btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', gap: 10, minHeight: 46, textAlign: 'left' }} onClick={onClick}>
       <i className={`fa-solid ${icon}`} aria-hidden="true" style={{ color: '#ea580c' }} />
-      <span style={{ flex: 1 }}>{person ? <><b>{person.name}</b> · {person.load} đơn đang làm{suggested ? ' (gợi ý)' : ''}</> : 'Chọn người'}</span>
+      <span style={{ flex: 1 }}>{person ? <b>{person.name}</b> : 'Chọn người'}</span>
       <small style={{ color: '#ea580c', fontWeight: 600 }}>{person ? 'Đổi' : 'Chọn'}</small>
     </button>
   )
 }
 
-function IntakeModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; onClose: () => void; onDone: () => void }) {
+function IntakeModal({ b, onClose, onDone }: { b: Booking; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
   const { session } = useAuth()
   const { data: staff } = useLoad(staffApi.list)
-  const specialists = staff ? suggestStaff(staff, 'specialist', all) : []
-  const coordinators = staff ? suggestStaff(staff, 'coordinator', all) : []
+  const specialists = staff ? activeStaff(staff, 'specialist') : []
+  const coordinators = staff ? activeStaff(staff, 'coordinator') : []
   const [sp, setSp] = useState('')
   const [co, setCo] = useState('')
   const [busy, setBusy] = useState(false)
   const [reason, setReason] = useState<string | null>(null) // không null = đang nhập lý do từ chối
-  const spId = sp || specialists[0]?.id
-  const coId = co || coordinators[0]?.id
+  const spId = sp, coId = co // Manager tự chọn, không có người mặc định
 
   const activate = async () => {
     const a = specialists.find(x => x.id === spId)
@@ -85,16 +84,16 @@ function IntakeModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; 
       <h4 style={{ margin: '18px 0 10px' }}>Giao việc</h4>
       <div className={s.form2}>
         <div className="form-group">
-          <label>Kiểm dịch viên (thẩm định y tế)</label>
-          <PickButton icon="fa-user-doctor" person={spId ? specialists.find(x => x.id === spId) : undefined} suggested={spId === specialists[0]?.id} onClick={() => setPick('specialist')} />
+          <label>Kiểm dịch viên (duyệt hồ sơ ngựa)</label>
+          <PickButton icon="fa-user-doctor" person={spId ? specialists.find(x => x.id === spId) : undefined} onClick={() => setPick('specialist')} />
         </div>
         <div className="form-group">
           <label>Điều phối viên (xe và lộ trình)</label>
-          <PickButton icon="fa-route" person={coId ? coordinators.find(x => x.id === coId) : undefined} suggested={coId === coordinators[0]?.id} onClick={() => setPick('coordinator')} />
+          <PickButton icon="fa-route" person={coId ? coordinators.find(x => x.id === coId) : undefined} onClick={() => setPick('coordinator')} />
         </div>
       </div>
-      <ReadMore className={s.hint} text={'Hệ thống gợi ý người ít việc nhất và bỏ qua người đang nghỉ. Tiếp nhận xong, Điều phối viên tự chọn xe, tài xế và hộ tống (chia ngựa lên nhiều xe nếu cần) khi lập lộ trình.'} />
-      {pick && staff && <StaffPicker task={pick} staff={staff} all={all} selected={(pick === 'specialist' ? spId : coId) ?? ''} suggested={(pick === 'specialist' ? specialists : coordinators)[0]?.id} onPick={id => (pick === 'specialist' ? setSp(id) : setCo(id))} onClose={() => setPick(null)} />}
+      <ReadMore className={s.hint} text={'Chọn người đang hoạt động; người đang nghỉ bị khóa. Tiếp nhận xong, Điều phối viên chọn xe (chia ngựa lên nhiều xe nếu cần) và lập lộ trình, rồi bạn chọn tài xế và hộ tống cho từng xe khi duyệt báo giá.'} />
+      {pick && staff && <StaffPicker task={pick} staff={staff} selected={(pick === 'specialist' ? spId : coId) ?? ''} onPick={id => (pick === 'specialist' ? setSp(id) : setCo(id))} onClose={() => setPick(null)} />}
     </Modal>
   )
 }
@@ -121,7 +120,7 @@ export default function IntakePage() {
       <ListPage title="Tiếp nhận đơn hàng" subtitle="Giao Kiểm dịch viên và Điều phối viên thẩm định song song." tabs={[['new', 'Chờ tiếp nhận', fresh.length], ['running', 'Đang thẩm định', running.length]]} tab={tab} onTab={setTab} hot={['new']}
         rows={tab === 'new' ? fresh : running} rowKey={b => b.id} columns={columns} haystack={b => [b.id, b.customer, b.origin.name, b.dest.name]} dateOf={b => b.departAt} loaded={!!all}
         emptyText={tab === 'new' ? 'Không có đơn nào chờ tiếp nhận.' : 'Không có đơn nào đang thẩm định.'} />
-      {open && <IntakeModal b={open} all={list} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload() }} />}
+      {open && <IntakeModal b={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload() }} />}
     </>
   )
 }

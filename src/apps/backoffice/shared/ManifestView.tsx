@@ -38,7 +38,7 @@ export function ManifestView({ b, trip, vehicle, driver, escort }: Props) {
       <section className={s.sec}>
         <h4><b>3</b> Ngựa trên xe</h4>
         <ul className={s.list}>
-          {horses.map(h => <li key={h.horseId}><b>{h.name}</b> · Chip {h.microchip} · {SEX_LABEL[h.sex]} · {h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'} · {h.targetTemp}°C{b.type === 'international' && <> · Giấy thông quan: <b>{b.clearance?.horsesCleared.includes(h.horseId) ? 'đã có' : 'chưa có'}</b></>}</li>)}
+          {horses.map(h => <li key={h.horseId}><b>{h.name}</b> · Chip {h.microchip} · {SEX_LABEL[h.sex]} · {h.stall === 'single' ? 'Khoang đơn' : 'Khoang tiêu chuẩn'}{b.type === 'international' && <> · Giấy thông quan: <b>{b.clearance?.horsesCleared.includes(h.horseId) ? 'đã có' : 'chưa có'}</b></>}</li>)}
         </ul>
       </section>
 
@@ -50,7 +50,7 @@ export function ManifestView({ b, trip, vehicle, driver, escort }: Props) {
               <li key={l.no}>
                 <div><b>Chặng {l.no}:</b> {l.from} → {l.to}</div>
                 <div className={s.sub}>Khởi hành {formatDateTime(l.departAt)} · đến {formatClock(l.arriveAt)}</div>
-                {route.rests[i] && <div className={s.rest}><i className="fa-solid fa-location-dot" aria-hidden="true" /> Trạm trung chuyển <b>{route.rests[i].name}</b>: dừng {route.rests[i].minutes} phút</div>}
+                {route.rests[i] && <div className={s.rest}><i className="fa-solid fa-location-dot" aria-hidden="true" /> Trạm nghỉ <b>{route.rests[i].name}</b>: dừng {route.rests[i].minutes} phút</div>}
               </li>
             ))}
           </ol>

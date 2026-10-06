@@ -163,7 +163,7 @@ function Lookup() {
 }
 
 // ===== Mạng lưới =====
-// Tuyến mẫu theo từng nước, lấy từ các kho và cửa khẩu có thật trong hệ thống. Điểm giữa là cửa khẩu (thông quan) hoặc trạm trung chuyển (nghỉ ngựa).
+// Tuyến mẫu theo từng nước, lấy từ các kho và cửa khẩu có thật trong hệ thống. Điểm giữa là cửa khẩu (thông quan) hoặc trạm nghỉ (nghỉ ngựa).
 type Stop = { x: number; y: number; name: string; sub: string }
 const sample = (from: string, to: string, gate?: string) => {
   const a = findLocation(from)!, b = findLocation(to)!
@@ -250,7 +250,7 @@ function Journey({ country }: { country: CountryCode }) {
       </svg>
       <div className={s.journeyLegend}>
         <span><i className={s.legendGate} /> Cửa khẩu</span>
-        <span><i className={s.legendStation} /> Trạm trung chuyển</span>
+        <span><i className={s.legendStation} /> Trạm nghỉ</span>
       </div>
     </div>
   )
@@ -312,7 +312,7 @@ const PROCESS: [string, string, string, string][] = [
   ['fa-paper-plane', 'Gửi đơn', 'Chọn điểm đón, điểm giao trên bản đồ, chọn ngựa từ Hồ sơ ngựa, dịch vụ và bảo hiểm.', `Trước ngày đi ≥ ${MIN_LEAD_DAYS} ngày`],
   ['fa-magnifying-glass', 'Thẩm định', 'Quản lý tiếp nhận; Kiểm dịch viên duyệt hồ sơ ngựa; Điều phối viên chọn xe, tài xế, hộ tống và lập lộ trình.', 'Song song, trước khi báo giá'],
   ['fa-credit-card', 'Báo giá & đặt cọc', `Báo giá cố định có hiệu lực ${QUOTE_VALID_HOURS} giờ. Đặt cọc ${DEPOSIT_RATE * 100}% để nhận Vận đơn.`, `Trong ${QUOTE_VALID_HOURS} giờ`],
-  ['fa-folder-open', 'Làm giấy tờ', 'Nhà xe làm giấy kiểm dịch (và hải quan nếu đi quốc tế); bạn xem từng giấy đã nộp và báo sai nếu có.', 'Trước ngày đi'],
+  ['fa-folder-open', 'Làm giấy tờ', 'Nhà xe làm giấy kiểm dịch (và hải quan nếu đi quốc tế); bạn chỉ cần xem tiến độ từng giấy đã nộp.', 'Trước ngày đi'],
   ['fa-truck-moving', 'Vận chuyển', `Ngày bốc ngựa bạn trả ${100 - DEPOSIT_RATE * 100}% còn lại. Tài xế check-in từng mốc, hộ tống ghi nhật ký sức khỏe, bạn xem xe trên bản đồ.`, 'Theo lộ trình'],
   ['fa-clipboard-check', 'Bàn giao & quyết toán', 'Ký biên bản giao nhận. Chỉ khi có sự cố liên quan đến ngựa mới có khoản phát sinh có chứng từ; sau đó bạn đánh giá chuyến đi.', 'Trong 24 giờ sau khi có quyết toán'],
 ]

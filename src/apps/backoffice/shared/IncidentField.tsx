@@ -76,14 +76,14 @@ export function IncidentPanel({ b, inc, role, run }: { b: Booking; inc: Incident
         {inc.status === 'active' && inc.plan && inc.approval && (
           <>
           <IncidentPlanView b={b} i={inc} height={300} />
-          <p><b>Đã duyệt:</b> {INCIDENT_ACTION[inc.plan.action]}. ETA mới {formatDateTime(inc.plan.newEta)}. Hạn mức chi {formatVND(inc.approval.budget)}{inc.plan.note ? `. Ghi chú: ${inc.plan.note}` : ''}.</p>
+          <p><b>Đã duyệt:</b> {INCIDENT_ACTION[inc.plan.action]}. ETA mới {formatDateTime(inc.plan.newEta)}.{inc.plan.note ? ` Ghi chú: ${inc.plan.note}` : ''}</p>
           </>
         )}
       </Panel>
       {inc.status === 'active' && (
         <>
           <Panel title="Chi phí tại chỗ" icon="fa-receipt">
-            <p>Đã chi {formatVND(spent)} / hạn mức {formatVND(inc.approval!.budget)}. Chụp hóa đơn trước, số tiền mở khóa sau.</p>
+            <p>Đã chi {formatVND(spent)}. Chụp hóa đơn trước, số tiền mở khóa sau.</p>
             <ul className={s.checklist}>{inc.expenses.map(e => <li key={e.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', fontSize: '0.9rem' }}><ImageThumb name={e.photo} size={40} /><span>{EXPENSE_CATEGORY[e.category]}: {e.label} — <b>{formatVND(e.amount)}</b></span></li>)}</ul>
             <ExpenseForm b={b} inc={inc} run={run} />
           </Panel>

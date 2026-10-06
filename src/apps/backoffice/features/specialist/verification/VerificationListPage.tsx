@@ -1,4 +1,4 @@
-// Specialist: hồ sơ được giao thẩm định y tế (PRD mục 2.4, nhánh A).
+// Specialist: hồ sơ được giao duyệt hồ sơ ngựa (PRD mục 2.4, nhánh A).
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
@@ -31,8 +31,8 @@ export default function VerificationListPage() {
     { head: 'Thao tác', cell: b => <Link to={`/specialist/verification/${b.id}`} className={`btn btn-sm ${tab === 'todo' ? 'btn-primary' : 'btn-ghost'}`}>{tab === 'todo' ? 'Thẩm định' : 'Xem'}</Link>, right: true },
   ]
   return (
-    <ListPage title="Thẩm định y tế" subtitle="Hồ sơ ngựa được giao cho bạn. Đối chiếu hộ chiếu, microchip, xét nghiệm và xác nhận đạt y tế."
-      tabs={[['todo', 'Cần thẩm định', groups.todo.length], ['waiting', 'Chờ khách bổ sung', groups.waiting.length], ['done', 'Đã đạt y tế', groups.done.length]]} tab={tab} onTab={setTab} hot={['todo']}
+    <ListPage title="Duyệt hồ sơ ngựa" subtitle="Hồ sơ ngựa được giao cho bạn. Đối chiếu hộ chiếu, microchip, xét nghiệm và duyệt hồ sơ ngựa."
+      tabs={[['todo', 'Cần duyệt', groups.todo.length], ['waiting', 'Chờ khách bổ sung', groups.waiting.length], ['done', 'Đã duyệt', groups.done.length]]} tab={tab} onTab={setTab} hot={['todo']}
       rows={groups[tab]} rowKey={b => b.id} columns={columns} haystack={b => [b.id, b.customer, b.origin.name, b.dest.name]} dateOf={b => b.departAt} loaded={!!all} emptyText="Không có hồ sơ nào ở mục này." />
   )
 }

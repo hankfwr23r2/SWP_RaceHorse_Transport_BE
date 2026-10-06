@@ -7,6 +7,7 @@ import { ImageThumb } from '@shared/ui/ImageThumb'
 import { useToast } from '@shared/ui/toast'
 import s from './OrderDetail.module.css'
 import { FormSelect } from '@shared/ui/FormSelect'
+import { PolicyLink } from '@shared/ui/PolicyLink'
 
 // Diễn biến sự cố của xe (PRD mục 6.7): khách thấy nhóm, bước xử lý và ETA mới
 export function IncidentsCard({ b }: { b: CustomerBookingView }) {
@@ -39,7 +40,7 @@ export function SettlementCard({ b, owner, onDone }: { b: CustomerBookingView; o
   return (
     <div className="card">
       <div className="card-header"><h3><i className="fa-solid fa-file-invoice-dollar" /> Bảng quyết toán</h3>{b.status === 'payment_overdue' && <span className="badge badge-danger">Quá hạn</span>}{b.status === 'completed' && <span className="badge badge-success">Đã hoàn tất</span>}</div>
-      <p className="form-hint">Giá chuyến đã cố định từ lúc báo giá, nhiên liệu và cầu đường không tính thêm. Dưới đây là các khoản phát sinh do ngựa mà bạn chịu theo chính sách.</p>
+      <p className="form-hint">Giá chuyến đã cố định từ lúc báo giá, nhiên liệu và cầu đường không tính thêm. Dưới đây là các khoản phát sinh do ngựa mà bạn chịu theo <PolicyLink doc="incident_cost">chính sách chi phí sự cố</PolicyLink>.</p>
       {st.items.length ? (
         <div className={s.bank}>{st.items.map((it, i) => <div key={i}><span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{it.photo && <ImageThumb name={it.photo} size={32} />}{it.label}</span><b>{formatVND(it.amount)}</b></div>)}<div><span>Tổng phải trả</span><b>{formatVND(st.total)}</b></div></div>
       ) : <p>Không có khoản nào phải trả thêm.</p>}

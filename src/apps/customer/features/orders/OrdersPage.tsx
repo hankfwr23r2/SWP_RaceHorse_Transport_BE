@@ -29,6 +29,7 @@ export default function OrdersPage() {
   const { data: orders } = useLoad(() => customerBookingsApi.list(session!.name), [session?.name])
   const [params, setParams] = useSearchParams()
   const q = params.get('group')
+  const newId = params.get('new') // đơn khách vừa gửi: báo đơn nằm ở đâu và làm nổi thẻ đơn đó
   const [tab, setTabState] = useState<Tab>(isTab(q) ? q : 'all')
   const setTab = (t: Tab) => { setTabState(t); setParams(t === 'all' ? {} : { group: t }, { replace: true }) }
   const [text, setText] = useState('')
@@ -44,6 +45,7 @@ export default function OrdersPage() {
   const list = filtered.filter(x => tab === 'all' || x.tab === tab).sort((a, z) => statusRank(a.b.status) - statusRank(z.b.status) || a.b.departAt - z.b.departAt)
   const ref = useStaggerIn('[data-row]', [tab, all.length])
   const filtering = !!(keyword || from || to)
+  const fresh = all.find(x => x.b.id === newId)
 
   return (
     <div className="page">
@@ -53,6 +55,13 @@ export default function OrdersPage() {
           <div className="page-header" style={{ margin: 0 }}><h1>Đơn hàng của tôi</h1></div>
           <Link to="/booking/route" className="btn btn-primary"><i className="fa-solid fa-plus" /> Đặt chuyến mới</Link>
         </div>
+
+        {fresh && (
+          <div className={s.freshNote} role="status">
+            <i className="fa-solid fa-circle-check" aria-hidden="true" />
+            <span>Đơn <b>{fresh.b.id}</b> vừa gửi nằm ở tab <b>{TABS.find(t => t[0] === fresh.tab)?.[1]}</b>, bước <b>{stepOf(fresh.b.status) + 1}/{BOOKING_STEPS.length}: {BOOKING_STEPS[stepOf(fresh.b.status)]}</b>. Thẻ đơn được đánh dấu bên dưới.</span>
+          </div>
+        )}
 
         <div className={s.tabBar} role="tablist" aria-label="Trạng thái đơn">
           {TABS.map(([k, label]) => {
@@ -79,9 +88,10 @@ export default function OrdersPage() {
               const at = stepOf(b.status)
               const stopped = b.status === 'quote_expired' || b.status === 'rejected' || b.status === 'cancelled'
               return (
-                <article key={b.id} data-row className={`${s.card} ${next.actionNeeded ? s.alertCard : ''}`}>
+                <article key={b.id} data-row className={`${s.card} ${next.actionNeeded ? s.alertCard : ''} ${b.id === newId ? s.freshCard : ''}`}>
                   <div className={s.head}>
                     <span className={s.id}>{b.id}</span>
+                    {b.id === newId && <span className="badge badge-success">Vừa đặt</span>}
                     <span className="badge badge-muted">{b.type === 'international' ? 'Quốc tế' : 'Trong nước'}</span>
                     <span className={s.headRight}><BookingStatusBadge status={b.status} /></span>
                   </div>

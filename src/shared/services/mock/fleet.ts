@@ -51,11 +51,20 @@ const rawCrew = (): CrewMember[] => [
   { id: 'TX-12', name: 'Lê Văn Tài', role: 'driver', phone: '0904 606 707' },
   { id: 'TX-13', name: 'Trịnh Văn Long', role: 'driver', phone: '0904 808 909' },
   { id: 'TX-14', name: 'Hoàng Văn Tâm', role: 'driver', phone: '0905 121 212' },
+  { id: 'TX-15', name: 'Bùi Quang Vinh', role: 'driver', phone: '0905 232 323' },
+  { id: 'TX-16', name: 'Đinh Công Minh', role: 'driver', phone: '0905 343 434' },
+  { id: 'TX-17', name: 'Mai Văn Khoa', role: 'driver', phone: '0905 454 545' },
+  { id: 'TX-18', name: 'Cao Xuân Lộc', role: 'driver', phone: '0905 565 656' },
   { id: 'NV-01', name: 'Lê Thị C', role: 'escort', phone: '0902 111 222', note: 'NVCS 5 năm KN' },
   { id: 'NV-02', name: 'Võ Thị Lan', role: 'escort', phone: '0908 333 444', note: 'NVCS 3 năm KN' },
   { id: 'NV-03', name: 'Huỳnh Thị Mai', role: 'escort', phone: '0902 555 666', note: 'NVCS 2 năm KN' },
   { id: 'NV-04', name: 'Đỗ Văn Nam', role: 'escort', phone: '0902 777 888', note: 'NVCS 4 năm KN' },
   { id: 'NV-05', name: 'Đỗ Thị Hạnh', role: 'escort', phone: '0902 999 000', note: 'NVCS 1 năm KN' },
+  { id: 'NV-06', name: 'Lý Thu Hà', role: 'escort', phone: '0906 121 212', note: 'NVCS 3 năm KN' },
+  { id: 'NV-07', name: 'Ngô Thanh Tâm', role: 'escort', phone: '0906 232 323', note: 'NVCS 2 năm KN' },
+  { id: 'NV-08', name: 'Dương Mỹ Linh', role: 'escort', phone: '0906 343 434', note: 'NVCS 4 năm KN' },
+  { id: 'NV-09', name: 'Tạ Hoàng Yến', role: 'escort', phone: '0906 454 545', note: 'NVCS 1 năm KN' },
+  { id: 'NV-10', name: 'Phùng Bảo Ngọc', role: 'escort', phone: '0906 565 656', note: 'NVCS 5 năm KN' },
 ]
 
 // Giấy tờ xe và định danh nhân sự là số mẫu sinh theo mã, để Carrier Info Sheet có đủ trường (PRD mục 2.7). Thay bằng dữ liệu thật khi có backend.

@@ -1,6 +1,6 @@
 import type { StaffRole } from '@shared/types/role'
 
-// Menu theo vai trò. Các mục của Flow 1 (tiếp nhận, duyệt báo giá, thẩm định y tế, phương án xe) theo quy trình mới.
+// Menu theo vai trò. Các mục của Flow 1 (tiếp nhận, duyệt báo giá, duyệt hồ sơ ngựa, phương án xe) theo quy trình mới.
 export const STAFF_MENUS: Record<StaffRole, [path: string, label: string, opt?: { group?: string; icon?: string }][]> = {
   // Danh mục tài khoản theo vai trò; số lượng hiện cạnh từng mục
   admin: [
@@ -24,7 +24,7 @@ export const STAFF_MENUS: Record<StaffRole, [path: string, label: string, opt?: 
     ['/manager/trip-reports', 'Chuyến đi', { icon: 'fa-route' }],
   ],
   specialist: [
-    ['/specialist/verification', 'Thẩm định y tế', { icon: 'fa-file-medical' }],
+    ['/specialist/verification', 'Duyệt hồ sơ ngựa', { icon: 'fa-file-medical' }],
     ['/specialist/legal', 'Giấy tờ chuyến đi', { icon: 'fa-file-signature' }],
   ],
   coordinator: [

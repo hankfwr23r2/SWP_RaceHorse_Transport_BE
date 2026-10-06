@@ -1,6 +1,8 @@
 // Thông báo đẩy xuống từng vai trò: chỉ báo tin, không ghi gì vào đơn.
 import { describe, expect, it } from 'vitest'
 import { bookingsApi, customerBookingsApi } from './bookings'
+import { busyResources } from '../lib/booking'
+import { crewApi } from './fleet'
 import { noticesApi } from './notices'
 import { CUSTOMER } from './mock/orders'
 
@@ -11,7 +13,7 @@ const forOrder = async (role: 'customer' | 'manager' | 'specialist' | 'coordinat
 const draft = () => ({
   type: 'domestic' as const, origin: { id: 'KHO-DN', name: 'Kho Đồng Nai', country: 'VN' as const }, dest: { id: 'CLB-SG', name: 'CLB', country: 'VN' as const },
   departAt: Date.now() + 40 * 86_400_000, consignor: { name: 'a', phone: '0901000009', idNumber: '1', address: 'x' }, consignee: { name: 'b', phone: '0901000008', idNumber: '2', address: 'y' },
-  horses: [{ horseId: 'H-001', name: 'Storm Runner', microchip: 'VN-985211', breed: 'Thoroughbred', sex: 'gelding' as const, stall: 'standard' as const, targetTemp: 22, feeding: '', water: '', careNote: '', insurance: { opted: false } }],
+  horses: [{ horseId: 'H-001', name: 'Storm Runner', microchip: 'VN-985211', breed: 'Thoroughbred', sex: 'gelding' as const, stall: 'standard' as const, feedPackage: 'basic' as const, waterPlan: 'every_3h' as const, insurance: { opted: false } }],
 })
 
 describe('thông báo theo sự việc của đơn', () => {
@@ -48,14 +50,15 @@ describe('thông báo theo sự việc của đơn', () => {
   })
   it('Manager gửi báo giá: khách nhận', async () => {
     const id = 'ORD-2026-0104' // pending_commercial
+    const [crew, all, b] = await Promise.all([crewApi.list(), bookingsApi.list(), bookingsApi.get(id)])
+    const busy = busyResources(all, b!.departAt, id)
+    const free = (role: string) => crew.filter(c => c.role === role && !busy.crew.has(c.id))
+    await bookingsApi.assignCrew(id, 'Quản lý', b!.trips!.map((t, i) => ({ tripId: t.tripId, driverId: free('driver')[i].id, escortId: free('escort')[i].id })))
     await bookingsApi.sendQuote(id, 'Quản lý', [])
     expect((await forOrder('customer', CUSTOMER.name, id))[0].title).toMatch(/Báo giá/)
   })
-  it('Specialist hoàn tất giấy tờ: khách và Manager nhận. Khách báo sai: Specialist và Manager nhận', async () => {
+  it('Specialist hoàn tất giấy tờ: khách và Manager nhận.', async () => {
     const id = 'ORD-2026-0111' // clearance_in_progress, mọi hạng mục đã xong; Specialist Nguyễn Thị Thu
-    await customerBookingsApi.flagClearance(CUSTOMER.name, 'ORD-2026-0110', 'Sai họ người nhận')
-    expect((await forOrder('specialist', 'Phạm Văn Hưng', 'ORD-2026-0110'))[0].title).toMatch(/báo sai/)
-    expect((await forOrder('manager', undefined, 'ORD-2026-0110'))[0].title).toMatch(/báo sai/)
     await bookingsApi.completeClearance(id, 'Nguyễn Thị Thu')
     expect((await forOrder('manager', undefined, id))[0].title).toMatch(/Giấy tờ đã xong/)
   })
@@ -71,6 +74,11 @@ describe('thông báo theo sự việc của đơn', () => {
     expect((await forOrder('manager', undefined, id))[0].title).toMatch(/hủy/)
     expect((await forOrder('driver', 'Trịnh Văn Long', id))[0].title).toMatch(/hủy/)
     expect((await forOrder('escort', 'Lê Thị C', id))[0].title).toMatch(/hủy/)
+  })
+  it('Manager hủy đơn: khách nhận thông báo hoàn tiền', async () => {
+    const id = 'ORD-2026-0120'
+    await bookingsApi.managerCancel(id, 'Quản lý', 'Hết xe')
+    expect((await forOrder('customer', CUSTOMER.name, id))[0].text).toMatch(/Hoàn/)
   })
   it('xe bắt đầu chạy và giao xong: khách, Manager, Coordinator nhận', async () => {
     const id = 'ORD-2026-0116'
@@ -105,5 +113,10 @@ describe('đọc và đánh dấu đã đọc', () => {
   it('thông báo không ghi gì vào nhật ký đơn', async () => {
     const b = (await bookingsApi.get('ORD-2026-0104'))!
     expect(b.history.every(h => !/thông báo/i.test(h.text))).toBe(true)
+  })
+  it('khách từ chối báo giá: Manager, Specialist, Coordinator nhận', async () => {
+    const id = 'ORD-2026-0104' // awaiting_payment sau khi Manager gửi báo giá
+    await customerBookingsApi.rejectQuote(CUSTOMER.name, id, 'Giá cao')
+    expect((await forOrder('manager', undefined, id))[0].title).toMatch(/từ chối báo giá/)
   })
 })

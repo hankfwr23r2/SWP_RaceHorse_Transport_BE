@@ -43,10 +43,10 @@ export const routes: AppRoute[] = [
   { path: '/manager/progress', page: ProgressPage, roles: M, title: 'Tiến độ đơn', layout: 'staff' },
   { path: '/manager/reports', page: ReportsPage, roles: M, title: 'Báo cáo doanh thu', layout: 'staff' },
   { path: '/manager/trip-reports', page: TripReportsPage, roles: M, title: 'Báo cáo Chuyến đi', layout: 'staff' },
-  { path: '/manager/incidents', page: IncidentsPage, roles: M, title: 'Sự cố & Quyết toán', layout: 'staff' },
+  { path: '/manager/incidents', page: IncidentsPage, roles: M, title: 'Sự cố', layout: 'staff' },
 
-  { path: '/specialist/verification', page: VerificationListPage, roles: SP, title: 'Thẩm định y tế', layout: 'staff' },
-  { path: '/specialist/verification/:id', page: VerifyPage, roles: SP, title: 'Thẩm định y tế một đơn', example: 'ORD-2026-0102', layout: 'staff' },
+  { path: '/specialist/verification', page: VerificationListPage, roles: SP, title: 'Duyệt hồ sơ ngựa', layout: 'staff' },
+  { path: '/specialist/verification/:id', page: VerifyPage, roles: SP, title: 'Duyệt hồ sơ ngựa một đơn', example: 'ORD-2026-0102', layout: 'staff' },
   { path: '/specialist/legal', page: LegalListPage, roles: SP, title: 'Giấy tờ chuyến đi', layout: 'staff' },
   { path: '/specialist/legal/:id', page: LegalReviewPage, roles: SP, title: 'Làm giấy tờ một đơn', example: 'ORD-2026-0109', layout: 'staff' },
 

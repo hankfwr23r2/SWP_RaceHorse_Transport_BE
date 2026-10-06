@@ -43,9 +43,6 @@
 .bank { display: grid; gap: 4px; font-size: 0.86rem; padding: 12px 14px; border: 1px dashed #cbd5e1; border-radius: var(--radius-sm); }
 .bank div { display: flex; justify-content: space-between; gap: 10px; }
 .bank b { font-variant-numeric: tabular-nums; }
-.contract { font-size: 0.86rem; }
-.contract summary { cursor: pointer; font-weight: 600; color: var(--orange); padding: 6px 0; }
-.contract ul { margin: 6px 0 0; padding-left: 18px; list-style: disc; display: grid; gap: 4px; color: var(--muted); }
 .ack { display: flex; gap: 10px; align-items: flex-start; font-size: 0.88rem; }
 .ack input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--orange); }
 
@@ -107,13 +104,6 @@
 .refundBox div { display: flex; justify-content: space-between; gap: 12px; }
 .refundBox b { font-variant-numeric: tabular-nums; }
 
-.fold > summary { cursor: pointer; font-weight: 700; color: var(--navy); list-style: none; display: flex; align-items: center; gap: 10px; min-height: 28px; }
-.fold > summary::-webkit-details-marker { display: none; }
-.fold > summary i { color: var(--orange); }
-.fold > summary::after { content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900; margin-left: auto; font-size: 0.75rem; color: var(--muted); transition: transform 0.2s; }
-.fold[open] > summary::after { transform: rotate(180deg); }
-.foldBody { display: grid; gap: 16px; margin-top: 14px; }
-.foldBody > :global(.card) { box-shadow: none; }
 
 .stepNow2 { font-weight: 700; color: var(--navy); margin: 0 0 -6px; }
 .nextBody { display: grid; gap: 4px; justify-items: start; }

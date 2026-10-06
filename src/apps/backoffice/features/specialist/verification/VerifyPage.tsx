@@ -1,8 +1,8 @@
-// Specialist: thẩm định y tế một đơn. Đạt thì xác nhận; sai sót thì yêu cầu khách bổ sung (bắt buộc ghi lý do).
+// Specialist: duyệt hồ sơ ngựa một đơn. Đạt thì xác nhận; sai sót thì yêu cầu khách bổ sung (bắt buộc ghi lý do).
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '@shared/auth/AuthContext'
-import { HORSE_DOC, HORSE_DOC_TYPES, type HorseDocType } from '@shared/config/booking-rules'
+import { FEED_PACKAGE, WATER_PLAN, HORSE_DOC, HORSE_DOC_TYPES, type HorseDocType } from '@shared/config/booking-rules'
 import { horseReadiness } from '@shared/lib/booking'
 import { formatDate, formatDateTime } from '@shared/lib/format'
 import { bookingsApi } from '@shared/services/bookings'
@@ -37,7 +37,7 @@ function Review({ b, horses, onDone }: { b: Booking; horses: HorseProfile[]; onD
     setBusy(true)
     try { await fn(); toast(ok); onDone() } catch (e) { toast(e instanceof Error ? e.message : 'Không thực hiện được', 'error'); setBusy(false) }
   }
-  const approve = () => run(() => bookingsApi.approveMedical(b.id, session!.name), `Đã xác nhận đạt y tế ${b.id}`)
+  const approve = () => run(() => bookingsApi.approveMedical(b.id, session!.name), `Đã duyệt hồ sơ ngựa ${b.id}`)
   const requestFix = () => run(async () => {
     await bookingsApi.requestResubmission(b.id, session!.name, reason, items.map(i => { const [horseId, doc] = i.split(':'); return { horseId, doc: doc as HorseDocType } }))
     navigate('/specialist/verification')
@@ -67,7 +67,7 @@ function Review({ b, horses, onDone }: { b: Booking; horses: HorseProfile[]; onD
                     </div>
                   ) })}
                 </div>
-                {bh && <div className={s.config}><span>Khách yêu cầu <b>{bh.targetTemp}°C</b></span>{bh.feeding && <span>Dinh dưỡng: <b>{bh.feeding}</b></span>}</div>}
+                {bh && <div className={s.config}><span>Thức ăn: <b>{FEED_PACKAGE[bh.feedPackage].label}</b></span><span>Cữ nước: <b>{WATER_PLAN[bh.waterPlan].label}</b></span></div>}
                 {b.medical?.status === 'pending' && (
                   <label className={s.check}><input type="checkbox" checked={checked.includes(h.id)} disabled={!r.ok} onChange={e => { const on = e.target.checked; setChecked(c => (on ? [...c, h.id] : c.filter(x => x !== h.id))) }} />
                     Đã đối chiếu hộ chiếu, microchip {h.microchip} và hạn xét nghiệm EIA/EVA</label>
@@ -83,12 +83,12 @@ function Review({ b, horses, onDone }: { b: Booking; horses: HorseProfile[]; onD
           <div className="card">
             <div className={s.actionBar}>
               <div>
-                <b>{canApprove ? 'Sẵn sàng xác nhận đạt y tế' : 'Chưa thể xác nhận đạt'}</b>
+                <b>{canApprove ? 'Sẵn sàng duyệt hồ sơ ngựa' : 'Chưa thể xác nhận đạt'}</b>
                 <div className={s.hint}>{!allChecked ? `Cần tick đối chiếu cả ${horses.length} ngựa. ` : ''}{problems.length ? 'Có giấy thiếu hoặc hết hạn, hãy yêu cầu khách bổ sung. ' : ''}</div>
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost" onClick={startFix} disabled={busy}><i className="fa-solid fa-rotate-left" /> Yêu cầu bổ sung</button>
-                <button className="btn btn-primary" onClick={approve} disabled={!canApprove || busy}><i className="fa-solid fa-circle-check" /> Xác nhận đạt y tế</button>
+                <button className="btn btn-primary" onClick={approve} disabled={!canApprove || busy}><i className="fa-solid fa-circle-check" /> Duyệt hồ sơ ngựa</button>
               </div>
             </div>
             {fixing && (
@@ -117,7 +117,7 @@ function Review({ b, horses, onDone }: { b: Booking; horses: HorseProfile[]; onD
         <div className="alert alert-warning"><i className="fa-solid fa-hourglass-half" /><div><b>Đang chờ khách bổ sung.</b> {b.medical.resubmit?.reason} Khi khách gửi lại, đơn sẽ quay về mục “Cần thẩm định”.</div></div>
       )}
       {b.medical?.status === 'approved' && (
-        <div className="alert alert-success"><i className="fa-solid fa-circle-check" /><div><b>Đã xác nhận đạt y tế</b> lúc {b.medical.at && formatDateTime(b.medical.at)}.</div></div>
+        <div className="alert alert-success"><i className="fa-solid fa-circle-check" /><div><b>Đã duyệt hồ sơ ngựa</b> lúc {b.medical.at && formatDateTime(b.medical.at)}.</div></div>
       )}
     </>
   )
@@ -139,10 +139,11 @@ export default function VerifyPage() {
   return (
     <div className="page">
       <div className="wrap">
-        <div className="breadcrumb"><Link to="/specialist/verification">Thẩm định y tế</Link> / <span className="text-orange font-semibold">{b.id}</span></div>
+        <div className="breadcrumb"><Link to="/specialist/verification">Duyệt hồ sơ ngựa</Link> / <span className="text-orange font-semibold">{b.id}</span></div>
         <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><h1>Đơn {b.id}</h1><BookingStatusBadge status={b.status} audience="staff" /><ReviewChips b={b} /></div>
         <div className={s.layout}>
           <div className={s.main}>
+            {b.sentBack?.to === 'specialist' && <div className="alert alert-warning"><i className="fa-solid fa-rotate-left" /><div><b>Quản lý trả lại đơn này:</b> {b.sentBack.reason} <span className="sub-text">({b.sentBack.by}, {formatDateTime(b.sentBack.at)})</span></div></div>}
             <div className="card"><div className="card-header"><h3><i className="fa-solid fa-route" /> Chuyến đi</h3></div><TripSummary b={b} /></div>
             <Review key={b.medical?.status} b={b} horses={horses} onDone={reload} />
           </div>

@@ -135,10 +135,10 @@ function DriverSteps({ b, t, run }: { b: Booking; t: VehicleTrip; run: Run }) {
   if (t.run?.startedAt && cp) {
     const arrive = (title: string, button: string, hint: string, icon: string) => <ArriveStep key={cp.id} title={title} icon={icon} button={button} hint={hint} run={run} action={photo => bookingsApi.arriveCheckpoint(b.id, t.tripId, session!.name, photo)} />
     if (cp.type === 'rest') {
-      if (!cp.arrivedAt) return arrive(`Tới ${cp.place}`, 'Xác nhận đã tới trạm trung chuyển', 'Chụp rõ biển hiệu trạm trung chuyển hoặc cây xăng. Hệ thống tự gắn giờ vào ảnh.', 'fa-location-dot')
+      if (!cp.arrivedAt) return arrive(`Tới ${cp.place}`, 'Xác nhận đã tới trạm nghỉ', 'Chụp rõ biển hiệu trạm nghỉ hoặc cây xăng. Hệ thống tự gắn giờ vào ảnh.', 'fa-location-dot')
       const ok = t.run.welfare.some(w => w.checkpointId === cp.id)
       return (
-        <Panel title="Đang dừng ở trạm trung chuyển" icon="fa-location-dot" tone={ok ? 'ok' : 'warn'}>
+        <Panel title="Đang dừng ở trạm nghỉ" icon="fa-location-dot" tone={ok ? 'ok' : 'warn'}>
           <p>{ok ? 'Hộ tống đã gửi nhật ký an sinh. Hết giờ nghỉ, bấm tiếp tục.' : 'Chờ hộ tống kiểm tra ngựa và gửi nhật ký an sinh.'}</p>
           <button className={`btn btn-primary ${s.big}`} disabled={!ok} onClick={() => run(() => bookingsApi.continueJourney(b.id, t.tripId, session!.name), 'Tiếp tục hành trình')}><i className="fa-solid fa-play" /> Tiếp tục hành trình</button>
         </Panel>

@@ -14,7 +14,7 @@ const fail = async (p: Promise<unknown>) => { try { await p } catch (e) { return
 const incidentOf = async (id = ID) => (await bookingsApi.get(id))!.incidents!.at(-1)!
 const eta = () => Date.now() + 3 * 3600_000
 
-const toStation = { station: 'Trạm trung chuyển Long Thành', restMinutes: 60 }
+const toStation = { station: 'Trạm nghỉ Long Thành', restMinutes: 60 }
 const line = { path: [[10.9, 106.8], [10.78, 107.0]] as [number, number][], km: 30, hours: 0.6 }
 
 describe('sự cố khẩn cấp (Flow 5)', () => {
@@ -33,30 +33,29 @@ describe('sự cố khẩn cấp (Flow 5)', () => {
   })
   it('Coordinator lập phương án: đúng nhóm sự cố, có ETA mới; xong thì chờ Manager duyệt', async () => {
     const inc = await incidentOf()
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'rescue_and_station', note: '', newEta: eta(), budget: 1_000_000, ...toStation }))).toMatch(/không phù hợp/)
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: Date.now() - 1000, budget: 1_000_000, ...toStation }))).toMatch(/ETA/)
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), budget: 0, station: 'Trạm không có trong danh mục', restMinutes: 60 }))).toMatch(/danh mục/)
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), budget: 0, station: toStation.station, restMinutes: 10 }))).toMatch(/tối thiểu/)
-    const b = await bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: 'Đưa ngựa về trạm nghỉ gần nhất', newEta: eta(), budget: 2_000_000, toStation: line, ...toStation })
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'rescue_and_station', note: '', newEta: eta(), ...toStation }))).toMatch(/không phù hợp/)
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: Date.now() - 1000, ...toStation }))).toMatch(/ETA/)
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), station: 'Trạm không có trong danh mục', restMinutes: 60 }))).toMatch(/danh mục/)
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), station: toStation.station, restMinutes: 10 }))).toMatch(/tối thiểu/)
+    const b = await bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: 'Đưa ngựa về trạm nghỉ gần nhất', newEta: eta(), toStation: line, ...toStation })
     expect(b.status).toBe('pending_emergency_approval')
     expect(b.incidents![0].status).toBe('pending_approval')
-    expect(b.incidents![0].plan).toMatchObject({ action: 'to_station', station: 'Trạm trung chuyển Long Thành', restMinutes: 60 })
+    expect(b.incidents![0].plan).toMatchObject({ action: 'to_station', station: 'Trạm nghỉ Long Thành', restMinutes: 60 })
   })
   it('Manager trả về cần lý do; Coordinator lập lại thì xóa lý do cũ', async () => {
     const inc = await incidentOf()
     expect(await fail(bookingsApi.rejectIncident(ID, inc.id, MG, ' '))).toMatch(/lý do/)
-    const back = await bookingsApi.rejectIncident(ID, inc.id, MG, 'Hạn mức quá cao')
+    const back = await bookingsApi.rejectIncident(ID, inc.id, MG, 'Phương án chưa hợp lý')
     expect(back.status).toBe('incident_reported')
-    expect(back.incidents![0].rejection!.reason).toBe('Hạn mức quá cao')
-    const again = await bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), budget: 1_500_000, ...toStation })
+    expect(back.incidents![0].rejection!.reason).toBe('Phương án chưa hợp lý')
+    const again = await bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), ...toStation })
     expect(again.incidents![0].rejection).toBeUndefined()
   })
-  it('Manager chỉ duyệt khi đã gọi khách; duyệt xong phương án hiệu lực', async () => {
+  it('Manager duyệt phương án: phương án có hiệu lực', async () => {
     const inc = await incidentOf()
-    expect(await fail(bookingsApi.approveIncident(ID, inc.id, MG, { budget: 1_500_000, calledCustomer: false }))).toMatch(/gọi khách/)
-    const b = await bookingsApi.approveIncident(ID, inc.id, MG, { budget: 1_500_000, calledCustomer: true })
+    const b = await bookingsApi.approveIncident(ID, inc.id, MG)
     expect(b.status).toBe('emergency_plan_active')
-    expect(b.incidents![0].approval).toMatchObject({ budget: 1_500_000, calledCustomer: true })
+    expect(b.incidents![0].approval).toMatchObject({ by: MG })
   })
   it('chi phí: ảnh chứng từ trước, rồi mới có số tiền; bên chịu theo chính sách', async () => {
     const inc = await incidentOf()
@@ -79,10 +78,10 @@ describe('sự cố khẩn cấp (Flow 5)', () => {
     const b = await bookingsApi.reportIncident(ID, T, D, 'vehicle_breakdown', 'lop.jpg', 'Nổ lốp')
     const inc = b.incidents!.at(-1)!
     const rescue = { name: 'Cứu hộ Long Thành', phone: '0901 100 001', lat: 10.8, lng: 106.98 }
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'rescue_and_station', note: '', newEta: eta(), budget: 0, ...toStation }))).toMatch(/cứu hộ/)
-    const planned = await bookingsApi.planIncident(ID, inc.id, CO, { action: 'rescue_and_station', note: '', newEta: eta(), budget: 0, ...toStation, rescue, rescueLine: line, toStation: line })
-    expect(planned.incidents!.at(-1)!.plan).toMatchObject({ action: 'rescue_and_station', rescue: { name: 'Cứu hộ Long Thành' }, station: 'Trạm trung chuyển Long Thành' })
-    await bookingsApi.approveIncident(ID, inc.id, MG, { budget: 0, calledCustomer: true })
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'rescue_and_station', note: '', newEta: eta(), ...toStation }))).toMatch(/cứu hộ/)
+    const planned = await bookingsApi.planIncident(ID, inc.id, CO, { action: 'rescue_and_station', note: '', newEta: eta(), ...toStation, rescue, rescueLine: line, toStation: line })
+    expect(planned.incidents!.at(-1)!.plan).toMatchObject({ action: 'rescue_and_station', rescue: { name: 'Cứu hộ Long Thành' }, station: 'Trạm nghỉ Long Thành' })
+    await bookingsApi.approveIncident(ID, inc.id, MG)
     expect(await fail(bookingsApi.resumeJourney(ID, inc.id, D))).toMatch(/đủ sức/)
     await bookingsApi.confirmFit(ID, inc.id, E)
     expect((await bookingsApi.resumeJourney(ID, inc.id, D)).status).toBe('in_transit')
@@ -90,10 +89,10 @@ describe('sự cố khẩn cấp (Flow 5)', () => {
   it('giao thông tắc nghẽn: chọn lộ trình mới, không cần xác nhận đủ sức, nhà xe chịu chi phí', async () => {
     const b = await bookingsApi.reportIncident(ID, T, D, 'traffic_jam', 'kẹt.jpg', 'Kẹt xe dài')
     const inc = b.incidents!.at(-1)!
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'reroute', note: '', newEta: eta(), budget: 0 }))).toMatch(/lộ trình mới/)
-    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), budget: 0, ...toStation }))).toMatch(/không phù hợp/)
-    await bookingsApi.planIncident(ID, inc.id, CO, { action: 'reroute', note: 'Đi đường tránh', newEta: eta(), budget: 0, detour: line })
-    const approved = await bookingsApi.approveIncident(ID, inc.id, MG, { budget: 0, calledCustomer: true })
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'reroute', note: '', newEta: eta() }))).toMatch(/lộ trình mới/)
+    expect(await fail(bookingsApi.planIncident(ID, inc.id, CO, { action: 'to_station', note: '', newEta: eta(), ...toStation }))).toMatch(/không phù hợp/)
+    await bookingsApi.planIncident(ID, inc.id, CO, { action: 'reroute', note: 'Đi đường tránh', newEta: eta(), detour: line })
+    const approved = await bookingsApi.approveIncident(ID, inc.id, MG)
     expect(approved.incidents!.at(-1)!.plan!.detour).toMatchObject({ km: 30 })
     expect(await fail(bookingsApi.confirmFit(ID, inc.id, E))).toMatch(/không cần/)
     expect((await bookingsApi.resumeJourney(ID, inc.id, D)).status).toBe('in_transit')

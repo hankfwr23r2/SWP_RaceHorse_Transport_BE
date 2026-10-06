@@ -12,9 +12,9 @@ export type TabDef<K extends string> = [key: K, label: string, count: number, hi
 interface Props<T, K extends string> {
   title: string
   subtitle?: string
-  tabs: TabDef<K>[]
-  tab: K
-  onTab: (k: K) => void
+  tabs?: TabDef<K>[] // bỏ trống nếu trang dùng bộ lọc (filters) thay cho thanh tab
+  tab?: K
+  onTab?: (k: K) => void
   hot?: K[] // tab cần xử lý: số đơn hiện nền đỏ khi > 0
   rows: T[] // đã lọc theo tab
   rowKey: (r: T) => string
@@ -26,6 +26,7 @@ interface Props<T, K extends string> {
   emptyText: string
   summary?: (rows: T[]) => ReactNode
   searchPlaceholder?: string
+  filters?: ReactNode // ô lọc thêm, đặt đầu hàng lọc
   hideTabs?: boolean // danh mục nằm ở thanh bên nên không hiện thanh tab
   actions?: ReactNode // nút cạnh tiêu đề (ví dụ "Tạo tài khoản")
   hotRow?: (r: T) => boolean // đơn cần chú ý: viền cam bên trái
@@ -33,7 +34,7 @@ interface Props<T, K extends string> {
 
 const day = (v: string, end = false) => (v ? new Date(`${v}T${end ? '23:59:59' : '00:00:00'}`).getTime() : 0)
 
-export function ListPage<T, K extends string>({ title, subtitle, tabs, tab, onTab, hot = [], rows, rowKey, columns, haystack, dateOf, dateLabel = 'Khởi hành', loaded, emptyText, summary, hotRow, actions, searchPlaceholder = 'Tìm theo mã đơn, khách hàng, tuyến…', hideTabs }: Props<T, K>) {
+export function ListPage<T, K extends string>({ title, subtitle, tabs, tab, onTab, hot = [], rows, rowKey, columns, haystack, dateOf, dateLabel = 'Khởi hành', loaded, emptyText, summary, hotRow, actions, filters, searchPlaceholder = 'Tìm theo mã đơn, khách hàng, tuyến…', hideTabs }: Props<T, K>) {
   const [params] = useSearchParams()
   const [text, setText] = useState(params.get('q') ?? '') // tìm từ ô tìm kiếm trên thanh trên
   const [from, setFrom] = useState('')
@@ -51,7 +52,7 @@ export function ListPage<T, K extends string>({ title, subtitle, tabs, tab, onTa
       <div className={`wrap ${s.wrap}`}>
         <div className={s.titleRow}><div className={s.title}><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{actions}</div>
         <section className={s.panel}>
-          {!hideTabs && (
+          {tabs && onTab && !hideTabs && (
             <div className={s.tabs} role="tablist" aria-label="Trạng thái">
             {tabs.map(([k, label, n, hint]) => (
               <button key={k} role="tab" aria-selected={tab === k} title={hint} className={`${s.tab} ${tab === k ? s.tabOn : ''} ${n === 0 && k !== tabs[0][0] ? s.tabZero : ''}`} onClick={() => change(() => onTab(k))}>
@@ -61,6 +62,7 @@ export function ListPage<T, K extends string>({ title, subtitle, tabs, tab, onTa
           </div>
           )}
           <div className={s.filters}>
+            {filters}
             <label className={s.search}><i className="fa-solid fa-magnifying-glass" aria-hidden="true" /><input className="form-control" placeholder={searchPlaceholder} value={text} onChange={e => change(() => setText(e.target.value))} /></label>
             {dateOf && <div className={s.dates}>{dateLabel}<input type="date" className="form-control" aria-label={`${dateLabel} từ ngày`} value={from} onChange={e => change(() => setFrom(e.target.value))} />→<input type="date" className="form-control" aria-label={`${dateLabel} đến ngày`} value={to} onChange={e => change(() => setTo(e.target.value))} /></div>}
             {filtering && <button className="btn btn-ghost btn-sm" onClick={() => change(() => { setText(''); setFrom(''); setTo('') })}>Xóa lọc</button>}

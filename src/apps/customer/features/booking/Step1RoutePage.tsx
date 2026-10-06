@@ -155,7 +155,7 @@ export default function Step1RoutePage() {
             {type === 'international' && partner && (
               <div className="alert alert-info">
                 <i className="fa-solid fa-circle-info" />
-                <div>Bạn không cần chọn cửa khẩu. Nhà xe chọn cửa khẩu và các trạm trung chuyển tối ưu cho chuyến, rồi làm giấy kiểm dịch và hải quan giúp bạn.</div>
+                <div>Bạn không cần chọn cửa khẩu. Nhà xe chọn cửa khẩu và các trạm nghỉ tối ưu cho chuyến, rồi làm giấy kiểm dịch và hải quan giúp bạn.</div>
               </div>
             )}
 

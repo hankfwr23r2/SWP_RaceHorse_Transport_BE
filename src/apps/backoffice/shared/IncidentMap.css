@@ -28,3 +28,5 @@
 @media (prefers-reduced-motion: reduce) { .rm-sos { animation: none; } }
 
 .im-wrap .rm-legend { left: auto; right: 12px; bottom: 12px; }
+
+.im-opt .im-rank { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 50%; background: #ea580c; color: white; font-size: 0.72rem; font-weight: 700; }
