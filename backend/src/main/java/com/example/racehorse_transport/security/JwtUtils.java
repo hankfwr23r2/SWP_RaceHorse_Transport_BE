@@ -28,6 +28,12 @@ public class JwtUtils {
     @Value("${app.jwt.refresh-cookie-name:refreshToken}")
     private String refreshCookieName;
 
+    @Value("${app.jwt.cookie-secure:false}")
+    private boolean cookieSecure;
+
+    @Value("${app.jwt.cookie-same-site:Lax}")
+    private String cookieSameSite;
+
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
@@ -39,8 +45,8 @@ public class JwtUtils {
                 .path("/")
                 .maxAge(refreshTokenExpirationMs / 1000)
                 .httpOnly(true)
-                .secure(false) // để false khi chạy http localhost
-                .sameSite("Lax")
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite)
                 .build();
     }
 
@@ -50,8 +56,8 @@ public class JwtUtils {
                 .path("/")
                 .maxAge(0)
                 .httpOnly(true)
-                .secure(false)
-                .sameSite("Lax")
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite)
                 .build();
     }
 
