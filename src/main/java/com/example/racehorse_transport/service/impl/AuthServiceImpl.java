@@ -59,35 +59,121 @@ public class AuthServiceImpl implements AuthService {
         customerRepository.save(customer);
     }
 
+        // ==========================================
+    // 1. ĐĂNG NHẬP DÀNH CHO KHÁCH HÀNG (CUSTOMER)
+    // ==========================================
     @Override
-    public AuthResponse login(LoginRequest request) {
-        // 1. Tìm user theo username
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new IllegalArgumentException("Tên đăng nhập hoặc mật khẩu không chính xác!"));
+    public AuthResponse loginCustomer(LoginRequest request) {
+        // Tìm User theo username HOẶC email
+        User user = userRepository.findByUsernameOrEmail(request.getUsername(), request.getUsername())
+                .orElseThrow(() -> new IllegalArgumentException("Tên đăng nhập/email hoặc mật khẩu không chính xác!"));
 
-        // 2. So khớp mật khẩu nhập vào với mật khẩu đã băm (hash) trong database
+        // So khớp mật khẩu đã hash
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("Tên đăng nhập hoặc mật khẩu không chính xác!");
+            throw new IllegalArgumentException("Tên đăng nhập/email hoặc mật khẩu không chính xác!");
         }
 
-        // 3. Xác định vai trò (Role): Nếu có trong bảng Staff thì lấy role Staff, ngược lại là CUSTOMER
-        String role = "CUSTOMER";
-        Optional<Staff> staffOpt = staffRepository.findById(user.getId());
-        if (staffOpt.isPresent() && staffOpt.get().getRole() != null) {
-            role = staffOpt.get().getRole();
-        }
+        // KIỂM TRA BẢO MẬT: Bắt buộc phải có trong bảng Customer
+        Customer customer = customerRepository.findById(user.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Tài khoản này không phải là tài khoản khách hàng!"));
 
-        // 4. Sinh JWT Token
-        String token = jwtUtils.generateToken(user.getUsername(), role);
+        // Sinh JWT Token với Role là CUSTOMER
+        String token = jwtUtils.generateToken(user.getUsername(), "CUSTOMER");
 
-        // 5. Trả về thông tin phản hồi
         return AuthResponse.builder()
                 .accessToken(token)
                 .tokenType("Bearer")
                 .userId(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())
+                .role("CUSTOMER")
+                .fullName(customer.getFullName())
+                .build();
+    }
+
+    // ==========================================
+    // 2. ĐĂNG NHẬP DÀNH CHO NHÂN VIÊN NỘI BỘ (STAFF)
+    // ==========================================
+    @Override
+    public AuthResponse loginStaff(LoginRequest request) {
+        // Tìm User theo username HOẶC email
+        User user = userRepository.findByUsernameOrEmail(request.getUsername(), request.getUsername())
+                .orElseThrow(() -> new IllegalArgumentException("Tài khoản nội bộ hoặc mật khẩu không chính xác!"));
+
+        // So khớp mật khẩu
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Tài khoản nội bộ hoặc mật khẩu không chính xác!");
+        }
+
+        // KIỂM TRA BẢO MẬT: Bắt buộc phải tồn tại trong bảng Staff
+        Staff staff = staffRepository.findById(user.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Tài khoản này không có quyền truy cập hệ thống nội bộ!"));
+
+        // Kiểm tra trạng thái làm việc (nếu bị nghỉ việc/khóa thì chặn)
+        if ("INACTIVE".equalsIgnoreCase(staff.getEmploymentStatus())) {
+            throw new IllegalArgumentException("Tài khoản nhân viên đã bị vô hiệu hóa. Vui lòng liên hệ Admin!");
+        }
+
+        String staffRole = staff.getRole() != null ? staff.getRole().toUpperCase() : "STAFF";
+
+        // Sinh JWT Token với đúng Role nội bộ (MANAGER, SPECIALIST, COORDINATOR...)
+        String token = jwtUtils.generateToken(user.getUsername(), staffRole);
+
+        return AuthResponse.builder()
+                .accessToken(token)
+                .tokenType("Bearer")
+                .userId(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .role(staffRole)
+                .staffCode(staff.getStaffCode())
+                .build();
+    }
+
+    // ==========================================
+    // 3. LÀM MỚI ACCESS TOKEN TỪ REFRESH TOKEN
+    // ==========================================
+    @Override
+    public AuthResponse refreshToken(String refreshToken) {
+        if (!jwtUtils.validateToken(refreshToken)) {
+            throw new IllegalArgumentException("Refresh token không hợp lệ hoặc đã hết hạn!");
+        }
+
+        String username = jwtUtils.getUsernameFromToken(refreshToken);
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("Người dùng không tồn tại!"));
+
+        String role = "CUSTOMER";
+        String fullName = null;
+        String staffCode = null;
+
+        Optional<Staff> staffOpt = staffRepository.findById(user.getId());
+        if (staffOpt.isPresent()) {
+            Staff staff = staffOpt.get();
+            if ("INACTIVE".equalsIgnoreCase(staff.getEmploymentStatus())) {
+                throw new IllegalArgumentException("Tài khoản nhân viên đã bị vô hiệu hóa!");
+            }
+            role = staff.getRole() != null ? staff.getRole().toUpperCase() : "STAFF";
+            staffCode = staff.getStaffCode();
+        } else {
+            Optional<Customer> customerOpt = customerRepository.findById(user.getId());
+            if (customerOpt.isPresent()) {
+                fullName = customerOpt.get().getFullName();
+            }
+        }
+
+        String newAccessToken = jwtUtils.generateToken(username, role);
+
+        return AuthResponse.builder()
+                .accessToken(newAccessToken)
+                .tokenType("Bearer")
+                .userId(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
                 .role(role)
+                .fullName(fullName)
+                .staffCode(staffCode)
                 .build();
     }
 }
+
