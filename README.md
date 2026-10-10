@@ -11,7 +11,21 @@ Dự án Hệ thống Vận chuyển Ngựa đua (RaceHorse Transport System).
 
 ## Hướng dẫn chạy dự án
 
-### 1. Backend (`backend/`)
+### Cách 1: Chạy toàn bộ hệ thống bằng Docker (Khuyên dùng)
+Chỉ cần cài đặt Docker Desktop và chạy đúng 1 lệnh tại thư mục gốc:
+```bash
+docker compose up -d
+```
+- Tự động bật Microsoft SQL Server 2022, tạo database và nạp sẵn tài khoản Admin.
+- Tự động bật Backend tại: `http://localhost:8080/api/v1`
+- Tự động bật Frontend tại: `http://localhost:5173`
+- Để dừng hệ thống: `docker compose down`
+
+---
+
+### Cách 2: Chạy thủ công trên máy (Local Dev)
+
+#### 1. Backend (`backend/`)
 - Mở thư mục `backend/` trong IntelliJ IDEA hoặc chạy lệnh:
   ```bash
   cd backend
@@ -19,7 +33,7 @@ Dự án Hệ thống Vận chuyển Ngựa đua (RaceHorse Transport System).
   ```
 - Backend chạy mặc định tại: `http://localhost:8080` (Context-path: `/api/v1`).
 
-### 2. Frontend (`frontend/`)
+#### 2. Frontend (`frontend/`)
 - Di chuyển vào thư mục `frontend/`, cài đặt thư viện và chạy:
   ```bash
   cd frontend
