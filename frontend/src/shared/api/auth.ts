@@ -28,6 +28,13 @@ export interface AuthResponseData {
   staffCode?: string
 }
 
+// DTO gửi lên để Đổi mật khẩu cá nhân
+export interface ChangePasswordPayload {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}
+
 export const authApi = {
   // 1. Đăng nhập Khách hàng -> POST /api/v1/auth/customer/login
   loginCustomer: async (payload: LoginPayload): Promise<AuthResponseData> => {
@@ -56,6 +63,11 @@ export const authApi = {
   // 5. Đăng xuất -> POST /api/v1/auth/logout (xóa HttpOnly cookie)
   logout: async (): Promise<void> => {
     await apiClient.post('/auth/logout')
+  },
+
+  // 6. Đổi mật khẩu cá nhân -> POST /api/v1/auth/change-password
+  changePassword: async (payload: ChangePasswordPayload): Promise<void> => {
+    await apiClient.post('/auth/change-password', payload)
   },
 }
 

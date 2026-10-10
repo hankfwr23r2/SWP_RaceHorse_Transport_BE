@@ -15,6 +15,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -75,5 +76,27 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cleanCookie.toString())
                 .body(ApiResponse.success("Đăng xuất thành công", "Thành công"));
+    }
+
+    // API Đổi mật khẩu cá nhân cho người dùng đang đăng nhập
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+            @Valid @RequestBody com.example.racehorse_transport.dto.ChangePasswordRequest request) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Vui lòng đăng nhập để đổi mật khẩu!"));
+        }
+
+        String token = authHeader.substring(7);
+        if (!jwtUtils.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Phiên đăng nhập không hợp lệ hoặc đã hết hạn!"));
+        }
+
+        String username = jwtUtils.getUsernameFromToken(token);
+        authService.changePassword(username, request);
+
+        return ResponseEntity.ok(ApiResponse.success(null, "Đổi mật khẩu thành công!"));
     }
 }

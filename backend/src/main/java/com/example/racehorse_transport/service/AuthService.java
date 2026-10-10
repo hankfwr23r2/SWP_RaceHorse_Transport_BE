@@ -17,4 +17,7 @@ public interface AuthService {
 
     // 3. Làm mới Access Token từ Refresh Token
     AuthResponse refreshToken(String refreshToken);
+
+    // 4. Đổi mật khẩu cá nhân cho người dùng đang đăng nhập
+    void changePassword(String username, com.example.racehorse_transport.dto.ChangePasswordRequest request);
 }

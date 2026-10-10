@@ -175,5 +175,38 @@ public class AuthServiceImpl implements AuthService {
                 .staffCode(staffCode)
                 .build();
     }
+
+    // ==========================================
+    // 4. ĐỔI MẬT KHẨU CÁ NHÂN CHO NGƯỜI DÙNG ĐANG ĐĂNG NHẬP
+    // ==========================================
+    @Override
+    public void changePassword(String username, com.example.racehorse_transport.dto.ChangePasswordRequest request) {
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("Thông tin xác thực không hợp lệ!");
+        }
+
+        // 1. Tìm user theo username hoặc email
+        User user = userRepository.findByUsernameOrEmail(username, username)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy thông tin tài khoản người dùng!"));
+
+        // 2. Kiểm tra mật khẩu hiện tại
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Mật khẩu hiện tại không chính xác!");
+        }
+
+        // 3. Kiểm tra xác nhận mật khẩu mới
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Xác nhận mật khẩu mới không trùng khớp!");
+        }
+
+        // 4. Kiểm tra mật khẩu mới không được trùng với mật khẩu hiện tại
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Mật khẩu mới không được trùng với mật khẩu hiện tại!");
+        }
+
+        // 5. Cập nhật mật khẩu băm mới
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
 }
 
