@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import java.io.Serializable;
 import com.example.racehorse_transport.entity.BookingHorseId;
 import java.time.Instant;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -17,4 +18,5 @@ public class BookingHorseDTO implements Serializable {
     private Integer bookingID;
     private Integer horseID;
     private Instant addedDate;
+    private BigDecimal totalHorseServicePrice;
 }

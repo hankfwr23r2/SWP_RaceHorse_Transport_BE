@@ -1,11 +1,11 @@
 package com.example.racehorse_transport.service.impl;
 
 import com.example.racehorse_transport.entity.TripDocument;
-
 import com.example.racehorse_transport.repository.TripDocumentRepository;
 import com.example.racehorse_transport.service.TripDocumentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +43,40 @@ public class TripDocumentServiceImpl implements TripDocumentService {
     // =========================================================================
     // PHẦN VIỆC CỦA DEV 4: Vận hành chuyến đi (Flow 4)
     // =========================================================================
-    // TODO (Dev 4): Tài xế nhận ngựa, tick danh sách giấy tờ.
-    // - Viết hàm verifyTripDocuments(Integer routeId, List<Integer> documentIds)
 
+    // 1. Lấy danh sách giấy tờ của một đơn hàng để tài xế xem và tick chọn
+    @Override
+    public List<TripDocument> findByBookingId(Integer bookingId) {
+        if (bookingId == null) {
+            throw new IllegalArgumentException("Booking ID không được để trống!");
+        }
+        return tripDocumentRepository.findByBookingId(bookingId);
+    }
+
+    // 2. Tài xế nhận ngựa, tick danh sách giấy tờ hợp lệ
+    @Override
+    @Transactional
+    public boolean verifyTripDocuments(Integer routeId, List<Integer> documentIds) {
+        // 1. Kiểm tra danh sách ID truyền lên có rỗng không
+        if (documentIds == null || documentIds.isEmpty()) {
+            throw new IllegalArgumentException("Danh sách giấy tờ xác nhận không được để trống!");
+        }
+
+        // 2. Tìm tất cả các giấy tờ theo danh sách ID
+        List<TripDocument> documents = tripDocumentRepository.findAllById(documentIds);
+        if (documents.isEmpty()) {
+            throw new IllegalArgumentException("Không tìm thấy giấy tờ nào hợp lệ với danh sách ID đã gửi!");
+        }
+
+        // 3. Duyệt qua từng giấy tờ và đổi trạng thái sang "VERIFIED"
+        for (TripDocument doc : documents) {
+            doc.setStatus("VERIFIED");
+            doc.setIssueDate(java.time.LocalDate.now());
+        }
+
+        // 4. Lưu tất cả thay đổi xuống Database
+        tripDocumentRepository.saveAll(documents);
+
+        return true;
+    }
 }

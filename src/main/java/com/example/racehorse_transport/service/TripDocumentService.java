@@ -10,4 +10,10 @@ public interface TripDocumentService {
     Optional<TripDocument> findById(Integer id);
     TripDocument save(TripDocument entity);
     void deleteById(Integer id);
+
+    // Dev 4: Lấy danh sách giấy tờ theo đơn hàng/chuyến đi
+    List<TripDocument> findByBookingId(Integer bookingId);
+
+    // Dev 4: Xác nhận danh sách giấy tờ hợp lệ
+    boolean verifyTripDocuments(Integer routeId, List<Integer> documentIds);
 }

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Getter
@@ -34,5 +35,7 @@ public class Booking {
     @Column(name = "Status", length = 50)
     private String status;
 
+    @Column(name = "ToTalBookingPrice", precision = 18, scale = 2)
+    private BigDecimal totalBookingPrice;
 
 }

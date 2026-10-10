@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import java.io.Serializable;
 import java.time.Instant;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -18,4 +19,5 @@ public class BookingDTO implements Serializable {
     private Instant bookingDate;
     private Instant departureDate;
     private String status;
+    private BigDecimal totalBookingPrice;
 }
