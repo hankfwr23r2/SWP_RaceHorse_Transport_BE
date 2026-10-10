@@ -10,4 +10,9 @@ public interface BookingService {
     Optional<Booking> findById(Integer id);
     Booking save(Booking entity);
     void deleteById(Integer id);
+
+    // ==========================================
+    // Dev 4: Bàn giao, ký nhận, kết thúc đơn hàng (Flow 6)
+    // ==========================================
+    boolean completeBookingDelivery(Integer bookingId, String recipientName, String recipientSignature, String note);
 }
