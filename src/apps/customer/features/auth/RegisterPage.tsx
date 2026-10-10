@@ -1,35 +1,82 @@
-// Đăng ký khách. Chuyển từ CUS/register.html: gửi xong chuyển sang trang đăng nhập.
-import type { FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { authApi } from '@shared/api/auth'
 import { AuthShell, authStyles as s } from '@shared/ui/AuthShell'
-
-const FIELDS: [id: string, label: string, type: string, placeholder: string, required: boolean][] = [
-  ['fullname', 'Họ và Tên', 'text', 'Nhập họ và tên', true],
-  ['password', 'Mật khẩu', 'password', 'Nhập mật khẩu', true],
-  ['phone', 'Số điện thoại', 'tel', 'Nhập số điện thoại', true],
-  ['email', 'Email', 'email', 'Nhập địa chỉ email', true],
-  ['farm', 'Trang trại / Câu lạc bộ', 'text', 'Tên tổ chức (Không bắt buộc)', false],
-  ['otp', 'Mã xác thực OTP', 'text', 'Nhập mã OTP', true],
-]
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const submit = (e: FormEvent) => {
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    navigate('/login')
+    setError('')
+    setLoading(true)
+
+    const form = new FormData(e.currentTarget)
+    const email = (form.get('email') as string).trim()
+    const password = (form.get('password') as string) ?? ''
+    const fullName = (form.get('fullname') as string).trim()
+    const phone = (form.get('phone') as string).trim()
+    const address = (form.get('address') as string)?.trim() || ''
+
+    // Sử dụng email làm username nếu không có trường username riêng
+    const username = email
+
+    try {
+      await authApi.register({
+        username,
+        email,
+        password,
+        fullName,
+        phone,
+        address,
+      })
+      alert('Đăng ký tài khoản thành công! Vui lòng đăng nhập.')
+      navigate('/login')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng thử lại.')
+    } finally {
+      setLoading(false)
+    }
   }
+
   return (
     <AuthShell title="Tạo tài khoản" subtitle="Đăng ký để trải nghiệm dịch vụ vận chuyển chuyên nghiệp">
       <form onSubmit={submit}>
-        {FIELDS.map(([id, label, type, placeholder, required]) => (
-          <div className="form-group" key={id}>
-            <label htmlFor={id}>{label}</label>
-            <input className="form-control" id={id} type={type} placeholder={placeholder} required={required} />
+        {error && (
+          <div className={`alert alert-danger ${s.error}`}>
+            <i className="fa-solid fa-circle-exclamation" />
+            <div>{error}</div>
           </div>
-        ))}
-        <button type="submit" className="btn btn-primary btn-full btn-lg">Đăng Ký Ngay</button>
+        )}
+        <div className="form-group">
+          <label htmlFor="fullname">Họ và Tên</label>
+          <input className="form-control" id="fullname" name="fullname" type="text" placeholder="Nhập họ và tên" required />
+        </div>
+        <div className="form-group">
+          <label htmlFor="email">Email (dùng làm tên đăng nhập)</label>
+          <input className="form-control" id="email" name="email" type="email" placeholder="example@gmail.com" required onChange={() => setError('')} />
+        </div>
+        <div className="form-group">
+          <label htmlFor="password">Mật khẩu</label>
+          <input className="form-control" id="password" name="password" type="password" placeholder="Tối thiểu 6 ký tự" required minLength={6} />
+        </div>
+        <div className="form-group">
+          <label htmlFor="phone">Số điện thoại</label>
+          <input className="form-control" id="phone" name="phone" type="tel" placeholder="Nhập số điện thoại" required />
+        </div>
+        <div className="form-group">
+          <label htmlFor="address">Địa chỉ / Trang trại</label>
+          <input className="form-control" id="address" name="address" type="text" placeholder="Địa chỉ trang trại hoặc nơi ở" />
+        </div>
+
+        <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading}>
+          {loading ? 'Đang xử lý...' : 'Đăng Ký Ngay'}
+        </button>
       </form>
       <div className={s.switch}>Bạn đã có tài khoản? <Link to="/login">Đăng nhập</Link></div>
     </AuthShell>
   )
 }
+

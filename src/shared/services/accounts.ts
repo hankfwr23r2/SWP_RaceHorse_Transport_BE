@@ -20,8 +20,31 @@ const must = (id: string) => { const a = store.get(id); if (!a) throw new Error(
 const tempPassword = () => `Eq${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 90)}`
 const activeAdmins = () => store.all().filter(a => a.role === 'admin' && a.status === 'active')
 
+import { adminAccountsApi } from '../api/adminAccounts'
+
 export const accountsApi = {
-  list: async (): Promise<Account[]> => structuredClone(store.all()).map(({ password: _p, ...a }) => a),
+  list: async (): Promise<Account[]> => {
+    if (typeof window !== 'undefined') {
+      try {
+        const apiList = await adminAccountsApi.list()
+        if (apiList && apiList.length > 0) {
+          return apiList.map(item => ({
+            id: item.id || `TK-${item.userId}`,
+            name: item.name,
+            email: item.email,
+            phone: item.phone || '',
+            role: item.role,
+            status: item.status,
+            createdAt: item.hireDate ? new Date(item.hireDate).getTime() : Date.now(),
+            history: [],
+          }))
+        }
+      } catch {
+        // Dùng mock store khi backend offline
+      }
+    }
+    return structuredClone(store.all()).map(({ password: _p, ...a }) => a)
+  },
   // Đăng nhập: tài khoản bị khóa không vào được; tài khoản có mật khẩu (tạo hoặc đặt lại) phải đúng mật khẩu; tài khoản mẫu nhận mọi mật khẩu.
   // Email chưa có trong hệ thống: giữ cách giả lập cũ (cổng nhân viên đoán vai trò theo từ khóa trong email).
   authenticate: async (email: string, password: string, portal: 'staff' | 'customer'): Promise<AuthResult> => {
@@ -41,6 +64,32 @@ export const accountsApi = {
     const email = norm(input.email)
     if (!name) throw new Error('Cần nhập họ tên.')
     if (!EMAIL.test(email)) throw new Error('Email không hợp lệ.')
+
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await adminAccountsApi.create({
+          name,
+          email,
+          phone: input.phone,
+          role: input.role,
+        })
+        const account: Account = {
+          id: res.id,
+          name: res.name,
+          email: res.email,
+          phone: res.phone || '',
+          role: res.role,
+          status: res.status,
+          createdAt: Date.now(),
+          history: [{ time: Date.now(), actor, text: 'Tạo tài khoản' }],
+        }
+        return { account, password: res.tempPassword || tempPassword() }
+      } catch (err) {
+        if (err instanceof Error && !err.message.includes('Network Error')) {
+          throw err
+        }
+      }
+    }
     if (store.all().some(a => a.email === email)) throw new Error('Email này đã có tài khoản.')
     if (store.all().some(a => a.name === name && isOpsRole(input.role) && isOpsRole(a.role))) throw new Error('Đã có nhân viên trùng họ tên. Họ tên gắn với đơn và lịch phân công nên không được trùng.')
     const next = Math.max(0, ...store.all().map(a => Number(a.id.slice(3)))) + 1
@@ -72,6 +121,16 @@ export const accountsApi = {
     if (locked && a.email === norm(actor.email)) throw new Error('Không thể khóa chính tài khoản của bạn.')
     if (locked && a.role === 'admin' && activeAdmins().length < 2) throw new Error('Không thể khóa quản trị viên cuối cùng.')
     if ((a.status === 'locked') === locked) return structuredClone(a)
+
+    const userIdMatch = id.match(/\d+/)
+    if (typeof window !== 'undefined' && userIdMatch) {
+      try {
+        await adminAccountsApi.toggleLock(Number(userIdMatch[0]), locked)
+      } catch {
+        // Dùng mock store khi chạy test hoặc offline
+      }
+    }
+
     const out = store.update(id, { status: locked ? 'locked' : 'active', history: log(a, actor.name, locked ? `Khóa tài khoản${reason.trim() ? `: ${reason.trim()}` : ''}` : 'Mở khóa tài khoản') })
     if (a.role === 'specialist' || a.role === 'coordinator') {
       const person = (await staffApi.list()).find(s => s.name === a.name)
@@ -82,6 +141,16 @@ export const accountsApi = {
 
   // Đặt lại mật khẩu: trả về mật khẩu tạm (chỉ hiện một lần)
   resetPassword: async (id: string, actor: string): Promise<string> => {
+    const userIdMatch = id.match(/\d+/)
+    if (typeof window !== 'undefined' && userIdMatch) {
+      try {
+        const pass = await adminAccountsApi.resetPassword(Number(userIdMatch[0]))
+        if (pass) return pass
+      } catch {
+        // Dùng mock store khi chạy test hoặc offline
+      }
+    }
+
     const a = must(id)
     const password = tempPassword()
     store.update(id, { password, history: log(a, actor, 'Đặt lại mật khẩu') })

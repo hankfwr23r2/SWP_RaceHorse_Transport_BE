@@ -2,6 +2,8 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import type { Session } from '../types/role'
 
+import { tokenStorage } from '../api/client'
+
 const KEY = 'SWP_SESSION'
 
 function readSession(app: string): Session | null {
@@ -16,7 +18,8 @@ function readSession(app: string): Session | null {
 interface AuthValue { session: Session | null; login: (s: Session) => void; logout: () => void }
 const AuthContext = createContext<AuthValue | null>(null)
 
-// app: 'customer' | 'backoffice' — mỗi app một phiên riêng
+import { authApi } from '../api/auth'
+
 export function AuthProvider({ app, children }: { app: string; children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(() => readSession(app))
   const login = (s: Session) => {
@@ -25,6 +28,8 @@ export function AuthProvider({ app, children }: { app: string; children: ReactNo
   }
   const logout = () => {
     sessionStorage.removeItem(`${KEY}_${app}`)
+    tokenStorage.remove()
+    authApi.logout().catch(() => {})
     setSession(null)
   }
   return <AuthContext.Provider value={{ session, login, logout }}>{children}</AuthContext.Provider>
