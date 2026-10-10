@@ -5,6 +5,10 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ResponseCookie;
+
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
@@ -21,12 +25,85 @@ public class JwtUtils {
     @Value("${app.jwt.refresh-token-expiration-ms:1296000000}")
     private long refreshTokenExpirationMs;
 
+    @Value("${app.jwt.refresh-cookie-name:refreshToken}")
+    private String refreshCookieName;
+
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
 
-    // Sinh JWT token từ username và role
-    public
+    // Đóng gói Refresh Token vào HttpOnly Cookie
+    public ResponseCookie generateRefreshCookie(String username) {
+        String refreshToken = generateRefreshToken(username);
+        return ResponseCookie.from(refreshCookieName, refreshToken)
+                .path("/")
+                .maxAge(refreshTokenExpirationMs / 1000)
+                .httpOnly(true)
+                .secure(false) // để false khi chạy http localhost
+                .sameSite("Lax")
+                .build();
+    }
+
+    // Cookie xóa refresh token khi đăng xuất
+    public ResponseCookie getCleanRefreshCookie() {
+        return ResponseCookie.from(refreshCookieName, "")
+                .path("/")
+                .maxAge(0)
+                .httpOnly(true)
+                .secure(false)
+                .sameSite("Lax")
+                .build();
+    }
+
+    // Lấy refresh token từ request cookie
+    public String getRefreshTokenFromCookies(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if (refreshCookieName.equals(cookie.getName())) {
+                    return cookie.getValue();
+                }
+            }
+        }
+        return null;
+    }
+
+
+    // 1. Sinh Access Token từ username và role (thời hạn 15 phút)
+    public String generateToken(String username, String role) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + accessTokenExpirationMs);
+
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("role", role)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    // 2. Sinh Refresh Token từ username (thời hạn 15 ngày)
+    public String generateRefreshToken(String username) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + refreshTokenExpirationMs);
+
+        return Jwts.builder()
+                .setSubject(username)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    // 3. Kiểm tra token đã hết hạn hay chưa
+    public boolean isTokenExpired(String token) {
+        try {
+            return extractClaims(token).getExpiration().before(new Date());
+        } catch (ExpiredJwtException e) {
+            return true;
+        }
+    }
     // Lấy username từ JWT token
     public String getUsernameFromToken(String token) {
         return extractClaims(token).getSubject();
