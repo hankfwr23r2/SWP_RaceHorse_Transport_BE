@@ -1,22 +1,28 @@
 package com.example.racehorse_transport.service.impl;
 
+import com.example.racehorse_transport.dto.admin.AccountLogResponse;
 import com.example.racehorse_transport.dto.admin.AccountResponse;
 import com.example.racehorse_transport.dto.admin.CreateStaffRequest;
 import com.example.racehorse_transport.entity.Customer;
 import com.example.racehorse_transport.entity.Staff;
+import com.example.racehorse_transport.entity.SystemLog;
 import com.example.racehorse_transport.entity.User;
 import com.example.racehorse_transport.repository.CustomerRepository;
 import com.example.racehorse_transport.repository.StaffRepository;
+import com.example.racehorse_transport.repository.SystemLogRepository;
 import com.example.racehorse_transport.repository.UserRepository;
 import com.example.racehorse_transport.service.AdminAccountService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminAccountServiceImpl implements AdminAccountService {
@@ -24,6 +30,7 @@ public class AdminAccountServiceImpl implements AdminAccountService {
     private final UserRepository userRepository;
     private final StaffRepository staffRepository;
     private final CustomerRepository customerRepository;
+    private final SystemLogRepository systemLogRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -48,6 +55,7 @@ public class AdminAccountServiceImpl implements AdminAccountService {
                         .status(status)
                         .staffCode(staff.getStaffCode())
                         .hireDate(staff.getHireDate())
+                        .history(getAccountLogs(user.getId()))
                         .build());
             }
         }
@@ -67,6 +75,7 @@ public class AdminAccountServiceImpl implements AdminAccountService {
                         .status("active")
                         .staffCode(null)
                         .hireDate(null)
+                        .history(getAccountLogs(user.getId()))
                         .build());
             }
         }
@@ -76,7 +85,7 @@ public class AdminAccountServiceImpl implements AdminAccountService {
 
     @Override
     @Transactional
-    public AccountResponse createStaffAccount(CreateStaffRequest request) {
+    public AccountResponse createStaffAccount(CreateStaffRequest request, String actorUsername) {
         String email = request.getEmail().trim().toLowerCase();
 
         // 1. Kiểm tra Email đã tồn tại chưa
@@ -89,7 +98,7 @@ public class AdminAccountServiceImpl implements AdminAccountService {
 
         // 3. Tạo tài khoản User
         User user = new User();
-        user.setUsername(request.getName().trim()); // Lưu Họ tên vào username để hiển thị
+        user.setUsername(request.getName().trim());
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(tempPassword));
         User savedUser = userRepository.save(user);
@@ -109,7 +118,12 @@ public class AdminAccountServiceImpl implements AdminAccountService {
         staff.setEmploymentStatus("ACTIVE");
         staffRepository.save(staff);
 
-        // 6. Trả về kết quả kèm mật khẩu tạm cho Admin
+        // 6. Ghi Audit Log vào SYSTEM_LOG
+        recordSystemLog(actorUsername, "CREATE_ACCOUNT", savedUser.getId(), null, 
+                "Vai trò: " + rawRole.toUpperCase() + ", Mã NV: " + staffCode, 
+                "Tạo tài khoản " + staffCode + " (" + email + ")");
+
+        // 7. Trả về kết quả kèm mật khẩu tạm cho Admin
         return AccountResponse.builder()
                 .id("TK-" + String.format("%03d", savedUser.getId()))
                 .userId(savedUser.getId())
@@ -121,12 +135,19 @@ public class AdminAccountServiceImpl implements AdminAccountService {
                 .staffCode(staffCode)
                 .hireDate(staff.getHireDate())
                 .tempPassword(tempPassword)
+                .history(getAccountLogs(savedUser.getId()))
                 .build();
     }
 
     @Override
     @Transactional
-    public void toggleAccountStatus(Integer userId, boolean lock) {
+    public AccountResponse createStaffAccount(CreateStaffRequest request) {
+        return createStaffAccount(request, null);
+    }
+
+    @Override
+    @Transactional
+    public void toggleAccountStatus(Integer userId, boolean lock, String actorUsername, String reason) {
         Staff staff = staffRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhân viên có ID: " + userId));
 
@@ -142,11 +163,25 @@ public class AdminAccountServiceImpl implements AdminAccountService {
 
         staff.setEmploymentStatus(lock ? "INACTIVE" : "ACTIVE");
         staffRepository.save(staff);
+
+        // Ghi Audit Log vào SYSTEM_LOG
+        String action = lock ? "LOCK_ACCOUNT" : "UNLOCK_ACCOUNT";
+        String description = lock 
+                ? (reason != null && !reason.trim().isEmpty() ? "Khóa tài khoản: " + reason.trim() : "Khóa tài khoản") 
+                : "Mở khóa tài khoản";
+
+        recordSystemLog(actorUsername, action, userId, lock ? "ACTIVE" : "INACTIVE", lock ? "INACTIVE" : "ACTIVE", description);
     }
 
     @Override
     @Transactional
-    public String resetPassword(Integer userId) {
+    public void toggleAccountStatus(Integer userId, boolean lock) {
+        toggleAccountStatus(userId, lock, null, null);
+    }
+
+    @Override
+    @Transactional
+    public String resetPassword(Integer userId, String actorUsername) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy người dùng có ID: " + userId));
 
@@ -154,10 +189,80 @@ public class AdminAccountServiceImpl implements AdminAccountService {
         user.setPasswordHash(passwordEncoder.encode(tempPassword));
         userRepository.save(user);
 
+        // Ghi Audit Log vào SYSTEM_LOG
+        recordSystemLog(actorUsername, "RESET_PASSWORD", userId, null, null, "Đặt lại mật khẩu tạm thời cho tài khoản " + user.getEmail());
+
         return tempPassword;
     }
 
-    // Hàm phụ trợ sinh tiền tố mã nhân viên
+    @Override
+    @Transactional
+    public String resetPassword(Integer userId) {
+        return resetPassword(userId, null);
+    }
+
+    @Override
+    public List<AccountLogResponse> getAccountLogs(Integer userId) {
+        return systemLogRepository.findByTargetTableAndTargetRecordIDOrderByCreatedAtDesc("USER", userId)
+                .stream()
+                .map(this::mapToLogResponse)
+                .toList();
+    }
+
+    @Override
+    public List<AccountLogResponse> getAllAccountLogs() {
+        return systemLogRepository.findByTargetTableOrderByCreatedAtDesc("USER")
+                .stream()
+                .map(this::mapToLogResponse)
+                .toList();
+    }
+
+    private void recordSystemLog(String actorUsername, String actionType, Integer targetUserId, String oldData, String newData, String description) {
+        try {
+            User actorUser = null;
+            if (actorUsername != null && !actorUsername.trim().isEmpty()) {
+                actorUser = userRepository.findByUsernameOrEmail(actorUsername, actorUsername).orElse(null);
+            }
+
+            SystemLog systemLog = SystemLog.builder()
+                    .actionbyUserid(actorUser)
+                    .actionType(actionType)
+                    .targetTable("USER")
+                    .targetRecordID(targetUserId)
+                    .oldData(oldData)
+                    .newData(description != null ? description : newData)
+                    .createdAt(Instant.now())
+                    .build();
+
+            systemLogRepository.save(systemLog);
+            log.info("Recorded SystemLog [{}]: targetUser={}, actor={}, desc={}", actionType, targetUserId, actorUsername, description);
+        } catch (Exception e) {
+            log.warn("Failed to record SystemLog: {}", e.getMessage());
+        }
+    }
+
+    private AccountLogResponse mapToLogResponse(SystemLog log) {
+        String actorName = "Hệ thống";
+        String actorEmail = "";
+        if (log.getActionbyUserid() != null) {
+            User actor = log.getActionbyUserid();
+            actorName = actor.getUsername() != null ? actor.getUsername() : actor.getEmail();
+            actorEmail = actor.getEmail() != null ? actor.getEmail() : "";
+        }
+
+        return AccountLogResponse.builder()
+                .id(log.getId())
+                .actionType(log.getActionType())
+                .actionByName(actorName)
+                .actionByEmail(actorEmail)
+                .targetUserId(log.getTargetRecordID())
+                .oldData(log.getOldData())
+                .newData(log.getNewData())
+                .description(log.getNewData())
+                .createdAt(log.getCreatedAt())
+                .build();
+    }
+
     private String getStaffCodePrefix(String role) {
         return switch (role.toLowerCase()) {
             case "manager" -> "QL";

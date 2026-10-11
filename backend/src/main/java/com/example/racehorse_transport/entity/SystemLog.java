@@ -2,8 +2,7 @@ package com.example.racehorse_transport.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Size;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.Nationalized;
 
 import java.time.Instant;
@@ -11,9 +10,14 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Table(name = "SYSTEM_LOG")
 public class SystemLog {
+
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "SystemLogID", nullable = false)
     private Integer id;
 
@@ -44,6 +48,4 @@ public class SystemLog {
 
     @Column(name = "CreatedAt")
     private Instant createdAt;
-
-
 }
