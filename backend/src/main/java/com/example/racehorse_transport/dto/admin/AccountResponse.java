@@ -23,4 +23,5 @@ public class AccountResponse {
     private String staffCode;    // Mã nhân viên ví dụ "QL-01", "TX-01"
     private LocalDate hireDate;  // Ngày tuyển
     private String tempPassword; // Mật khẩu tạm (chỉ hiển thị 1 lần duy nhất khi vừa tạo)
+    private java.util.List<AccountLogResponse> history; // Lịch sử audit log của tài khoản
 }

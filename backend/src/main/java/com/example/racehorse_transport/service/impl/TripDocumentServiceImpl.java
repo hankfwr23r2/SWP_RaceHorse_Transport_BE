@@ -40,10 +40,37 @@ public class TripDocumentServiceImpl implements TripDocumentService {
         tripDocumentRepository.deleteById(id);
     }
 
-    // =========================================================================
-    // PHẦN VIỆC CỦA DEV 4: Vận hành chuyến đi (Flow 4)
-    // =========================================================================
-    // TODO (Dev 4): Tài xế nhận ngựa, tick danh sách giấy tờ.
-    // - Viết hàm verifyTripDocuments(Integer routeId, List<Integer> documentIds)
+    @org.springframework.transaction.annotation.Transactional
+    public boolean verifyTripDocuments(Integer routeId, List<Integer> documentIds) {
+        // 1. Kiểm tra danh sách ID truyền lên có rỗng không
+        if (documentIds == null || documentIds.isEmpty()) {
+            throw new IllegalArgumentException("Danh sách giấy tờ xác nhận không được để trống!");
+        }
+        // 2. Tìm tất cả các giấy tờ theo danh sách ID
+        List<TripDocument> documents = tripDocumentRepository.findAllById(documentIds);
+        if (documents.isEmpty()) {
+            throw new IllegalArgumentException("Không tìm thấy giấy tờ nào hợp lệ với danh sách ID đã gửi!");
+        }
+        // 3. (Kiểm tra an toàn): Đảm bảo giấy tờ thuộc đúng chuyến đi/booking này
+        for (TripDocument doc : documents) {
+            // Đổi trạng thái sang VERIFIED
+            doc.setStatus("VERIFIED");
+
+            // Cập nhật ngày kiểm tra (nếu cần)
+            doc.setIssueDate(java.time.LocalDate.now());
+        }
+        // 4. Lưu tất cả thay đổi xuống Database
+        tripDocumentRepository.saveAll(documents);
+
+        return true;
+    }
+
+    @Override
+    public List<TripDocument> findByBookingId(Integer bookingId) {
+        if (bookingId == null) {
+            throw new IllegalArgumentException("Booking ID không được để trống!");
+        }
+        return tripDocumentRepository.findByBookingId(bookingId);
+    }
 
 }

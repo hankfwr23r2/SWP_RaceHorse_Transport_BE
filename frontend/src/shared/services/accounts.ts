@@ -36,7 +36,11 @@ export const accountsApi = {
             role: item.role,
             status: item.status,
             createdAt: item.hireDate ? new Date(item.hireDate).getTime() : Date.now(),
-            history: [],
+            history: (item.history || []).map(h => ({
+              time: new Date(h.createdAt).getTime(),
+              actor: h.actionByName || 'Hệ thống',
+              text: h.description || h.actionType,
+            })),
           }))
         }
       } catch {
@@ -125,7 +129,7 @@ export const accountsApi = {
     const userIdMatch = id.match(/\d+/)
     if (typeof window !== 'undefined' && userIdMatch) {
       try {
-        await adminAccountsApi.toggleLock(Number(userIdMatch[0]), locked)
+        await adminAccountsApi.toggleLock(Number(userIdMatch[0]), locked, reason)
       } catch {
         // Dùng mock store khi chạy test hoặc offline
       }
@@ -137,6 +141,28 @@ export const accountsApi = {
       if (person) await staffApi.update(person.id, locked ? { status: 'off', offReason: 'Tài khoản bị khóa' } : { status: 'working', offReason: undefined, offTo: undefined })
     }
     return structuredClone(out)
+  },
+
+  // Lấy danh sách audit log của tài khoản từ backend
+  getLogs: async (id: string) => {
+    const userIdMatch = id.match(/\d+/)
+    if (typeof window !== 'undefined' && userIdMatch) {
+      try {
+        return await adminAccountsApi.getLogs(Number(userIdMatch[0]))
+      } catch {
+        // Dùng fallback
+      }
+    }
+    const a = store.get(id)
+    return (a?.history || []).map((h, idx) => ({
+      id: idx,
+      actionType: 'HISTORY',
+      actionByName: h.actor,
+      actionByEmail: '',
+      targetUserId: 0,
+      description: h.text,
+      createdAt: new Date(h.time).toISOString(),
+    }))
   },
 
   // Đặt lại mật khẩu: trả về mật khẩu tạm (chỉ hiện một lần)
