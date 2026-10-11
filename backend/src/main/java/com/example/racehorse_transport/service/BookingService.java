@@ -27,5 +27,10 @@ public interface BookingService {
 
     // Nghiệp vụ Phase 2: Coordinator chốt xe & lộ trình
     BookingResponse confirmCoordinatorPlan(String bookingIdentifier, com.example.racehorse_transport.dto.coordinator.CoordinatorPlanRequest request);
+
+    // Nghiệp vụ Phase 3: Manager phân kíp xe, phát hành báo giá 48h, trả lại hồ sơ
+    BookingResponse assignCrew(String bookingIdentifier, com.example.racehorse_transport.dto.manager.AssignCrewRequest request);
+    BookingResponse sendQuote(String bookingIdentifier, com.example.racehorse_transport.dto.manager.SendQuoteRequest request);
+    BookingResponse sendBack(String bookingIdentifier, com.example.racehorse_transport.dto.manager.SendBackRequest request);
 }
 

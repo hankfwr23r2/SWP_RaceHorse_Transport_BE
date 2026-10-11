@@ -11,4 +11,5 @@ public interface StaffRepository extends JpaRepository<Staff, Integer> {
     long countByRoleIgnoreCase(String role);
     List<Staff> findByRoleIgnoreCase(String role);
     List<Staff> findByRoleIgnoreCaseAndEmploymentStatusIgnoreCase(String role, String employmentStatus);
+    java.util.Optional<Staff> findByStaffCode(String staffCode);
 }

@@ -22,10 +22,15 @@ import java.util.Optional;
 import com.example.racehorse_transport.dto.booking.BookingDetailsPayload;
 import com.example.racehorse_transport.dto.coordinator.CoordinatorPlanRequest;
 import com.example.racehorse_transport.dto.coordinator.VehicleTripDto;
+import com.example.racehorse_transport.dto.manager.*;
 import com.example.racehorse_transport.service.FleetService;
 
+import java.math.BigDecimal;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -38,6 +43,9 @@ public class BookingServiceImpl implements BookingService {
     private final HorseRepository horseRepository;
     private final SystemLogRepository systemLogRepository;
     private final BookingVehicleRepository bookingVehicleRepository;
+    private final BookingAssignmentRepository bookingAssignmentRepository;
+    private final StaffRepository staffRepository;
+    private final QuotationRepository quotationRepository;
     private final FleetService fleetService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -320,6 +328,313 @@ public class BookingServiceImpl implements BookingService {
 
         log.info("Coordinator successfully confirmed fleet plan for booking ID={}", updatedBooking.getId());
         return mapToResponse(updatedBooking);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse assignCrew(String bookingIdentifier, AssignCrewRequest request) {
+        Integer bookingId = parseBookingId(bookingIdentifier);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng: " + bookingIdentifier));
+
+        if (!"pending_commercial".equalsIgnoreCase(booking.getStatus())) {
+            throw new IllegalStateException("Chỉ phân công kíp xe khi đơn đang ở bước duyệt báo giá (pending_commercial)!");
+        }
+
+        if (request.getPicks() == null || request.getPicks().isEmpty()) {
+            throw new IllegalArgumentException("Danh sách phân công kíp xe không được để trống!");
+        }
+
+        BookingDetailsPayload payload = extractPayload(booking);
+        List<VehicleTripDto> trips = payload.getTrips();
+        if (trips == null || trips.isEmpty()) {
+            throw new IllegalStateException("Đơn hàng chưa có phương án xe để phân tài xế và hộ tống!");
+        }
+
+        if (request.getPicks().size() != trips.size()) {
+            throw new IllegalArgumentException("Cần chọn đủ kíp xe cho toàn bộ " + trips.size() + " chuyến xe!");
+        }
+
+        Instant departDate = booking.getDepartureDate() != null ? booking.getDepartureDate() : Instant.now();
+        List<BookingAssignment> newAssignments = new ArrayList<>();
+        Set<String> usedDrivers = new HashSet<>();
+        Set<String> usedEscorts = new HashSet<>();
+
+        for (int i = 0; i < request.getPicks().size(); i++) {
+            CrewPickDto pick = request.getPicks().get(i);
+            if (pick.getDriverId() == null || pick.getDriverId().trim().isEmpty() ||
+                pick.getEscortId() == null || pick.getEscortId().trim().isEmpty()) {
+                throw new IllegalArgumentException("Mỗi xe phải có đủ 1 tài xế và 1 nhân viên hộ tống!");
+            }
+
+            if (!usedDrivers.add(pick.getDriverId().trim())) {
+                throw new IllegalArgumentException("Mỗi xe cần một tài xế riêng biệt, không thể chọn 1 tài xế cho 2 xe!");
+            }
+            if (!usedEscorts.add(pick.getEscortId().trim())) {
+                throw new IllegalArgumentException("Mỗi xe cần một hộ tống riêng biệt, không thể chọn 1 hộ tống cho 2 xe!");
+            }
+
+            Staff driver = fleetService.findStaffByIdOrCode(pick.getDriverId(), "DRIVER");
+            fleetService.validateCrewAvailability(driver.getId(), departDate, booking.getBookingType(), booking.getId());
+
+            Staff escort = fleetService.findStaffByIdOrCode(pick.getEscortId(), "ESCORT");
+            fleetService.validateCrewAvailability(escort.getId(), departDate, booking.getBookingType(), booking.getId());
+
+            int idx = i;
+            VehicleTripDto matchedTrip = trips.stream()
+                    .filter(t -> t.getTripId() != null && t.getTripId().equalsIgnoreCase(pick.getTripId()))
+                    .findFirst()
+                    .orElse(trips.get(idx));
+
+            matchedTrip.setDriverId(driver.getStaffCode() != null ? driver.getStaffCode() : String.valueOf(driver.getId()));
+            matchedTrip.setEscortId(escort.getStaffCode() != null ? escort.getStaffCode() : String.valueOf(escort.getId()));
+
+            newAssignments.add(BookingAssignment.builder()
+                    .bookingID(booking)
+                    .staffID(driver)
+                    .assignRole("DRIVER")
+                    .status("ASSIGNED")
+                    .assignedAt(Instant.now())
+                    .note("Phân công tài xế lái xe cho chuyến " + matchedTrip.getTripId())
+                    .build());
+
+            newAssignments.add(BookingAssignment.builder()
+                    .bookingID(booking)
+                    .staffID(escort)
+                    .assignRole("ESCORT")
+                    .status("ASSIGNED")
+                    .assignedAt(Instant.now())
+                    .note("Phân công hộ tống/thú y chăm sóc ngựa cho chuyến " + matchedTrip.getTripId())
+                    .build());
+        }
+
+        bookingAssignmentRepository.deleteByBookingID_Id(booking.getId());
+        bookingAssignmentRepository.flush();
+        bookingAssignmentRepository.saveAll(newAssignments);
+
+        payload.setTrips(trips);
+        appendHistory(payload, request.getBy() != null ? request.getBy() : "Quản lý",
+                "Chọn tài xế và hộ tống cho " + trips.size() + " xe");
+        savePayload(booking, payload);
+
+        Booking updated = bookingRepository.save(booking);
+
+        logAction("ASSIGN_CREW", updated.getId(), "Quản lý (" + request.getBy() + ") phân công "
+                + newAssignments.size() + " nhân sự kíp xe cho đơn BK-" + updated.getId());
+
+        log.info("Successfully assigned crew for booking ID={}", updated.getId());
+        return mapToResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse sendQuote(String bookingIdentifier, SendQuoteRequest request) {
+        Integer bookingId = parseBookingId(bookingIdentifier);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng: " + bookingIdentifier));
+
+        if (!"pending_commercial".equalsIgnoreCase(booking.getStatus())) {
+            throw new IllegalStateException("Đơn hàng không ở bước duyệt báo giá (pending_commercial)!");
+        }
+
+        BookingDetailsPayload payload = extractPayload(booking);
+        List<VehicleTripDto> trips = payload.getTrips();
+        if (trips == null || trips.isEmpty()) {
+            throw new IllegalStateException("Đơn chưa có phương án xe để gửi báo giá!");
+        }
+        for (VehicleTripDto t : trips) {
+            if (t.getDriverId() == null || t.getDriverId().isBlank() || t.getEscortId() == null || t.getEscortId().isBlank()) {
+                throw new IllegalStateException("Cần phân công tài xế và hộ tống cho tất cả các xe trước khi duyệt báo giá!");
+            }
+        }
+
+        BigDecimal total = request.getTotal() != null ? request.getTotal() : BigDecimal.ZERO;
+        BigDecimal deposit = request.getDeposit() != null && request.getDeposit().compareTo(BigDecimal.ZERO) > 0
+                ? request.getDeposit()
+                : total.multiply(new BigDecimal("0.30"));
+        BigDecimal balance = request.getBalance() != null && request.getBalance().compareTo(BigDecimal.ZERO) > 0
+                ? request.getBalance()
+                : total.subtract(deposit);
+
+        Instant now = Instant.now();
+        Instant expiresAt = now.plus(48, ChronoUnit.HOURS); // Hiệu lực 48 giờ
+
+        User sentByUser = null;
+        if (request.getBy() != null && !request.getBy().isBlank()) {
+            sentByUser = userRepository.findByUsernameOrEmail(request.getBy(), request.getBy()).orElse(null);
+        }
+
+        String linesJson = null;
+        try {
+            Map<String, Object> quoteContent = new HashMap<>();
+            quoteContent.put("lines", request.getLines());
+            quoteContent.put("adjustments", request.getAdjustments());
+            linesJson = objectMapper.writeValueAsString(quoteContent);
+        } catch (Exception ex) {
+            log.warn("Could not serialize quote lines: {}", ex.getMessage());
+        }
+
+        BigDecimal adjustmentSum = BigDecimal.ZERO;
+        if (request.getAdjustments() != null) {
+            for (QuoteAdjustmentDto adj : request.getAdjustments()) {
+                if (adj.getAmount() != null) {
+                    adjustmentSum = adjustmentSum.add(adj.getAmount());
+                }
+            }
+        }
+
+        Quotation quotation = Quotation.builder()
+                .booking(booking)
+                .subtotal(request.getSubtotal() != null ? request.getSubtotal() : total)
+                .adjustmentAmount(adjustmentSum)
+                .adjustmentNote(request.getAdjustments() != null && !request.getAdjustments().isEmpty() ? request.getAdjustments().get(0).getLabel() : null)
+                .totalAmount(total)
+                .depositAmount(deposit)
+                .balanceAmount(balance)
+                .sentAt(now)
+                .expiresAt(expiresAt)
+                .sentByUser(sentByUser)
+                .status("PENDING")
+                .quoteLinesJson(linesJson)
+                .build();
+        quotationRepository.save(quotation);
+
+        Map<String, Object> quoteMap = new HashMap<>();
+        quoteMap.put("lines", request.getLines());
+        quoteMap.put("adjustments", request.getAdjustments());
+        quoteMap.put("subtotal", request.getSubtotal());
+        quoteMap.put("total", total);
+        quoteMap.put("deposit", deposit);
+        quoteMap.put("balance", balance);
+        quoteMap.put("sentAt", now.toEpochMilli());
+        quoteMap.put("expiresAt", expiresAt.toEpochMilli());
+        quoteMap.put("sentBy", request.getBy() != null ? request.getBy() : "Quản lý");
+        payload.setQuote(quoteMap);
+
+        appendHistory(payload, request.getBy() != null ? request.getBy() : "Quản lý",
+                "Duyệt và phát hành báo giá: Tổng " + total + " VND, Đặt cọc 30%: " + deposit + " VND (Hiệu lực 48h)");
+        savePayload(booking, payload);
+
+        booking.setStatus("awaiting_payment");
+        Booking updated = bookingRepository.save(booking);
+
+        logAction("SEND_QUOTATION", updated.getId(), "Phát hành báo giá đơn BK-" + updated.getId()
+                + " (Tổng: " + total + ", Cọc: " + deposit + ", Hết hạn: " + expiresAt + ")");
+
+        log.info("Successfully issued quote for booking ID={}, status=awaiting_payment", updated.getId());
+        return mapToResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse sendBack(String bookingIdentifier, SendBackRequest request) {
+        Integer bookingId = parseBookingId(bookingIdentifier);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng: " + bookingIdentifier));
+
+        if (!"pending_commercial".equalsIgnoreCase(booking.getStatus())) {
+            throw new IllegalStateException("Chỉ trả lại được đơn đang chờ duyệt báo giá!");
+        }
+
+        if (request.getReason() == null || request.getReason().trim().isEmpty()) {
+            throw new IllegalArgumentException("Cần ghi lý do trả lại đơn!");
+        }
+
+        BookingDetailsPayload payload = extractPayload(booking);
+        String label;
+        if ("specialist".equalsIgnoreCase(request.getTo())) {
+            label = "Kiểm dịch viên duyệt lại hồ sơ ngựa";
+            if (payload.getMedical() instanceof Map) {
+                ((Map<String, Object>) payload.getMedical()).put("status", "pending");
+            }
+        } else {
+            label = "Điều phối viên làm lại xe và lộ trình";
+            bookingVehicleRepository.deleteByBookingID_Id(booking.getId());
+            bookingAssignmentRepository.deleteByBookingID_Id(booking.getId());
+            payload.setTrips(null);
+            payload.setRoute(null);
+            payload.setPlan(null);
+            payload.setGate(null);
+        }
+
+        booking.setStatus("under_review");
+        appendHistory(payload, request.getBy() != null ? request.getBy() : "Quản lý",
+                "Trả lại " + label + ": " + request.getReason().trim());
+        savePayload(booking, payload);
+
+        Booking updated = bookingRepository.save(booking);
+        logAction("SEND_BACK", updated.getId(), "Quản lý trả đơn BK-" + updated.getId() + " về " + request.getTo() + ": " + request.getReason());
+        log.info("Booking ID={} sent back to {}", updated.getId(), request.getTo());
+        return mapToResponse(updated);
+    }
+
+    private Integer parseBookingId(String bookingIdentifier) {
+        if (bookingIdentifier == null || bookingIdentifier.trim().isEmpty()) {
+            throw new IllegalArgumentException("Mã đơn hàng không được để trống!");
+        }
+        String cleanId = bookingIdentifier.trim();
+        try {
+            if (cleanId.toUpperCase().startsWith("BK-")) {
+                return Integer.parseInt(cleanId.substring(3).trim());
+            } else if (cleanId.toUpperCase().startsWith("ORD-")) {
+                String[] parts = cleanId.split("-");
+                return Integer.parseInt(parts[parts.length - 1].trim());
+            } else {
+                return Integer.parseInt(cleanId);
+            }
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Định dạng mã đơn không hợp lệ: " + bookingIdentifier);
+        }
+    }
+
+    private BookingDetailsPayload extractPayload(Booking booking) {
+        BookingDetailsPayload payload = new BookingDetailsPayload();
+        if (booking.getDetailsJson() != null && !booking.getDetailsJson().trim().isEmpty()) {
+            String json = booking.getDetailsJson().trim();
+            try {
+                if (json.startsWith("{")) {
+                    payload = objectMapper.readValue(json, BookingDetailsPayload.class);
+                } else if (json.startsWith("[")) {
+                    List<BookingHorseDto> horses = objectMapper.readValue(json, new TypeReference<List<BookingHorseDto>>() {});
+                    payload.setHorses(horses);
+                }
+            } catch (Exception ex) {
+                log.warn("Error reading detailsJson: {}", ex.getMessage());
+            }
+        }
+        return payload;
+    }
+
+    private void savePayload(Booking booking, BookingDetailsPayload payload) {
+        try {
+            booking.setDetailsJson(objectMapper.writeValueAsString(payload));
+        } catch (Exception ex) {
+            log.error("Could not serialize payload: {}", ex.getMessage());
+        }
+    }
+
+    private void appendHistory(BookingDetailsPayload payload, String actor, String text) {
+        if (payload.getHistory() == null) {
+            payload.setHistory(new ArrayList<>());
+        }
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("time", System.currentTimeMillis());
+        entry.put("actor", actor != null ? actor : "Hệ thống");
+        entry.put("text", text);
+        payload.getHistory().add(entry);
+    }
+
+    private void logAction(String actionType, Integer targetRecordId, String newData) {
+        try {
+            SystemLog sysLog = SystemLog.builder()
+                    .actionType(actionType)
+                    .targetTable("BOOKING")
+                    .targetRecordID(targetRecordId)
+                    .newData(newData)
+                    .createdAt(Instant.now())
+                    .build();
+            systemLogRepository.save(sysLog);
+        } catch (Exception ignored) {}
     }
 
     private BookingResponse mapToResponse(Booking b) {

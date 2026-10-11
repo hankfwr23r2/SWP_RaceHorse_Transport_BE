@@ -23,6 +23,7 @@ public class FleetServiceImpl implements FleetService {
     private final BookingRepository bookingRepository;
     private final BookingVehicleRepository bookingVehicleRepository;
     private final BookingAssignmentRepository bookingAssignmentRepository;
+    private final UserRepository userRepository;
 
     // Danh sách các trạng thái đơn hàng đang chiếm dụng tài nguyên xe và nhân sự
     private static final Set<String> HOLDING_STATUSES = Set.of(
@@ -258,6 +259,83 @@ public class FleetServiceImpl implements FleetService {
                         String tripTag = b.getBookingType() != null && b.getBookingType().equalsIgnoreCase("international")
                                 ? "quốc tế" : "nội địa";
                         throw new IllegalStateException("Xe " + vehicle.getLicensePlate() + " (" + vehicle.getVehicleName() + ") trùng lịch với đơn BK-"
+                                + String.format("%03d", b.getId()) + " (" + tripTag + ", khứ hồi về trụ sở VN đến " + busyEnd + ")!");
+                    }
+                }
+            }
+        }
+    }
+
+    @Override
+    public Staff findStaffByIdOrCode(String identifier, String expectedRole) {
+        if (identifier == null || identifier.trim().isEmpty()) {
+            throw new IllegalArgumentException("Mã nhân sự không được để trống!");
+        }
+        String clean = identifier.trim();
+        Optional<Staff> staffOpt = Optional.empty();
+
+        try {
+            int numId = Integer.parseInt(clean);
+            staffOpt = staffRepository.findById(numId);
+        } catch (NumberFormatException ignored) {}
+
+        if (staffOpt.isEmpty()) {
+            staffOpt = staffRepository.findByStaffCode(clean);
+        }
+
+        if (staffOpt.isEmpty()) {
+            Optional<User> userOpt = userRepository.findByUsernameOrEmail(clean, clean);
+            if (userOpt.isPresent()) {
+                staffOpt = staffRepository.findById(userOpt.get().getId());
+            }
+        }
+
+        if (staffOpt.isEmpty()) {
+            throw new IllegalArgumentException("Không tìm thấy nhân sự phù hợp: " + identifier);
+        }
+
+        Staff staff = staffOpt.get();
+        if (expectedRole != null && !expectedRole.trim().isEmpty() && !expectedRole.equalsIgnoreCase("ALL")) {
+            if (staff.getRole() == null || !staff.getRole().equalsIgnoreCase(expectedRole)) {
+                throw new IllegalArgumentException("Nhân sự " + staff.getStaffCode() + " không có vai trò " + expectedRole + " (vai trò hiện tại: " + staff.getRole() + ")!");
+            }
+        }
+
+        return staff;
+    }
+
+    @Override
+    public void validateCrewAvailability(Integer staffId, Instant departDate, String tripType, Integer excludeBookingId) {
+        Staff staff = staffRepository.findById(staffId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhân sự có ID: " + staffId));
+
+        if (!"ACTIVE".equalsIgnoreCase(staff.getEmploymentStatus())) {
+            throw new IllegalStateException("Nhân sự " + staff.getStaffCode() + " hiện không hoạt động / nghỉ phép!");
+        }
+
+        Instant checkDate = departDate != null ? departDate : Instant.now();
+        boolean isInternational = "international".equalsIgnoreCase(tripType);
+        int daysBefore = isInternational ? 2 : 1;
+        int daysAfter = isInternational ? 4 : 2;
+
+        List<Booking> holdingBookings = getHoldingBookings();
+        for (Booking b : holdingBookings) {
+            if (excludeBookingId != null && excludeBookingId.equals(b.getId())) {
+                continue;
+            }
+            Instant bookingDepart = b.getDepartureDate() != null ? b.getDepartureDate() : b.getBookingDate();
+            if (bookingDepart == null) continue;
+
+            Instant busyStart = bookingDepart.minus(daysBefore, ChronoUnit.DAYS);
+            Instant busyEnd = bookingDepart.plus(daysAfter, ChronoUnit.DAYS);
+
+            if (!checkDate.isBefore(busyStart) && !checkDate.isAfter(busyEnd)) {
+                List<BookingAssignment> assignments = bookingAssignmentRepository.findByBookingID_Id(b.getId());
+                for (BookingAssignment ba : assignments) {
+                    if (ba.getStaffID() != null && ba.getStaffID().getId().equals(staffId)) {
+                        String tripTag = b.getBookingType() != null && b.getBookingType().equalsIgnoreCase("international")
+                                ? "quốc tế" : "nội địa";
+                        throw new IllegalStateException("Nhân sự " + staff.getStaffCode() + " (" + staff.getRole() + ") đang được giao phục vụ đơn BK-"
                                 + String.format("%03d", b.getId()) + " (" + tripTag + ", khứ hồi về trụ sở VN đến " + busyEnd + ")!");
                     }
                 }

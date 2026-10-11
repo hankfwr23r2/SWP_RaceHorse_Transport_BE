@@ -13,4 +13,6 @@ public interface FleetService {
     List<CrewResponse> getAvailableCrew(Instant departDate, String role);
     com.example.racehorse_transport.entity.Vehicle findVehicleByIdOrCode(String identifier);
     void validateVehicleAvailability(Integer vehicleId, Instant departDate, String tripType, Integer excludeBookingId);
+    com.example.racehorse_transport.entity.Staff findStaffByIdOrCode(String identifier, String expectedRole);
+    void validateCrewAvailability(Integer staffId, Instant departDate, String tripType, Integer excludeBookingId);
 }

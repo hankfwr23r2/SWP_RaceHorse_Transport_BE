@@ -87,4 +87,22 @@ export const backendBookingApi = {
     const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/coordinator/bookings/${id}/fleet-plan`, payload)
     return res.data.data
   },
+
+  // 7. Manager phân công kíp xe (POST /api/v1/manager/bookings/{id}/assign-crew)
+  assignCrew: async (id: number | string, payload: { by?: string; picks: Array<{ tripId: string; driverId: string; escortId: string }> }): Promise<BackendBookingResponse> => {
+    const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/manager/bookings/${id}/assign-crew`, payload)
+    return res.data.data
+  },
+
+  // 8. Manager duyệt và phát hành báo giá 48h (POST /api/v1/manager/bookings/{id}/send-quote)
+  sendQuote: async (id: number | string, payload: { by?: string; adjustments: Array<{ label: string; amount: number }>; lines?: any[]; subtotal?: number; total?: number; deposit?: number; balance?: number }): Promise<BackendBookingResponse> => {
+    const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/manager/bookings/${id}/send-quote`, payload)
+    return res.data.data
+  },
+
+  // 9. Manager trả đơn về Specialist / Coordinator (POST /api/v1/manager/bookings/{id}/send-back)
+  sendBack: async (id: number | string, payload: { by?: string; to: 'specialist' | 'coordinator'; reason: string }): Promise<BackendBookingResponse> => {
+    const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/manager/bookings/${id}/send-back`, payload)
+    return res.data.data
+  },
 }

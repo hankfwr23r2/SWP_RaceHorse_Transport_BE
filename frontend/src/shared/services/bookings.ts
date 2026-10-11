@@ -565,6 +565,13 @@ export const bookingsApi = {
       ? { medical: { status: 'pending' } }
       : { plan: undefined, route: undefined, trips: undefined, gate: undefined } // chọn lại xe nên Driver, Escort đã chọn cũng bỏ
     const out = structuredClone(store.update(id, { ...patch, sentBack, status: 'under_review', history: log(b, by, `Trả lại ${label}: ${reason.trim()}`) }))
+    if (typeof window !== 'undefined') {
+      try {
+        await backendBookingApi.sendBack(id, { by, to, reason: reason.trim() })
+      } catch (e) {
+        console.warn('Backend sendBack sync error:', e)
+      }
+    }
     notify(out, [to], `Đơn ${id} được trả lại`, `Quản lý yêu cầu ${label.toLowerCase()}: ${reason.trim()}`, to === 'specialist' ? {} : { coordinator: LINK.coordinator(id) })
     return out
   },
@@ -587,7 +594,15 @@ export const bookingsApi = {
       if (busy.crew.has(p.escortId)) throw new Error('Nhân viên hộ tống đã được giữ cho đơn khác có ngày đi gần ngày này.')
     })
     const next = trips.map(t => { const p = picks.find(x => x.tripId === t.tripId)!; return { ...t, driverId: p.driverId, escortId: p.escortId } })
-    return structuredClone(store.update(id, { trips: next, history: log(b, by, `Chọn tài xế và hộ tống cho ${next.length} xe`) }))
+    const out = structuredClone(store.update(id, { trips: next, history: log(b, by, `Chọn tài xế và hộ tống cho ${next.length} xe`) }))
+    if (typeof window !== 'undefined') {
+      try {
+        await backendBookingApi.assignCrew(id, { by, picks })
+      } catch (e) {
+        console.warn('Backend assignCrew sync error:', e)
+      }
+    }
+    return out
   },
 
   // Manager: dòng báo giá do hệ thống tính (chưa gồm phụ phí và chiết khấu)
@@ -608,6 +623,21 @@ export const bookingsApi = {
     const { lines } = await bookingsApi.quoteDraft(id)
     const quote = finalizeQuote(lines, adjustments.filter(a => a.label.trim() && a.amount !== 0), Date.now(), by)
     const out = structuredClone(store.update(id, { quote, status: 'awaiting_payment', history: log(b, by, 'Duyệt và gửi báo giá') }))
+    if (typeof window !== 'undefined') {
+      try {
+        await backendBookingApi.sendQuote(id, {
+          by,
+          adjustments: adjustments.filter(a => a.label.trim() && a.amount !== 0),
+          lines,
+          subtotal: quote.subtotal,
+          total: quote.total,
+          deposit: quote.deposit,
+          balance: quote.balance,
+        })
+      } catch (e) {
+        console.warn('Backend sendQuote sync error:', e)
+      }
+    }
     notify(b, ['customer'], `Báo giá đơn ${id}`, `Tổng ${formatVND(quote.total)}, đặt cọc ${formatVND(quote.deposit)} trong 48 giờ.`)
     return out
   },
