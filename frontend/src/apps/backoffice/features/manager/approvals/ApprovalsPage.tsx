@@ -52,8 +52,9 @@ function QuoteModal({ b, all, onClose, onDone }: { b: Booking; all: Booking[]; o
   })
   const [rows, setRows] = useState<AdjRow[]>([])
   const [busy, setBusy] = useState(false)
+  const [now] = useState(() => Date.now())
   const adjustments = rows.filter(r => r.label.trim() && digits(r.amount) > 0).map(r => ({ label: r.label.trim(), amount: r.kind === 'discount' ? -digits(r.amount) : digits(r.amount) }))
-  const preview = draft && finalizeQuote(draft.lines, adjustments, Date.now(), session!.name)
+  const preview = draft && finalizeQuote(draft.lines, adjustments, now, session!.name)
   const set = (i: number, patch: Partial<AdjRow>) => setRows(r => r.map((x, j) => (j === i ? { ...x, ...patch } : x)))
 
   const sendBack = async () => {
