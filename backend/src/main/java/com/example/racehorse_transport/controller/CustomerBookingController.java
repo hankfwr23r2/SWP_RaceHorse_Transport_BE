@@ -76,4 +76,36 @@ public class CustomerBookingController {
         BookingResponse response = bookingService.getBookingById(id, username);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy chi tiết đơn hàng thành công"));
     }
+
+    // 4. API Khách hàng thanh toán đặt cọc 30% để nhận Vận đơn (Waybill)
+    @PostMapping("/{id}/pay-deposit")
+    public ResponseEntity<ApiResponse<BookingResponse>> payDeposit(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) com.example.racehorse_transport.dto.booking.PayDepositRequest request) {
+        String username = extractUsername(authHeader);
+        if (username == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Vui lòng đăng nhập để thanh toán cọc!"));
+        }
+
+        BookingResponse response = bookingService.payDeposit(id, username, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Thanh toán cọc 30% thành công! Vận đơn đã được cấp."));
+    }
+
+    // 5. API Khách hàng từ chối báo giá (giải phóng xe và kíp xe)
+    @PostMapping("/{id}/reject-quote")
+    public ResponseEntity<ApiResponse<BookingResponse>> rejectQuote(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) com.example.racehorse_transport.dto.booking.RejectQuoteRequest request) {
+        String username = extractUsername(authHeader);
+        if (username == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Vui lòng đăng nhập để thao tác!"));
+        }
+
+        BookingResponse response = bookingService.rejectQuote(id, username, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Đã từ chối báo giá. Đơn hàng đã hủy và giải phóng xe."));
+    }
 }

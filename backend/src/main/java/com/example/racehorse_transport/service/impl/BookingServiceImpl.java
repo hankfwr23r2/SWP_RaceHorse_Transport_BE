@@ -46,6 +46,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingAssignmentRepository bookingAssignmentRepository;
     private final StaffRepository staffRepository;
     private final QuotationRepository quotationRepository;
+    private final PaymentRepository paymentRepository;
     private final FleetService fleetService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -566,6 +567,145 @@ public class BookingServiceImpl implements BookingService {
         logAction("SEND_BACK", updated.getId(), "Quản lý trả đơn BK-" + updated.getId() + " về " + request.getTo() + ": " + request.getReason());
         log.info("Booking ID={} sent back to {}", updated.getId(), request.getTo());
         return mapToResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse payDeposit(String bookingIdentifier, String customerUsername, com.example.racehorse_transport.dto.booking.PayDepositRequest request) {
+        Integer bookingId = parseBookingId(bookingIdentifier);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng: " + bookingIdentifier));
+
+        if (!"awaiting_payment".equalsIgnoreCase(booking.getStatus())) {
+            throw new IllegalStateException("Đơn hàng không ở bước chờ thanh toán đặt cọc!");
+        }
+
+        Quotation quotation = quotationRepository.findTopByBookingIdOrderBySentAtDesc(booking.getId())
+                .orElseThrow(() -> new IllegalStateException("Không tìm thấy thông tin báo giá của đơn hàng!"));
+
+        Instant now = Instant.now();
+        if (quotation.getExpiresAt() != null && now.isAfter(quotation.getExpiresAt())) {
+            throw new IllegalStateException("Báo giá đã hết hạn 48 giờ, không thể đặt cọc!");
+        }
+
+        BigDecimal payAmount = (request != null && request.getAmount() != null)
+                ? request.getAmount()
+                : quotation.getDepositAmount();
+
+        String paymentMethod = (request != null && request.getPaymentMethod() != null)
+                ? request.getPaymentMethod()
+                : "BANK_TRANSFER";
+
+        String transactionCode = (request != null && request.getTransactionCode() != null)
+                ? request.getTransactionCode()
+                : "DEP-" + String.format("%04d", booking.getId()) + "-" + System.currentTimeMillis();
+
+        Payment payment = Payment.builder()
+                .bookingID(booking)
+                .amount(payAmount)
+                .paymentDate(now)
+                .paymentType("DEPOSIT")
+                .paymentMethod(paymentMethod)
+                .transactionCode(transactionCode)
+                .status("COMPLETED")
+                .note("Khách hàng thanh toán cọc 30% cho đơn BK-" + booking.getId())
+                .build();
+        paymentRepository.save(payment);
+
+        quotation.setStatus("ACCEPTED");
+        quotationRepository.save(quotation);
+
+        String waybillNo = "VD-2026-" + String.format("%04d", booking.getId());
+        booking.setWaybillNo(waybillNo);
+        booking.setStatus("waybill_issued");
+
+        BookingDetailsPayload payload = extractPayload(booking);
+        Map<String, Object> paymentMap = new HashMap<>();
+        paymentMap.put("paidAt", now.toEpochMilli());
+        paymentMap.put("amount", payAmount);
+        paymentMap.put("reference", transactionCode);
+        payload.setPayment(paymentMap);
+
+        appendHistory(payload, customerUsername != null ? customerUsername : "Khách hàng",
+                "Đặt cọc 30% (" + payAmount + " VND), cấp Vận đơn " + waybillNo);
+        savePayload(booking, payload);
+
+        Booking updated = bookingRepository.save(booking);
+
+        logAction("PAY_DEPOSIT", updated.getId(), "Khách hàng thanh toán cọc 30% (" + payAmount + " VND), cấp Vận đơn " + waybillNo);
+        log.info("Successfully paid deposit for booking ID={}, waybill={}", updated.getId(), waybillNo);
+        return mapToResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse rejectQuote(String bookingIdentifier, String customerUsername, com.example.racehorse_transport.dto.booking.RejectQuoteRequest request) {
+        Integer bookingId = parseBookingId(bookingIdentifier);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn hàng: " + bookingIdentifier));
+
+        if (!"awaiting_payment".equalsIgnoreCase(booking.getStatus())) {
+            throw new IllegalStateException("Chỉ từ chối báo giá khi đơn đang ở bước chờ đặt cọc!");
+        }
+
+        Optional<Quotation> quoteOpt = quotationRepository.findTopByBookingIdOrderBySentAtDesc(booking.getId());
+        quoteOpt.ifPresent(q -> {
+            q.setStatus("REJECTED");
+            quotationRepository.save(q);
+        });
+
+        bookingVehicleRepository.deleteByBookingID_Id(booking.getId());
+        bookingAssignmentRepository.deleteByBookingID_Id(booking.getId());
+
+        booking.setStatus("cancelled");
+        BookingDetailsPayload payload = extractPayload(booking);
+
+        String reason = request != null && request.getReason() != null ? request.getReason().trim() : "Khách hàng không đồng ý báo giá";
+        appendHistory(payload, customerUsername != null ? customerUsername : "Khách hàng",
+                "Từ chối báo giá: " + reason + ". Đơn đã hủy, giải phóng xe và kíp xe.");
+        savePayload(booking, payload);
+
+        Booking updated = bookingRepository.save(booking);
+        logAction("REJECT_QUOTE", updated.getId(), "Khách hàng từ chối báo giá đơn BK-" + updated.getId() + ": " + reason);
+        log.info("Booking ID={} cancelled by customer rejecting quote", updated.getId());
+        return mapToResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public int releaseExpiredQuotations() {
+        List<Booking> awaitingBookings = bookingRepository.findByStatusOrderByBookingDateAsc("awaiting_payment");
+        int count = 0;
+        Instant now = Instant.now();
+
+        for (Booking booking : awaitingBookings) {
+            Optional<Quotation> quoteOpt = quotationRepository.findTopByBookingIdOrderBySentAtDesc(booking.getId());
+            if (quoteOpt.isPresent()) {
+                Quotation q = quoteOpt.get();
+                if (q.getExpiresAt() != null && now.isAfter(q.getExpiresAt())) {
+                    bookingVehicleRepository.deleteByBookingID_Id(booking.getId());
+                    bookingAssignmentRepository.deleteByBookingID_Id(booking.getId());
+
+                    q.setStatus("EXPIRED");
+                    quotationRepository.save(q);
+
+                    booking.setStatus("quote_expired");
+                    BookingDetailsPayload payload = extractPayload(booking);
+                    appendHistory(payload, "Hệ thống", "Báo giá hết hạn 48 giờ, tự động giải phóng xe và kíp xe.");
+                    savePayload(booking, payload);
+                    bookingRepository.save(booking);
+
+                    logAction("QUOTE_AUTO_EXPIRED_RELEASE_FLEET", booking.getId(),
+                            "Báo giá đơn BK-" + booking.getId() + " hết hạn 48 giờ. Đã tự động giải phóng xe và kíp xe.");
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0) {
+            log.info("Released {} expired bookings from awaiting_payment", count);
+        }
+        return count;
     }
 
     private Integer parseBookingId(String bookingIdentifier) {

@@ -307,6 +307,13 @@ export const customerBookingsApi = {
       status: 'cancelled', cancellation: { at: Date.now(), reason: reason.trim(), by: 'customer', refund: 0 },
       history: log(b, customer, `Từ chối báo giá${reason.trim() ? `: ${reason.trim()}` : ''}`),
     }))
+    if (typeof window !== 'undefined') {
+      try {
+        await backendBookingApi.rejectQuote(id, { reason: reason.trim() })
+      } catch (e) {
+        console.warn('Backend rejectQuote sync error:', e)
+      }
+    }
     notify(b, ['manager', 'specialist', 'coordinator'], `Đơn ${id}: khách từ chối báo giá`, reason.trim() || 'Khách không đồng ý báo giá.')
     return out
   },
@@ -350,6 +357,13 @@ export const customerBookingsApi = {
       clearance: b.clearance ?? blankClearance(b.type),
       history: log(b, customer, `Đặt cọc 30%, cấp Vận đơn ${waybill.no}`),
     }))
+    if (typeof window !== 'undefined') {
+      try {
+        await backendBookingApi.payDeposit(id, { amount: b.quote!.deposit, transactionCode: `EQZ-${id.slice(-4)}-DEP` })
+      } catch (e) {
+        console.warn('Backend payDeposit sync error:', e)
+      }
+    }
     notify(b, ['manager', 'specialist', 'coordinator'], `Khách đã đặt cọc — đơn ${id}`, `Cọc ${formatVND(b.quote!.deposit)}, vận đơn ${waybill.no}. Bắt đầu làm giấy tờ và chuẩn bị chuyến.`, { specialist: LINK.specialist(id, true), coordinator: LINK.coordinator(id, true) })
     await notifyCrew(b, `Chuyến mới ${id}`, 'Lệnh điều xe đã phát xuống app. Xem tuyến, ngựa trên xe và nhận lệnh.')
     return out

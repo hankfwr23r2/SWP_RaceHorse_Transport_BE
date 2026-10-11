@@ -57,4 +57,11 @@ public class ManagerBookingController {
         BookingResponse response = bookingService.sendBack(id, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Đã trả lại hồ sơ đơn hàng"));
     }
+
+    // 6. API Kích hoạt quét & giải phóng xe/kíp xe quá hạn 48h (Dành cho Quản lý / Batch Job)
+    @PostMapping("/maintenance/release-expired")
+    public ResponseEntity<ApiResponse<Integer>> releaseExpired() {
+        int count = bookingService.releaseExpiredQuotations();
+        return ResponseEntity.ok(ApiResponse.success(count, "Đã quét và giải phóng thành công " + count + " đơn hết hạn"));
+    }
 }

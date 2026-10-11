@@ -105,4 +105,16 @@ export const backendBookingApi = {
     const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/manager/bookings/${id}/send-back`, payload)
     return res.data.data
   },
+
+  // 10. Customer thanh toán đặt cọc 30% (POST /api/v1/customer/bookings/{id}/pay-deposit)
+  payDeposit: async (id: number | string, payload?: { paymentMethod?: string; amount?: number; transactionCode?: string }): Promise<BackendBookingResponse> => {
+    const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/customer/bookings/${id}/pay-deposit`, payload ?? {})
+    return res.data.data
+  },
+
+  // 11. Customer từ chối báo giá (POST /api/v1/customer/bookings/{id}/reject-quote)
+  rejectQuote: async (id: number | string, payload?: { reason?: string }): Promise<BackendBookingResponse> => {
+    const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/customer/bookings/${id}/reject-quote`, payload ?? {})
+    return res.data.data
+  },
 }
