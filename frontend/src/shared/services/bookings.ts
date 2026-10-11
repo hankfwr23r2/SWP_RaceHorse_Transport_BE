@@ -10,6 +10,7 @@ import { horsesApi } from './horses'
 import { pushNotice } from './notices'
 import { seedBookings } from './mock/bookings'
 import { createStore } from './store'
+import { backendBookingApi, type BackendBookingResponse } from '../api/bookings'
 
 const store = createStore<Booking>('bookings', seedBookings)
 
@@ -110,6 +111,52 @@ const toCustomerView = (b: Booking): CustomerBookingView => {
   return out
 }
 
+export function backendToBooking(b: BackendBookingResponse): Booking {
+  return {
+    id: b.id,
+    type: (b.type === 'international' ? 'international' : 'domestic') as any,
+    origin: {
+      id: b.originName || 'VN-ORIGIN',
+      name: b.originName || 'Điểm đón',
+      country: ((b.originCountry as any) || 'VN'),
+    },
+    dest: {
+      id: b.destName || 'VN-DEST',
+      name: b.destName || 'Điểm đến',
+      country: ((b.destCountry as any) || 'VN'),
+    },
+    departAt: b.departAt ?? Date.now(),
+    consignor: {
+      name: b.consignor?.name ?? '',
+      phone: b.consignor?.phone ?? '',
+      idNumber: '',
+      address: '',
+    },
+    consignee: {
+      name: b.consignee?.name ?? '',
+      phone: b.consignee?.phone ?? '',
+      idNumber: '',
+      address: '',
+    },
+    horses: (b.horses ?? []).map((h, i) => ({
+      horseId: h.horseId || `H-${b.numericId}-${i + 1}`,
+      name: h.name,
+      microchip: h.microchip ?? '',
+      breed: h.breed ?? 'Thoroughbred',
+      sex: (h.sex ?? 'stallion') as any,
+      stall: (h.stall ?? 'standard') as any,
+      feedPackage: (h.feedPackage ?? 'standard') as any,
+      waterPlan: (h.waterPlan ?? 'auto') as any,
+      insurance: { opted: !!h.insuranceOpted },
+    })),
+    customer: b.customer || 'Khách hàng',
+    createdAt: b.createdAt ?? Date.now(),
+    status: (b.status ?? 'pending_intake') as any,
+    history: [{ time: b.createdAt ?? Date.now(), actor: b.customer || 'Khách hàng', text: 'Gửi yêu cầu đặt đơn' }],
+  }
+}
+
+
 // Thông tin từng xe của đơn cho khách: biển số, tài xế, hộ tống, ngựa trên xe. Chỉ của đơn mình, sau khi đã có báo giá.
 export interface TripTeam {
   tripId: string
@@ -166,17 +213,70 @@ export const publicBookingsApi = {
 export const customerBookingsApi = {
   list: async (customer: string): Promise<CustomerBookingView[]> => {
     applySystemRules()
+    try {
+      const beList = await backendBookingApi.getCustomerBookings()
+      if (beList && beList.length > 0) {
+        for (const item of beList) {
+          if (!store.get(item.id)) {
+            store.add(backendToBooking(item))
+          }
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
     return store.all().filter(b => b.customer === customer).map(toCustomerView).sort((a, b) => b.createdAt - a.createdAt)
   },
   get: async (customer: string, id: string): Promise<CustomerBookingView | undefined> => {
     applySystemRules()
-    const b = store.get(id)
+    let b = store.get(id)
+    if (!b && id.startsWith('BK-')) {
+      try {
+        const numId = parseInt(id.replace(/\D/g, ''), 10)
+        if (!isNaN(numId)) {
+          const beRes = await backendBookingApi.getCustomerBookingById(numId)
+          if (beRes) {
+            b = backendToBooking(beRes)
+            store.add(b)
+          }
+        }
+      } catch {
+        // Offline fallback
+      }
+    }
     return b && b.customer === customer ? toCustomerView(b) : undefined
   },
   create: async (customer: string, input: NewBookingInput): Promise<CustomerBookingView> => {
     const now = Date.now()
     if (store.all().some(o => o.customer === customer && o.status === 'payment_overdue')) throw new Error('Bạn có đơn quá hạn thanh toán quyết toán nên chưa đặt được đơn mới. Vui lòng thanh toán trước.')
-    const b: Booking = { ...input, id: nextBookingId(store.all()), customer, createdAt: now, status: 'pending_intake', history: [{ time: now, actor: customer, text: 'Gửi yêu cầu đặt đơn' }] }
+
+    let b: Booking
+    try {
+      const beRes = await backendBookingApi.create({
+        type: input.type,
+        originName: input.origin.name,
+        originCountry: input.origin.country,
+        destName: input.dest.name,
+        destCountry: input.dest.country,
+        departAt: input.departAt,
+        consignor: { name: input.consignor.name, phone: input.consignor.phone },
+        consignee: { name: input.consignee.name, phone: input.consignee.phone },
+        horses: input.horses.map(h => ({
+          horseId: h.horseId,
+          name: h.name,
+          microchip: h.microchip,
+          breed: h.breed,
+          sex: h.sex,
+          stall: h.stall,
+          feedPackage: h.feedPackage,
+          waterPlan: h.waterPlan,
+          insuranceOpted: h.insurance?.opted,
+        })),
+      })
+      b = backendToBooking(beRes)
+    } catch {
+      b = { ...input, id: nextBookingId(store.all()), customer, createdAt: now, status: 'pending_intake', history: [{ time: now, actor: customer, text: 'Gửi yêu cầu đặt đơn' }] }
+    }
     store.add(b)
     notify(b, ['manager'], `Đơn mới ${b.id}`, `${customer} vừa gửi đơn ${input.horses.length} ngựa, chờ tiếp nhận.`, { manager: LINK.manager.intake })
     return toCustomerView(b)
@@ -296,8 +396,41 @@ const issueSettlementOf = (b: Booking, by: string, text: string): Booking => {
 
 // Dành cho app nội bộ
 export const bookingsApi = {
-  list: async (): Promise<Booking[]> => { applySystemRules(); return structuredClone(store.all()).sort((a, b) => a.createdAt - b.createdAt) },
-  get: async (id: string): Promise<Booking | undefined> => { applySystemRules(); return structuredClone(store.get(id)) },
+  list: async (): Promise<Booking[]> => {
+    applySystemRules()
+    try {
+      const beList = await backendBookingApi.getAllBookings()
+      if (beList && beList.length > 0) {
+        for (const item of beList) {
+          if (!store.get(item.id)) {
+            store.add(backendToBooking(item))
+          }
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+    return structuredClone(store.all()).sort((a, b) => a.createdAt - b.createdAt)
+  },
+  get: async (id: string): Promise<Booking | undefined> => {
+    applySystemRules()
+    let b = store.get(id)
+    if (!b && id.startsWith('BK-')) {
+      try {
+        const numId = parseInt(id.replace(/\D/g, ''), 10)
+        if (!isNaN(numId)) {
+          const beRes = await backendBookingApi.getCustomerBookingById(numId)
+          if (beRes) {
+            b = backendToBooking(beRes)
+            store.add(b)
+          }
+        }
+      } catch {
+        // Offline fallback
+      }
+    }
+    return b ? structuredClone(b) : undefined
+  },
 
   // Manager: tiếp nhận, giao Kiểm dịch viên và Điều phối viên. Xe, tài xế, hộ tống do Điều phối viên chọn khi lập lộ trình.
   activate: async (id: string, by: string, specialist: StaffRef, coordinator: StaffRef): Promise<Booking> => {
