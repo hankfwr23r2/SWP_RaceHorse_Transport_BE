@@ -12,10 +12,13 @@ import com.example.racehorse_transport.repository.UserRepository;
 import com.example.racehorse_transport.security.JwtUtils;
 import com.example.racehorse_transport.service.AuthService;
 import lombok.RequiredArgsConstructor;
+import com.example.racehorse_transport.entity.SystemLog;
+import com.example.racehorse_transport.repository.SystemLogRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 
 @Service
@@ -27,6 +30,7 @@ public class AuthServiceImpl implements AuthService {
     private final StaffRepository staffRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final SystemLogRepository systemLogRepository;
 
     @Override
     @Transactional
@@ -207,6 +211,20 @@ public class AuthServiceImpl implements AuthService {
         // 5. Cập nhật mật khẩu băm mới
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+
+        // 6. Ghi Audit Log vào SYSTEM_LOG
+        try {
+            SystemLog log = SystemLog.builder()
+                    .actionbyUserid(user)
+                    .actionType("CHANGE_PASSWORD")
+                    .targetTable("USER")
+                    .targetRecordID(user.getId())
+                    .newData("Người dùng tự đổi mật khẩu cá nhân thành công")
+                    .createdAt(Instant.now())
+                    .build();
+            systemLogRepository.save(log);
+        } catch (Exception ignored) {
+        }
     }
 }
 
