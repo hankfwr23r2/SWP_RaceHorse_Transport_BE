@@ -130,6 +130,16 @@ public class AdminAccountServiceImpl implements AdminAccountService {
         Staff staff = staffRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhân viên có ID: " + userId));
 
+        // Quy tắc bảo mật: Không được khóa Admin duy nhất còn hoạt động trong hệ thống
+        if (lock && "ADMIN".equalsIgnoreCase(staff.getRole())) {
+            long activeAdminCount = staffRepository.findAll().stream()
+                    .filter(s -> "ADMIN".equalsIgnoreCase(s.getRole()) && "ACTIVE".equalsIgnoreCase(s.getEmploymentStatus()))
+                    .count();
+            if (activeAdminCount <= 1) {
+                throw new IllegalArgumentException("Không thể khóa Quản trị viên (Admin) duy nhất còn hoạt động trong hệ thống!");
+            }
+        }
+
         staff.setEmploymentStatus(lock ? "INACTIVE" : "ACTIVE");
         staffRepository.save(staff);
     }
