@@ -33,23 +33,42 @@ public class DataInitializer implements CommandLineRunner {
             log.warn("Could not set IDENTITY_CACHE: {}", e.getMessage());
         }
 
-        // 2. Tự động khởi tạo tài khoản Admin mặc định nếu chưa tồn tại
-        if (userRepository.findByEmail("admin01@gmail.com").isEmpty()) {
-            User adminUser = new User();
-            adminUser.setUsername("admin01");
-            adminUser.setEmail("admin01@gmail.com");
-            adminUser.setPasswordHash(passwordEncoder.encode("admin123"));
-            adminUser = userRepository.save(adminUser);
+        // 2. Tự động khởi tạo tài khoản Admin mặc định
+        seedStaff("admin01", "admin01@gmail.com", "admin123", "ADMIN", "ADMIN-01");
 
-            Staff adminStaff = new Staff();
-            adminStaff.setUser(adminUser);
-            adminStaff.setRole("ADMIN");
-            adminStaff.setStaffCode("ADMIN-01");
-            adminStaff.setEmploymentStatus("ACTIVE");
-            adminStaff.setHireDate(LocalDate.now());
-            staffRepository.save(adminStaff);
+        // 3. Tự động khởi tạo nhân sự vận hành cốt lõi nếu chưa có
+        seedStaff("manager01", "manager01@gmail.com", "Password@123", "MANAGER", "MG-01");
+        seedStaff("coordinator01", "coordinator01@gmail.com", "Password@123", "COORDINATOR", "CO-01");
+        seedStaff("specialist01", "specialist01@gmail.com", "Password@123", "SPECIALIST", "SP-01");
 
-            log.info(">>> Seeded default ADMIN account: email=admin01@gmail.com, password=admin123 (UserID: {})", adminUser.getId());
+        // Drivers (Tài xế)
+        seedStaff("driver01", "driver01@gmail.com", "Password@123", "DRIVER", "TX-01");
+        seedStaff("driver02", "driver02@gmail.com", "Password@123", "DRIVER", "TX-02");
+        seedStaff("driver03", "driver03@gmail.com", "Password@123", "DRIVER", "TX-03");
+
+        // Escorts (Hộ tống / Chuyên viên thú y)
+        seedStaff("escort01", "escort01@gmail.com", "Password@123", "ESCORT", "NV-01");
+        seedStaff("escort02", "escort02@gmail.com", "Password@123", "ESCORT", "NV-02");
+        seedStaff("escort03", "escort03@gmail.com", "Password@123", "ESCORT", "NV-03");
+    }
+
+    private void seedStaff(String username, String email, String rawPassword, String role, String staffCode) {
+        if (userRepository.findByEmail(email).isEmpty() && userRepository.findByUsername(username).isEmpty()) {
+            User user = new User();
+            user.setUsername(username);
+            user.setEmail(email);
+            user.setPasswordHash(passwordEncoder.encode(rawPassword));
+            user = userRepository.save(user);
+
+            Staff staff = new Staff();
+            staff.setUser(user);
+            staff.setRole(role);
+            staff.setStaffCode(staffCode);
+            staff.setEmploymentStatus("ACTIVE");
+            staff.setHireDate(LocalDate.now());
+            staffRepository.save(staff);
+
+            log.info(">>> Seeded staff account: role={}, username={}, email={} (UserID: {})", role, username, email, user.getId());
         }
     }
 }
