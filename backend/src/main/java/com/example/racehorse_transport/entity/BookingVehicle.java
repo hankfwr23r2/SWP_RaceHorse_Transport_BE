@@ -1,13 +1,15 @@
 package com.example.racehorse_transport.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.Instant;
 
 @Getter
 @Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "BOOKING_VEHICLE")
 public class BookingVehicle {

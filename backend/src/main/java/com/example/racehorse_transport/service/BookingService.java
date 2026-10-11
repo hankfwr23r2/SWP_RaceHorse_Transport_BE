@@ -24,5 +24,8 @@ public interface BookingService {
 
     // Nghiệp vụ Flow 1: Manager xem đơn theo trạng thái (chờ tiếp nhận)
     List<BookingResponse> getBookingsByStatus(String status);
+
+    // Nghiệp vụ Phase 2: Coordinator chốt xe & lộ trình
+    BookingResponse confirmCoordinatorPlan(String bookingIdentifier, com.example.racehorse_transport.dto.coordinator.CoordinatorPlanRequest request);
 }
 

@@ -11,4 +11,6 @@ public interface FleetService {
     List<VehicleResponse> getAvailableVehicles(Instant departDate, String tripType);
     List<CrewResponse> getAllCrew(String role);
     List<CrewResponse> getAvailableCrew(Instant departDate, String role);
+    com.example.racehorse_transport.entity.Vehicle findVehicleByIdOrCode(String identifier);
+    void validateVehicleAvailability(Integer vehicleId, Instant departDate, String tripType, Integer excludeBookingId);
 }

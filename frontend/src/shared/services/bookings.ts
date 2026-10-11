@@ -535,6 +535,21 @@ export const bookingsApi = {
       status: reviewDone(next) ? 'pending_commercial' : 'under_review',
       history: log(b, by, reviewDone(next) ? `Xác nhận ${trips.length} xe và lộ trình. Đủ điều kiện, chuyển quản lý duyệt báo giá` : `Xác nhận ${trips.length} xe và lộ trình`),
     }))
+    // Đồng bộ phương án xe và lộ trình xuống Backend SQL Server (khi chạy trên trình duyệt)
+    if (typeof window !== 'undefined') {
+      try {
+        await backendBookingApi.confirmFleetPlan(id, {
+          by,
+          trips: input.trips.map(t => ({ vehicleId: t.vehicleId, horseIds: t.horseIds })),
+          route: input.route,
+          gate: input.gate,
+          note: input.note,
+        })
+      } catch (apiErr) {
+        console.warn('Backend confirmFleetPlan sync notification:', apiErr)
+      }
+    }
+
     notify(b, ['manager'], `Điều phối viên đã chốt xe và lộ trình — đơn ${id}`, reviewDone(next) ? `${trips.length} xe. Đơn đã đủ điều kiện, chờ bạn duyệt báo giá.` : `${trips.length} xe. Còn chờ Kiểm dịch viên thẩm định hồ sơ ngựa.`, { manager: reviewDone(next) ? LINK.manager.approvals : LINK.manager.intake })
     return out
   },

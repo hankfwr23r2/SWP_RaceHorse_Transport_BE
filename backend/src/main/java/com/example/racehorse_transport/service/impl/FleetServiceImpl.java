@@ -195,4 +195,73 @@ public class FleetServiceImpl implements FleetService {
                 .busyReason(null)
                 .build();
     }
+
+    @Override
+    public Vehicle findVehicleByIdOrCode(String identifier) {
+        if (identifier == null || identifier.trim().isEmpty()) {
+            throw new IllegalArgumentException("Mã xe không được để trống!");
+        }
+        String clean = identifier.trim();
+        try {
+            int numId = Integer.parseInt(clean);
+            Optional<Vehicle> byId = vehicleRepository.findById(numId);
+            if (byId.isPresent()) return byId.get();
+        } catch (NumberFormatException ignored) {}
+
+        Optional<Vehicle> byCode = vehicleRepository.findByVehicleCode(clean);
+        if (byCode.isPresent()) return byCode.get();
+
+        Optional<Vehicle> byPlate = vehicleRepository.findByLicensePlate(clean);
+        if (byPlate.isPresent()) return byPlate.get();
+
+        if (clean.matches("(?i)(VH|XE)-\\d+")) {
+            String digits = clean.replaceAll("[^0-9]", "");
+            try {
+                int numId = Integer.parseInt(digits);
+                Optional<Vehicle> byId = vehicleRepository.findById(numId);
+                if (byId.isPresent()) return byId.get();
+            } catch (Exception ignored) {}
+        }
+
+        throw new IllegalArgumentException("Không tìm thấy xe phù hợp: " + identifier);
+    }
+
+    @Override
+    public void validateVehicleAvailability(Integer vehicleId, Instant departDate, String tripType, Integer excludeBookingId) {
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy xe có ID: " + vehicleId));
+
+        if ("MAINTENANCE".equalsIgnoreCase(vehicle.getStatus())) {
+            throw new IllegalStateException("Xe " + vehicle.getLicensePlate() + " đang bảo dưỡng định kỳ, không thể xếp xe!");
+        }
+
+        Instant checkDate = departDate != null ? departDate : Instant.now();
+        boolean isInternational = "international".equalsIgnoreCase(tripType);
+        int daysBefore = isInternational ? 2 : 1;
+        int daysAfter = isInternational ? 4 : 2;
+
+        List<Booking> holdingBookings = getHoldingBookings();
+        for (Booking b : holdingBookings) {
+            if (excludeBookingId != null && excludeBookingId.equals(b.getId())) {
+                continue;
+            }
+            Instant bookingDepart = b.getDepartureDate() != null ? b.getDepartureDate() : b.getBookingDate();
+            if (bookingDepart == null) continue;
+
+            Instant busyStart = bookingDepart.minus(daysBefore, ChronoUnit.DAYS);
+            Instant busyEnd = bookingDepart.plus(daysAfter, ChronoUnit.DAYS);
+
+            if (!checkDate.isBefore(busyStart) && !checkDate.isAfter(busyEnd)) {
+                List<BookingVehicle> bvs = bookingVehicleRepository.findByBookingID_Id(b.getId());
+                for (BookingVehicle bv : bvs) {
+                    if (bv.getVehicleID() != null && bv.getVehicleID().getId().equals(vehicleId)) {
+                        String tripTag = b.getBookingType() != null && b.getBookingType().equalsIgnoreCase("international")
+                                ? "quốc tế" : "nội địa";
+                        throw new IllegalStateException("Xe " + vehicle.getLicensePlate() + " (" + vehicle.getVehicleName() + ") trùng lịch với đơn BK-"
+                                + String.format("%03d", b.getId()) + " (" + tripTag + ", khứ hồi về trụ sở VN đến " + busyEnd + ")!");
+                    }
+                }
+            }
+        }
+    }
 }

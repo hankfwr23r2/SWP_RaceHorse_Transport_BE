@@ -30,4 +30,14 @@ public class BookingResponse {
     private Integer totalHorses;
     private List<BookingHorseDto> horses;
     private String waybillNo;
+
+    private List<com.example.racehorse_transport.dto.coordinator.VehicleTripDto> trips;
+    private Object route;
+    private String gate;
+    private Object plan;
+    private Object quote;
+    private Object payment;
+    private Object medical;
+    private Object intake;
+    private List<java.util.Map<String, Object>> history;
 }

@@ -81,4 +81,10 @@ export const backendBookingApi = {
     const res = await apiClient.get<ApiResponse<BackendBookingResponse[]>>('/manager/bookings')
     return res.data.data
   },
+
+  // 6. Coordinator chốt xe & lộ trình (POST /api/v1/coordinator/bookings/{id}/fleet-plan)
+  confirmFleetPlan: async (id: number | string, payload: { by?: string; trips: Array<{ vehicleId: string; horseIds: string[]; driverId?: string; escortId?: string; tripId?: string }>; route?: any; gate?: string; note?: string }): Promise<BackendBookingResponse> => {
+    const res = await apiClient.post<ApiResponse<BackendBookingResponse>>(`/coordinator/bookings/${id}/fleet-plan`, payload)
+    return res.data.data
+  },
 }
